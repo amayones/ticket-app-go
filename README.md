@@ -25,11 +25,15 @@ golang-backend/
 │   ├── src/
 │   ├── dist/        # hasil build (di-ignore, kecuali .gitkeep)
 │   └── vite.config.js # base:/, outDir:dist, proxy /api -> :1067
-├── main.go          # //go:embed all:frontend/dist + SPA fallback
+├── main.go          # //go:embed all:frontend/dist + SPA fallback + --hide
+├── hide_windows.go  # hide console (Windows, --hide/--tray)
+├── hide_other.go    # no-op non-Windows
+├── cmd/stop/        # stop.exe (PID file + taskkill)
 ├── .env             # tidak di-commit (lihat .env.example)
 ├── .env.example     # template
-├── Makefile         # make build / dev / clean
-└── build.ps1        # Windows one-command build
+├── build.ps1        # build app.exe + stop.exe
+├── watch.ps1        # auto rebuild on file change
+└── Makefile         # make build / dev / tray / stop / watch / clean
 ```
 
 ## Prasyarat
@@ -133,7 +137,7 @@ Buka `http://localhost:5173` untuk dev. Edit `frontend/src/App.jsx` auto reload.
 ### 5. Production — Single Binary
 
 ```powershell
-.\build.ps1
+.\build.ps1          # hasil: app.exe + stop.exe
 # atau
 make build
 ```
@@ -143,13 +147,25 @@ Output: `app.exe` (~12-13 MB) sudah embed `frontend/dist`.
 Jalankan:
 
 ```powershell
+# console foreground
 .\app.exe
+# hide/background (Windows) — console hide, PID di %TEMP%\golang-backend.pid
+.\app.exe --hide        # atau --tray
+# stop yang hide
+.\stop.exe              # atau make stop / taskkill /IM app.exe /F
 # buka http://localhost:1067/  (frontend)
 # buka http://localhost:1067/api/users  (API)
 # refresh /dashboard tidak 404 (SPA fallback)
 ```
 
-Deploy prod cukup copy **2 file**: `app.exe` + `.env` ke server. Folder `frontend/` tidak perlu ikut.
+Deploy prod cukup copy **3 file**: `app.exe` + `stop.exe` + `.env` ke server. Folder `frontend/` tidak perlu ikut.
+
+### Auto Build (watch)
+
+```powershell
+.\watch.ps1             # atau make watch
+# pantau *.go, frontend/src/*, go.mod -> auto ./build.ps1 + restart app.exe
+```
 
 ## API
 
@@ -183,7 +199,10 @@ curl http://localhost:1067/api/users -H "Authorization: Bearer <access_token>"
 make install         # npm install di frontend
 make build-frontend  # npm run build saja
 make build-backend   # go build saja (butuh dist sudah ada)
-make clean           # hapus app.exe + dist/assets
+make tray            # build + run hide background
+make stop            # stop app.exe hide
+make watch           # auto rebuild on change
+make clean           # hapus app.exe + stop.exe + dist/assets
 make dev             # petunjuk 2 terminal
 ```
 

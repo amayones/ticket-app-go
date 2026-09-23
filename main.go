@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"embed"
+	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,7 +28,16 @@ import (
 //go:embed all:frontend/dist
 var embeddedDist embed.FS
 
+var pidFile = filepath.Join(os.TempDir(), "golang-backend.pid")
+
 func main() {
+	hideFlag := flag.Bool("hide", false, "hide console window (Windows tray mode)")
+	trayFlag := flag.Bool("tray", false, "alias for --hide")
+	flag.Parse()
+	if *hideFlag || *trayFlag {
+		hideConsole()
+	}
+
 	log.Println("Starting Go Backend...")
 	config.LoadEnv()
 	db := config.ConnectDatabase()
@@ -41,7 +54,12 @@ func main() {
 	} else {
 		log.Println("Frontend embedded from frontend/dist (single binary mode)")
 	}
-	port := config.GetEnvDefault("APP_PORT", "8080")
+	port := config.GetEnvDefault("APP_PORT", "1067")
+	if err := writePidFile(); err != nil {
+		log.Printf("WARN: could not write pid file: %v", err)
+	}
+	defer os.Remove(pidFile)
+
 	server := &http.Server{
 		Addr:         ":" + port,
 		Handler:      r,
@@ -67,6 +85,21 @@ func main() {
 	}
 	log.Println("Server exited gracefully")
 }
+
+func writePidFile() error {
+	return os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0644)
+}
+
+func readPidFile() (int, error) {
+	b, err := os.ReadFile(pidFile)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(string(b)))
+}
+
+var _ = fmt.Sprintf
+var _ = readPidFile
 
 func attachEmbeddedSPA(r *chi.Mux) error {
 	sub, err := fs.Sub(embeddedDist, "frontend/dist")
