@@ -2,41 +2,59 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"golang-backend/utils"
 )
 
-type contextKey string
+// Private context key type prevents collisions with other packages.
+type ctxKey struct{}
 
-const UserIDKey contextKey = "userID"
+var userIDKey = ctxKey{}
 
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Missing authorization header", http.StatusUnauthorized)
-			return
-		}
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" || strings.TrimSpace(parts[1]) == "" {
-			http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
-			return
-		}
-		claims, err := utils.ValidateToken(strings.TrimSpace(parts[1]))
-		if err != nil {
-			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
-			return
-		}
-		userID, err := parseUserIDClaim(claims)
-		if err != nil {
-			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
-			return
-		}
-		ctx := context.WithValue(r.Context(), UserIDKey, userID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+var (
+	ErrMissingClaim = errors.New("missing user_id claim")
+	ErrInvalidClaim = errors.New("invalid user_id claim")
+)
+
+// NewAuth returns auth middleware bound to the configured JWT secret.
+// Secret is injected (no global env read) so routes/tests control it.
+func NewAuth(jwtSecret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				writeAuthError(w, "Missing authorization header")
+				return
+			}
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) != 2 || parts[0] != "Bearer" || strings.TrimSpace(parts[1]) == "" {
+				writeAuthError(w, "Invalid authorization header format")
+				return
+			}
+			claims, err := utils.ValidateToken(strings.TrimSpace(parts[1]), jwtSecret)
+			if err != nil {
+				writeAuthError(w, "Invalid or expired token")
+				return
+			}
+			userID, err := parseUserIDClaim(claims)
+			if err != nil {
+				writeAuthError(w, "Invalid token claims")
+				return
+			}
+			ctx := context.WithValue(r.Context(), userIDKey, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func writeAuthError(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
 func parseUserIDClaim(claims map[string]interface{}) (int, error) {
@@ -50,37 +68,28 @@ func parseUserIDClaim(claims map[string]interface{}) (int, error) {
 			return 0, ErrInvalidClaim
 		}
 		return int(v), nil
-	case float32:
-		if v <= 0 || float64(v) != float64(int(v)) {
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil || n <= 0 {
 			return 0, ErrInvalidClaim
 		}
-		return int(v), nil
-	case int:
-		if v <= 0 {
+		return int(n), nil
+	case string:
+		// Some issuers encode IDs as strings.
+		var n json.Number = json.Number(strings.TrimSpace(v))
+		i, err := n.Int64()
+		if err != nil || i <= 0 {
 			return 0, ErrInvalidClaim
 		}
-		return v, nil
-	case int64:
-		if v <= 0 {
-			return 0, ErrInvalidClaim
-		}
-		return int(v), nil
+		return int(i), nil
 	default:
 		return 0, ErrInvalidClaim
 	}
 }
 
-var (
-	ErrMissingClaim = errString("missing user_id claim")
-	ErrInvalidClaim = errString("invalid user_id claim")
-)
-
-type errString string
-
-func (e errString) Error() string { return string(e) }
-
+// GetUserID extracts the authenticated user ID from context.
 func GetUserID(r *http.Request) (int, bool) {
-	v := r.Context().Value(UserIDKey)
+	v := r.Context().Value(userIDKey)
 	if v == nil {
 		return 0, false
 	}
