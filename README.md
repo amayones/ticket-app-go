@@ -29,8 +29,7 @@ golang-backend/
 ├── .env             # tidak di-commit (lihat .env.example)
 ├── .env.example     # template
 ├── Makefile         # make build / dev / clean
-├── build.ps1        # Windows one-command build
-└── build.sh         # Linux/macOS one-command build
+└── build.ps1        # Windows one-command build
 ```
 
 ## Prasyarat
@@ -134,13 +133,7 @@ Buka `http://localhost:5173` untuk dev. Edit `frontend/src/App.jsx` auto reload.
 ### 5. Production — Single Binary
 
 ```powershell
-# Windows
 .\build.ps1
-# atau
-make build
-
-# Linux/macOS
-bash build.sh
 # atau
 make build
 ```
