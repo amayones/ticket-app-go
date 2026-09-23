@@ -1,12 +1,16 @@
 .env
+.env.local
+*.env.local
 
 *.exe
 *.log
 
 .vscode/
 .idea/
+.task/
 
 frontend/node_modules/
 frontend/dist/*
-!frontend/dist/.gitkeep
+!frontend/dist/.gitignore
 
+tmp/

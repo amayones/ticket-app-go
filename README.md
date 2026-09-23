@@ -1,90 +1,87 @@
-# Golang Backend + React — Single Binary (embed.FS)
+# go-core
 
-Backend Go (chi) + Frontend React (Vite) jadi **satu binary** via `//go:embed all:frontend/dist`. Deploy cukup `app.exe` + `.env`.
-
-## Stack
-
-- **Backend:** Go 1.27, chi v5, golang-jwt v5, MSSQL (go-mssqldb), bcrypt
-- **Frontend:** React 19, Vite 8, di `frontend/`
-- **Auth:** Access Token 15m (JWT HS256) + Refresh Token rotate 7 hari, limit 5/device per user
-- **Port:** `1067` (via `APP_PORT` di `.env`, proxy Vite sudah sinkron)
-
-## Struktur
+Aplikasi web **Go + React dalam satu binary**: backend Go (chi) + frontend React (Vite)
+digabung via `//go:embed`, sehingga deploy production cukup membawa
+**3 file**: `app.exe` + `stop.exe` + `.env`.
 
 ```
-golang-backend/
-├── config/          # env + database
-├── handlers/        # http handlers
-├── middleware/      # auth, rate-limit (5/min login)
-├── models/
-├── repositories/    # RowsAffected check, refresh limit
-├── routes/          # /api/*  (SPA NotFound fallback)
-├── services/        # business logic
-├── utils/           # jwt (iat/exp + HMAC check), hash, validator
-├── frontend/        # React app (Vite)
-│   ├── src/
-│   ├── dist/        # hasil build (di-ignore, kecuali .gitkeep)
-│   └── vite.config.js # base:/, outDir:dist, proxy /api -> :1067
-├── main.go          # //go:embed all:frontend/dist + SPA fallback + --hide
-├── hide_windows.go  # hide console (Windows, --hide/--tray)
-├── hide_other.go    # no-op non-Windows
-├── cmd/stop/        # stop.exe (PID file + taskkill)
-├── .env             # tidak di-commit (lihat .env.example)
-├── .env.example     # template
-├── build.ps1        # build app.exe + stop.exe
-├── watch.ps1        # auto rebuild on file change
-└── Makefile         # make build / dev / tray / stop / watch / clean
+Browser ──► app.exe :1067 ──┬──► /               (frontend React, hasil build Vite)
+                             └──► /api/*          (REST API JSON)
+                             └──► /healthz        (health check)
+                                      │
+                                      ▼
+                               SQL Server (database Go)
 ```
 
-## Prasyarat
+**Fitur utama:** register/login user, JWT access 15 menit + refresh token rotasi
+7 hari (disimpan sebagai hash SHA-256), rate-limit, single-binary embed,
+skrip build satu pintu (`Taskfile.yml`), CI + Dockerfile siap pakai.
 
-- Go >=1.27
-- Node >=18, npm >=9
-- SQL Server (MSSQL) running, database `Go` bisa diakses
-- Git
+---
 
-## Fresh Clone — Langkah Lengkap
+## Daftar Isi
 
-### 1. Clone
+1. [Mulai Cepat — Langkah demi Langkah](#1-mulai-cepat--langkah-demi-langkah)
+2. [Memahami Isi Proyek (Tur Folder)](#2-memahami-isi-proyek-tur-folder)
+3. [Cara Kerja Sistem (Alur Penting)](#3-cara-kerja-sistem-alur-penting)
+4. [Referensi API](#4-referensi-api)
+5. [Referensi Perintah & Konfigurasi](#5-referensi-perintah--konfigurasi)
+6. [Deploy Production](#6-deploy-production)
+7. [Troubleshooting & FAQ](#7-troubleshooting--faq)
+
+---
+
+## 1. Mulai Cepat — Langkah demi Langkah
+
+Ikuti langkah 1–6 berurutan. Estimasi: ±15 menit untuk pemula.
+
+### Langkah 0 — Siapkan prasyarat
+
+| Kebutuhan | Versi minimal | Cara cek |
+|-----------|---------------|----------|
+| Go | 1.27 | `go version` |
+| Node.js | 20 (lihat `.nvmrc`) | `node --version` |
+| npm | 9+ | `npm --version` |
+| SQL Server | 2019+ / Express juga bisa | SSMS / `sqlcmd` konek |
+| Git | bebas | `git --version` |
+| `task` (opsional) | 3.x | `task --version` — kalau belum ada, semua perintah `task x` bisa diganti `pwsh ./scripts/x.ps1` |
+
+> SQL Server harus **sudah berjalan** sebelum backend dijalankan
+> (cek via `services.msc` → `SQL Server (MSSQLSERVER)` → Running).
+
+### Langkah 1 — Clone dan masuk folder
 
 ```powershell
-git clone <url-repo-kamu>.git
-cd golang-backend
+git clone <url-repo>.git
+cd go-core
 ```
 
-### 2. Env
+### Langkah 2 — Buat file `.env`
 
 ```powershell
 copy .env.example .env
-# edit .env isi DB_USERNAME, DB_PASSWORD, JWT_SECRET
+notepad .env
 ```
 
-Isi `.env`:
+Isi yang **wajib diisi** (sisanya boleh default):
 
 ```ini
-APP_PORT=1067
-DB_HOST=localhost
-DB_PORT=1433
-DB_DATABASE=Go
-DB_USERNAME=sigma
-DB_PASSWORD=sigma
-JWT_SECRET=isi-random-min-32-char
+DB_USERNAME=...        # user SQL Server kamu
+DB_PASSWORD=...        # password SQL Server kamu
+JWT_SECRET=...         # minimal 32 karakter acak (lihat bawah)
 ```
 
-Generate JWT_SECRET (pilih satu):
+Buat `JWT_SECRET` acak (pilih salah satu):
 
 ```powershell
-# PowerShell
--join ((48..57)+(65..90)+(97..122) | Get-Random -Count 64 | % {[char]$_})
-# atau
 openssl rand -hex 32
 ```
 
-> `.env` sudah di `.gitignore`, tidak akan ter-push. Jangan commit `.env`.
+Daftar lengkap variabel ada di [tabel konfigurasi](#51-variabel-environment).
 
-### 3. Database
+### Langkah 3 — Buat database + tabel (sekali saja)
 
-Buat DB + tabel (SSMS / sqlcmd):
+Buka SSMS / `sqlcmd`, jalankan:
 
 ```sql
 CREATE DATABASE Go;
@@ -104,129 +101,368 @@ CREATE TABLE users (
 CREATE TABLE refresh_tokens (
   id INT IDENTITY(1,1) PRIMARY KEY,
   user_id INT NOT NULL FOREIGN KEY REFERENCES users(id) ON DELETE CASCADE,
-  token NVARCHAR(512) NOT NULL UNIQUE,
+  token NVARCHAR(512) NOT NULL UNIQUE, -- berisi SHA-256 hex, BUKAN token asli
   expires_at DATETIME NOT NULL,
   created_at DATETIME NOT NULL DEFAULT GETDATE()
 );
 ```
 
-### 4. Development (2 terminal, HMR)
+### Langkah 4 — Jalankan mode development (2 terminal)
 
-Terminal 1 — Backend:
+**Terminal 1 — backend:**
 
 ```powershell
-go mod tidy   # pertama kali saja (opsional)
 go run .
-# -> http://localhost:1067
-# -> API http://localhost:1067/api
+# -> API di http://localhost:1067/api
+# -> health di http://localhost:1067/healthz
 ```
 
-Terminal 2 — Frontend:
+**Terminal 2 — frontend:**
 
 ```powershell
-cd frontend
-npm install   # pertama kali saja
-npm run dev
-# -> http://localhost:5173 (proxy /api -> :1067)
+npm --prefix frontend install   # hanya pertama kali
+npm --prefix frontend run dev
+# -> http://localhost:5173 (otomatis proxy /api ke :1067)
 ```
 
-Buka `http://localhost:5173` untuk dev. Edit `frontend/src/App.jsx` auto reload.
+Atau sekaligus dengan satu perintah: `task dev`.
 
-> Jika `go run .` log `WARN: frontend/dist not found` itu normal di mode dev (belum build). `/api` tetap jalan. Build frontend hanya untuk production single binary.
+> Catatan: log `WARN frontend/dist missing` saat `go run .` itu **normal** di mode
+> dev (frontend belum di-build). API tetap jalan.
 
-### 5. Production — Single Binary
+### Langkah 5 — Verifikasi instalasi
 
 ```powershell
-.\build.ps1          # hasil: app.exe + stop.exe
-# atau
-make build
+# 1. health check
+curl http://localhost:1067/healthz
+# -> {"status":"ok"}
+
+# 2. register user pertama
+curl -X POST http://localhost:1067/api/users `
+  -H "Content-Type: application/json" `
+  -d '{"username":"budi","email":"budi@example.com","password":"password123"}'
+# -> {"id":1,"message":"User created successfully"}
+
+# 3. login
+curl -X POST http://localhost:1067/api/login `
+  -H "Content-Type: application/json" `
+  -d '{"username":"budi","password":"password123"}'
+# -> {"access_token":"...","refresh_token":"...","message":"Login successful"}
+
+# 4. akses endpoint privat (ganti <token>)
+curl http://localhost:1067/api/users -H "Authorization: Bearer <token>"
 ```
 
-Output: `app.exe` (~12-13 MB) sudah embed `frontend/dist`.
+Lalu buka `http://localhost:5173` → halaman Login/Register/Users harus bisa dipakai
+end-to-end (daftar → login → muat daftar user → logout).
 
-Jalankan:
+### Langkah 6 — Build production (single binary)
 
 ```powershell
-# console foreground
-.\app.exe
-# hide/background (Windows) — console hide, PID di %TEMP%\golang-backend.pid
-.\app.exe --hide        # atau --tray
-# stop yang hide
-.\stop.exe              # atau make stop / taskkill /IM app.exe /F
-# buka http://localhost:1067/  (frontend)
-# buka http://localhost:1067/api/users  (API)
-# refresh /dashboard tidak 404 (SPA fallback)
+task build            # atau: pwsh ./scripts/build.ps1
+.\app.exe             # jalan di foreground, buka http://localhost:1067/
 ```
 
-Deploy prod cukup copy **3 file**: `app.exe` + `stop.exe` + `.env` ke server. Folder `frontend/` tidak perlu ikut.
-
-### Auto Build (watch)
+Mode background (Windows) + cara berhenti:
 
 ```powershell
-.\watch.ps1             # atau make watch
-# pantau *.go, frontend/src/*, go.mod -> auto ./build.ps1 + restart app.exe
+.\app.exe --hide      # console hilang, PID di %TEMP%\go-core.pid
+.\stop.exe            # berhenti graceful
 ```
 
-## API
+Selamat — aplikasi sudah jalan. Bagian 2 menjelaskan **apa isi setiap folder**,
+bagian 3 menjelaskan **cara kerjanya**.
 
-| Method | Path | Auth | Body | Ket |
-|--------|------|------|------|-----|
-| POST | `/api/users` | - | `{username,email,password}` | Register (201) |
-| POST | `/api/login` | - | `{username,password}` | Login -> `access_token` + `refresh_token` |
-| POST | `/api/refresh` | - | `{refresh_token}` | Rotate -> token baru, old invalidate |
-| POST | `/api/logout` | - | `{refresh_token}` | Hapus refresh token |
-| GET | `/api/users` | Bearer | - | List (butuh token) |
-| GET | `/api/users/{id}` | Bearer | - | Detail |
-| PUT | `/api/users/{id}` | Bearer (owner only) | `{username,email,password}` | 403 jika bukan owner |
-| DELETE | `/api/users/{id}` | Bearer (owner only) | - | 403 jika bukan owner |
+---
 
-Contoh:
+## 2. Memahami Isi Proyek (Tur Folder)
+
+Struktur root (hasil `ls`):
+
+```
+go-core/
+├── main.go                 # titik masuk: rakit config→db→service→route→server
+├── hide_windows.go         # sembunyikan console (--hide) khusus Windows
+├── hide_other.go           # versi no-op untuk Linux/macOS
+│
+├── config/                 # baca & validasi konfigurasi
+├── models/                 # entity DB + DTO API
+├── repositories/           # query SQL (mentah, parameterized)
+├── services/               # logika bisnis + aturan auth
+├── handlers/               # HTTP: parse request → panggil service → tulis JSON
+├── middleware/             # auth JWT + rate-limit
+├── routes/                 # daftarkan semua endpoint + middleware global
+├── internal/pidfile/       # helper PID file (dipakai app & stop)
+├── cmd/stop/               # program kecil penghenti app background
+│
+├── frontend/               # aplikasi React (Vite)
+├── scripts/                # build.ps1, watch.ps1, dev.ps1
+├── Taskfile.yml            # satu pintu semua perintah (task build/test/...)
+│
+├── Dockerfile              # image production multi-stage
+├── .github/workflows/ci.yml# CI: vet+test Go, lint+build frontend
+├── .env.example            # template konfigurasi (commit)
+├── .env                    # konfigurasi asli (JANGAN commit, di-ignore)
+├── .nvmrc                  # pin Node 20
+└── app.exe + stop.exe      # hasil build (di-ignore, dibuat ulang via task build)
+```
+
+### 2.1 Lapisan backend — alur satu request
+
+Setiap request API mengalir **dari luar ke dalam** seperti ini:
+
+```
+routes/  →  middleware/  →  handlers/  →  services/  →  repositories/  →  SQL Server
+(daftar     (cek JWT,       (terima JSON,  (aturan bisnis:  (query         (tabel
+ endpoint)   rate-limit)     tulis JSON)    validasi, hash)   parameterized) users/refresh_tokens)
+                              ▲                  │
+                           models/dto.go ────────┘
+                           (bentuk data request/response)
+```
+
+Peran tiap folder:
+
+| Folder | Isi file | Tugasnya dalam bahasa sederhana |
+|--------|----------|----------------------------------|
+| `config/` | `env.go`, `database.go` | Baca `.env` **sekali** saat start (`Load()` → struct `Config`), validasi (JWT ≥32 char, port numerik), buka koneksi DB dengan timeout. Tidak pernah `log.Fatal` — selalu kembalikan `error`. |
+| `models/` | `user.go`, `refresh_token.go`, `dto.go` | `User` = baris tabel DB; `UserResponse` = versi aman untuk API (tanpa hash password); `dto.go` = bentuk JSON request (`CreateUserRequest`, `UpdateUserRequest` partial via pointer, dll). |
+| `repositories/` | `user_repository.go`, `refresh_token_repository.go` | Satu-satunya tempat berisi SQL. Semua query pakai parameter (`@p1`, bukan string concat → anti SQL injection), pakai `context` timeout 5 detik, `List` paginated (anti OOM). Token di DB selalu **hash SHA-256**, bukan token asli. |
+| `services/` | `user_service.go` (+ `*_test.go`) | Otak aplikasi: normalisasi email (`trim+lowercase`), validasi, bcrypt, buat/cek JWT, rotasi refresh token, batasi 5 sesi/user, petakan error DB ke error bermakna (`ErrUsernameTaken`, …). Punya unit test (`go test ./services/`). |
+| `handlers/` | `user_handler.go` | Penerjemah HTTP↔service: batasi body 1 MB, tolak field asing, parse `id`, cek "hanya pemilik data" (`requireSelf`), tulis sukses/error **selalu JSON** `{...}` / `{error: ...}`. |
+| `middleware/` | `auth.go`, `ratelimit.go` | `NewAuth(secret)` = satpam JWT (cek `Bearer`, pin HS256, cek `iss/aud/exp`); `RateLimiter` = pembatas request/menit per IP (anti-spoof XFF, kirim header `Retry-After`). |
+| `routes/` | `routes.go` | Daftar endpoint `/api/*` + `/healthz`, pasang middleware global (`RequestID`, `Logger`, `Recoverer`, `Timeout`), dan rate-limit berbeda per endpoint (login 5/mnt, register 10/mnt, refresh 30/mnt). |
+| `internal/pidfile/` | `pidfile.go` | Satu-satunya penentu lokasi PID file (`%TEMP%\go-core.pid` + fallback nama lama) agar app dan stop.exe **tidak pernah beda path**. |
+| `cmd/stop/` | `main.go`, `signal_*.go` | `stop.exe`: kirim SIGINT (graceful, tunggu 8 dtk) → baru force-kill **PID itu saja**; sengaja **tidak** kill by-name agar tak salah bunuh proses lain. Windows + Unix. |
+| `main.go` | — | Lem: load config → tulis PID → konek DB → rakit service → pasang route → tempel frontend embed → jalan + graceful shutdown. Tiap jam bersihkan refresh token kedaluwarsa. |
+
+### 2.2 Frontend (`frontend/`)
+
+```
+frontend/
+├── index.html              # judul "Go Core", muat /src/main.jsx
+├── vite.config.js          # baca APP_PORT dari root .env → proxy /api otomatis sinkron
+├── .env.example            # contoh VITE_API_URL (dev)
+├── public/favicon.svg      # ikon (disajikan apa adanya)
+├── src/
+│   ├── main.jsx            # entry React (StrictMode)
+│   ├── App.jsx             # shell: topbar Login/Register/Users + state login
+│   ├── App.css             # styling polos (tanpa nesting)
+│   ├── index.css           # base style Vite
+│   ├── api/client.js       # SATU-SATUNYA yang fetch ke backend:
+│   │                       # simpan token di localStorage, auto-refresh 1x saat 401
+│   └── pages/Auth.jsx      # LoginForm, RegisterForm, UsersList
+└── dist/                   # HASIL build (di-ignore, jangan edit manual)
+    └── .gitignore          # placeholder agar go:embed tetap compile di fresh clone
+```
+
+Alur data frontend: `Auth.jsx` → `api/client.js` → `fetch(${VITE_API_URL}/api/...)`.
+Saat dev (`npm run dev`), `VITE_API_URL` kosong → request relatif `/api/...` →
+diproxy Vite ke backend. Saat production (di-embed), frontend disajikan dari
+binary yang sama → request relatif otomatis benar.
+
+### 2.3 Build & skrip (`Taskfile.yml`, `scripts/`)
+
+```
+Taskfile.yml  →  task build | test | watch | dev | clean | run | tray | stop | ...
+     │                │
+     │                └── memanggil ./scripts/*.ps1 (logika asli hanya di sini)
+     │
+     └── butuh CLI `task`? Kalau belum install, langsung: pwsh ./scripts/build.ps1
+```
+
+| File | Perintah | Isi kerjanya |
+|------|----------|--------------|
+| `scripts/build.ps1` | `task build` | `npm ci` → `vite build` → buat ulang `dist/.gitignore` → `go vet` → `go build -trimpath -ldflags "-s -w"` → `app.exe` + `stop.exe` |
+| `scripts/watch.ps1` | `task watch` | Pantau `*.go/js/jsx/css/html` → rebuild + restart via **PID file** (bukan kill by-name) |
+| `scripts/dev.ps1` | `task dev` | Buka 2 jendela: Vite HMR + `go run .` |
+| `Taskfile.yml` | semua `task *` | Definisi task lintas-fungsi: `install`, `build-frontend`, `build-backend`, `test` (`go vet` + `go test -race`), `lint-frontend`, `clean` (aman Windows) |
+
+### 2.4 File konfigurasi & operasional
+
+| File | Untuk apa | Boleh diedit? |
+|------|-----------|---------------|
+| `.env` | Konfigurasi asli (DB, JWT, port). Di-ignore git | ✅ wajib (tidak ikut commit) |
+| `.env.example` | Template `.env` + dokumentasi default | ✅ jika tambah variabel baru |
+| `frontend/.env.example` | Contoh `VITE_API_URL` untuk dev terpisah | ✅ |
+| `.nvmrc` | Pin Node 20 (`nvm use`) | ❌ kecuali upgrade Node |
+| `Dockerfile` | Build image: node→build frontend, go→binary, distroless→jalan | ✅ jika ubah port/proses build |
+| `.github/workflows/ci.yml` | CI 3 job: backend, frontend, single-binary Windows | ✅ |
+| `go.mod` / `go.sum` | Dependensi Go (chi, jwt, mssqldb, crypto, godotenv) | via `go get`, jangan manual |
+| `frontend/package.json` | Dependensi React + script `dev/build/lint/preview` | via `npm install <pkg>` |
+
+---
+
+## 3. Cara Kerja Sistem (Alur Penting)
+
+### 3.1 Alur login → akses → refresh (auth)
+
+```
+REGISTER
+  UI ──POST /api/users {username,email,password}──► bcrypt hash ──► INSERT users
+
+LOGIN
+  UI ──POST /api/login {username,password}──► cek bcrypt ──► access JWT (15 mnt)
+                                                              + refresh acak (256-bit)
+                                                              + simpan SHA256(refresh) di DB
+  UI simpan keduanya di localStorage.
+
+AKSES PRIVAT
+  UI ──GET /api/users + Header "Authorization: Bearer <access>"──► middleware cek JWT
+      ──► 200 JSON / 401 {"error":...}
+
+TOKEN KEDALUWARSA (otomatis di client.js)
+  401 ──► POST /api/refresh {refresh_token} ──► hapus token lama + terbitkan pasangan
+  baru ──► ulangi request awal. Gagal refresh → logout (token dibuang).
+```
+
+Aturan keamanan: 1 user maksimal **5 sesi** (login ke-6 menghapus sesi tertua);
+`PUT/DELETE /users/{id}` dan `logout-all` hanya oleh **pemilik id** (403 jika bukan);
+logout token yang tidak dikenal → `401 invalid or expired refresh token`.
+
+### 3.2 Contoh request/response
 
 ```powershell
-# register
-curl -X POST http://localhost:1067/api/users -H "Content-Type: application/json" -d '{"username":"budi","email":"budi@example.com","password":"password123"}'
+# Header auth untuk endpoint privat:
+$h = @{ Authorization = "Bearer <access_token>" }
 
-# login
-curl -X POST http://localhost:1067/api/login -H "Content-Type: application/json" -d '{"username":"budi","password":"password123"}'
+# List paginated (default limit 50, maks 200):
+curl "http://localhost:1067/api/users?limit=10&offset=0" -H "Authorization: Bearer <token>"
 
-# pakai token
-curl http://localhost:1067/api/users -H "Authorization: Bearer <access_token>"
+# Update partial — kirim HANYA field yang berubah (tanpa password = password tetap):
+curl -X PUT http://localhost:1067/api/users/1 -H "Authorization: Bearer <token>" `
+  -H "Content-Type: application/json" -d '{"username":"budi2"}'
+
+# Cabut semua sesi user 1:
+curl -X POST http://localhost:1067/api/users/1/logout-all -H "Authorization: Bearer <token>"
 ```
 
-## Script Lain
+### 3.3 Cara kerja single binary (embed)
+
+1. `task build` → `vite build` menghasilkan `frontend/dist/` (index.html + assets).
+2. `go build` membaca `main.go: //go:embed all:frontend/dist` → frontend **masuk ke dalam** `app.exe` (~10 MB).
+3. Saat jalan, request `/` + file statis dilayani dari embed (index.html di-cache di memori);
+   request `/api/*` + `/healthz` yang tak dikenal → JSON `{"error":"Not found"}` (bukan HTML),
+   sehingga refresh halaman SPA tidak 404.
+4. Fresh clone tanpa `dist/`: embed tetap compile berkat placeholder
+   `frontend/dist/.gitignore` → app jalan **mode API-only** + log peringatan.
+
+---
+
+## 4. Referensi API
+
+Base URL dev: `http://localhost:5173` (frontend) / `http://localhost:1067` (langsung).
+Base URL prod: `http://localhost:1067/` (keduanya satu origin).
+
+| Method | Path | Auth | Rate-limit | Body | Sukses |
+|--------|------|------|------------|------|--------|
+| GET | `/healthz` | — | — | — | `{"status":"ok"}` |
+| POST | `/api/users` | — | 10/mnt | `{username, email, password}` | `201 {"id","message"}` |
+| POST | `/api/login` | — | 5/mnt | `{username, password}` | `200 {access_token, refresh_token}` |
+| POST | `/api/refresh` | — | 30/mnt | `{refresh_token}` | `200 {access_token, refresh_token}` (lama hangus) |
+| POST | `/api/logout` | — | 30/mnt | `{refresh_token}` | `200 {message}` |
+| GET | `/api/users?limit=&offset=` | Bearer | — | — | `200 [...]` (array, `[]` jika kosong) |
+| GET | `/api/users/{id}` | Bearer | — | — | `200 {id,username,email,...}` |
+| PUT | `/api/users/{id}` | Bearer + owner | — | partial `{username?, email?, password?}` | `200 {message}` |
+| DELETE | `/api/users/{id}` | Bearer + owner | — | — | `200 {message}` (+ sesi dibersihkan) |
+| POST | `/api/users/{id}/logout-all` | Bearer + owner | — | — | `200 {message}` |
+
+Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
+(maks 254, disimpan lowercase), password 8–72 byte. Semua error: JSON
+`{"error": "..."}` dengan status `400/401/403/404/409/429/500` yang sesuai.
+
+---
+
+## 5. Referensi Perintah & Konfigurasi
+
+### 5.1 Semua perintah (`task` = `Taskfile.yml`)
+
+| Perintah | Artinya | Kapan dipakai |
+|----------|---------|---------------|
+| `task dev` | Buka Vite HMR + `go run .` | Kerja harian |
+| `task build` | Build penuh → `app.exe` + `stop.exe` | Rilis / test prod lokal |
+| `task build-frontend` / `task build-backend` | Build salah satu sisi | Hemat waktu |
+| `task run` | Build + jalan foreground | Coba prod cepat |
+| `task tray` | Build + jalan background (`--hide`) | Pakai harian di Windows |
+| `task stop` | Hentikan app background | — |
+| `task watch` | Auto-rebuild tiap ada file berubah | Demo / iterasi prod-like |
+| `task test` | `go vet` + `go test -race ./...` | Sebelum commit |
+| `task lint-frontend` | `oxlint` | Sebelum commit |
+| `task install` | `npm ci` di frontend | Sinkron dep frontend |
+| `task clean` | Hapus `app.exe`, `stop.exe`, output `dist` | Mulai bersih |
+
+> Belum install CLI `task`? Ganti `task build` → `pwsh ./scripts/build.ps1`
+> (dan seterusnya). Go + Node tetap wajib.
+
+### 5.1 Variabel environment
+
+| Variabel | Wajib | Default | Keterangan |
+|----------|-------|---------|------------|
+| `APP_NAME` / `APP_ENV` | tidak | `GoBackend` / `development` | Label saja |
+| `APP_PORT` | tidak | `1067` | Port HTTP; Vite proxy ikut otomatis |
+| `DB_HOST` / `DB_PORT` / `DB_DATABASE` | ya | — | Contoh: `localhost` / `1433` / `Go` |
+| `DB_USERNAME` / `DB_PASSWORD` | ya | — | Kredensial SQL Server |
+| `DB_MAX_OPEN_CONNS` / `DB_MAX_IDLE_CONNS` | tidak | `25` / `10` | Tuning pool koneksi |
+| `JWT_SECRET` | ya | — | **≥32 karakter acak** (`openssl rand -hex 32`) |
+| `VITE_API_URL` (frontend) | tidak | kosong (relatif) | Isi `http://localhost:1067` hanya jika frontend & backend beda origin |
+
+### 5.2 Testing
 
 ```powershell
-make install         # npm install di frontend
-make build-frontend  # npm run build saja
-make build-backend   # go build saja (butuh dist sudah ada)
-make tray            # build + run hide background
-make stop            # stop app.exe hide
-make watch           # auto rebuild on change
-make clean           # hapus app.exe + stop.exe + dist/assets
-make dev             # petunjuk 2 terminal
+task test                       # vet + seluruh test Go (race detector)
+go test ./services/ -run TestLogin -v   # satu grup test
+go test -race ./...             # eksplisit
+npm --prefix frontend run lint  # lint React
 ```
 
-## Port
+Test ada di `services/user_service_test.go` (table-driven: validasi, duplikat,
+cap 5 sesi, rotasi, expired, logout) dengan mock thread-safe
+(`user_service_mock_test.go`, tanpa DB).
 
-Ubah di `.env` (`APP_PORT`) + `frontend/vite.config.js` (`proxy /api`) harus sama. Default `1067` aman (non-privileged, tidak butuh Administrator, tidak bentrok DHCP port 67). Hindari `8080` jika bentrok, jangan pakai `<1024`.
+---
 
-## Troubleshooting
+## 6. Deploy Production
 
-| Masalah | Solusi |
-|---------|--------|
-| `go:embed pattern all:frontend/dist: no matching files` | `frontend/dist` belum ada. Buat placeholder sudah ada `.gitkeep`, atau `npm --prefix frontend run build`. |
-| `WARN: frontend/dist not found` saat `go run .` | Normal di dev. Jalankan `npm --prefix frontend run build` atau abaikan, `/api` tetap jalan. |
-| `localhost:1067` Not Found di browser | Pastikan buka `http://localhost:1067/` (bukan `/api`). Hard refresh `Ctrl+Shift+R`. Cek `netstat -ano | findstr 1067` harus LISTENING. |
-| `Missing authorization header` | Endpoint `/api/users` butuh `Authorization: Bearer <token>`. Login dulu. |
-| DB `Failed to connect` | Cek SQL Server jalan, `DB_*` di `.env` benar, firewall port 1433. |
-| `JWT_SECRET not configured` | Isi `JWT_SECRET` di `.env` (min 32 char). |
+**Opsi A — Windows (file copy):**
 
-## Keamanan
+```powershell
+task build
+# copy ke server: app.exe + stop.exe + .env
+.\app.exe --hide
+.\stop.exe   # untuk berhenti
+```
 
-- `.env` tidak di-commit (sudah `.gitignore`). Jika history lama pernah ke-commit secret, **rotate** `JWT_SECRET` + `DB_PASSWORD`.
-- Commit template pakai `.env.example` (tanpa secret).
-- Rate limit login 5/menit, refresh rotate + limit 5 per user, ownership check 403.
+**Opsi B — Docker (Linux):**
 
-## Lisensi
+```powershell
+docker build -t go-core .
+docker run -p 1067:1067 --env-file .env go-core
+# Catatan: butuh SQL Server yang reachable dari container (bukan localhost container)
+```
 
-Internal — sesuaikan kebutuhan.
+Checklist sebelum live: `JWT_SECRET` acak ≥32 char & beda dari dev,
+`DB_PASSWORD` kuat, `.env` tidak ikut repo (`git status` bersih),
+`task test` hijau, `task build` dari clone bersih berhasil.
+
+---
+
+## 7. Troubleshooting & FAQ
+
+| Gejala | Penyebab umum → solusi |
+|--------|------------------------|
+| `missing required env: ...` saat start | `.env` belum dibuat/diisi → `copy .env.example .env`, isi 6 variabel wajib |
+| `ping database: ...` | SQL Server mati / kredensial salah / firewall → cek service SQL, login via SSMS, port 1433 |
+| `WARN frontend/dist missing` (dev) | Normal — build frontend hanya untuk prod → `task build-frontend` jika ingin hilangkan |
+| `localhost:1067` 404 di browser | Buka `http://localhost:1067/` (bukan `/api`); hard refresh `Ctrl+Shift+R` |
+| `Missing authorization header` / 401 | Endpoint privat butuh `Authorization: Bearer <access_token>` → login dulu; jika expired, client auto-refresh |
+| `Too many requests` (429) | Kena rate-limit → tunggu sesuai header `Retry-After`, jangan spam retry |
+| Port bentrok | Ganti `APP_PORT` di `.env` → restart backend; Vite ikut otomatis |
+| `stop.exe` → "PID file not found" | App tidak jalan via PID (mungkin crash) → cek Task Manager; hapus `%TEMP%\go-core.pid` jika stale |
+| `go:embed ... no matching files` | `frontend/dist/` kosong total → `task build-frontend` (atau `dist/.gitignore` hilang → kembalikan) |
+| Cross-compile Linux gagal (cgo/gcc) | Tambahkan `CGO_ENABLED=0`: `CGO_ENABLED=0 GOOS=linux go build ./...` |
+| Token lama invalid setelah update server | Wajar sekali — format DB berubah plaintext→hash → user login ulang |
+
+**FAQ singkat:**
+- *Data user dari mana?* SQL Server, tabel `users` + `refresh_tokens` (lihat Langkah 3).
+- *Ganti React dengan framework lain?* Bisa — yang di-embed hanya isi `frontend/dist/`; backend tidak peduli isinya.
+- *Tambah endpoint baru?* Urutan: SQL di `repositories/` → aturan di `services/` (+test) → JSON di `handlers/` → daftar di `routes/` → pakai dari `api/client.js`.
+- *Frontend & backend beda server?* Isi `VITE_API_URL` di frontend + rebuild; backend tetap sama (tambah CORS bila perlu).
