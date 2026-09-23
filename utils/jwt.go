@@ -2,50 +2,62 @@ package utils
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-
-	"golang-backend/config"
 )
 
-func getJWTSecret() ([]byte, error) {
-	secret := config.GetEnv("JWT_SECRET")
-	if secret == "" {
-		return nil, errors.New("JWT_SECRET not configured")
+// Token lifetimes (single source of truth; service re-exports them).
+const (
+	AccessTokenTTL  = 15 * time.Minute
+	RefreshTokenTTL = 7 * 24 * time.Hour
+	TokenIssuer     = "go-core"
+	MinJWTSecretLen = 32
+)
+
+func ValidateSecret(secret string) error {
+	if len(strings.TrimSpace(secret)) < MinJWTSecretLen {
+		return errors.New("JWT_SECRET must be at least 32 characters")
 	}
-	return []byte(secret), nil
+	return nil
 }
 
-func GenerateAccessToken(userID int, username string) (string, error) {
-	secret, err := getJWTSecret()
-	if err != nil {
+// GenerateAccessToken signs HS256 with iss/aud claims. Secret is injected
+// (no utils->config import) so the package stays pure and testable.
+func GenerateAccessToken(secret string, userID int, username string) (string, error) {
+	if err := ValidateSecret(secret); err != nil {
 		return "", err
 	}
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"user_id":  userID,
 		"username": username,
+		"iss":      TokenIssuer,
+		"aud":      TokenIssuer,
 		"iat":      now.Unix(),
-		"exp":      now.Add(15 * time.Minute).Unix(),
+		"exp":      now.Add(AccessTokenTTL).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(secret)
+	return token.SignedString([]byte(secret))
 }
 
-func ValidateToken(tokenString string) (jwt.MapClaims, error) {
-	secret, err := getJWTSecret()
-	if err != nil {
+// ValidateToken pins HS256 explicitly (rejects HS384/512 confusion),
+// checks iss/aud and expiry.
+func ValidateToken(tokenString, secret string) (jwt.MapClaims, error) {
+	if err := ValidateSecret(secret); err != nil {
 		return nil, err
 	}
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
+		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return nil, fmt.Errorf("unexpected signing method: %s", t.Header["alg"])
 		}
-		return secret, nil
-	})
+		return []byte(secret), nil
+	}, jwt.WithIssuer(TokenIssuer), jwt.WithAudience(TokenIssuer))
 	if err != nil {
 		return nil, err
 	}
@@ -59,11 +71,18 @@ func ValidateToken(tokenString string) (jwt.MapClaims, error) {
 	return claims, nil
 }
 
+// GenerateRefreshToken returns a 256-bit hex token for transport (cookie/body).
 func GenerateRefreshToken() (string, error) {
-	bytes := make([]byte, 32)
-	_, err := rand.Read(bytes)
-	if err != nil {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(bytes), nil
+	return hex.EncodeToString(b), nil
+}
+
+// HashRefreshToken stores only the SHA-256 of the refresh token in DB,
+// so a DB leak alone cannot hijack sessions.
+func HashRefreshToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
