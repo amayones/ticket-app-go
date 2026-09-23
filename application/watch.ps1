@@ -2,12 +2,11 @@ $ErrorActionPreference = "SilentlyContinue"
 Write-Host "Watching for changes... (Ctrl+C to stop)" -ForegroundColor Cyan
 Write-Host "Go + frontend/src -> auto build.ps1 + restart app.exe" -ForegroundColor DarkGray
 
-$root = $PSScriptRoot
-if (-not $root) { $root = (Get-Location).Path }
+$root = (Resolve-Path "$PSScriptRoot\..").Path
 
 function Invoke-Build {
   Write-Host "`n[watch] change detected, rebuilding..." -ForegroundColor Yellow
-  & "$root\build.ps1"
+  & "$root\application\build.ps1"
   if ($LASTEXITCODE -ne 0) { Write-Host "[watch] build failed, will retry on next change" -ForegroundColor Red; return }
   Write-Host "[watch] restarting app.exe..." -ForegroundColor Cyan
   Get-Process app -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -22,7 +21,7 @@ $watcher.NotifyFilter = [IO.NotifyFilters]::LastWrite -bor [IO.NotifyFilters]::F
 
 $action = {
   $path = $Event.SourceEventArgs.FullPath
-  if ($path -match "\\\.git\\|\\frontend\\node_modules\\|\\frontend\\dist\\|app\.exe$|app\.pid$|\.tmp") { return }
+  if ($path -match "\\\.git\\|\\frontend\\node_modules\\|\\frontend\\dist\\|app\.exe$|\.gitkeep$|app\.pid") { return }
   if ($path -match "\.(go|js|jsx|ts|tsx|css|html|json)$|go\.mod$") {
     Start-Sleep -Milliseconds 400
     Invoke-Build
