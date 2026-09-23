@@ -14,13 +14,13 @@ var (
 func hideConsole() {
 	hwnd, _, _ := procGetConsole.Call()
 	if hwnd != 0 {
-		procShowWindow.Call(hwnd, uintptr(0))
+		_, _, _ = procShowWindow.Call(hwnd, uintptr(0)) // SW_HIDE
 	}
 }
 
 func showConsole() {
 	hwnd, _, _ := procGetConsole.Call()
 	if hwnd != 0 {
-		procShowWindow.Call(hwnd, uintptr(5))
+		_, _, _ = procShowWindow.Call(hwnd, uintptr(5)) // SW_SHOW, restores on exit
 	}
 }

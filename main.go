@@ -4,14 +4,11 @@ import (
 	"context"
 	"embed"
 	"flag"
-	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,6 +17,7 @@ import (
 
 	"golang-backend/config"
 	"golang-backend/handlers"
+	"golang-backend/internal/pidfile"
 	"golang-backend/repositories"
 	"golang-backend/routes"
 	"golang-backend/services"
@@ -28,7 +26,7 @@ import (
 //go:embed all:frontend/dist
 var embeddedDist embed.FS
 
-var pidFile = filepath.Join(os.TempDir(), "golang-backend.pid")
+var version = "dev"
 
 func main() {
 	hideFlag := flag.Bool("hide", false, "hide console window (Windows tray mode)")
@@ -36,70 +34,88 @@ func main() {
 	flag.Parse()
 	if *hideFlag || *trayFlag {
 		hideConsole()
+		defer showConsole()
 	}
 
-	log.Println("Starting Go Backend...")
-	config.LoadEnv()
-	db := config.ConnectDatabase()
+	slog.Info("starting go-core", "version", version)
+
+	cfg, err := config.Load()
+	if err != nil {
+		fail("invalid configuration", err)
+	}
+
+	if _, err := os.Stat(pidfile.Path()); err == nil {
+		if oldPID, rerr := pidfile.Read(); rerr == nil && oldPID != os.Getpid() {
+			slog.Warn("stale PID file exists, overwriting", "old_pid", oldPID)
+		}
+	}
+	if err := pidfile.Write(); err != nil {
+		slog.Warn("could not write pid file", "err", err)
+	}
+	defer pidfile.Remove()
+
+	db, err := config.ConnectDatabase(cfg)
+	if err != nil {
+		fail("database connection failed", err)
+	}
 	defer db.Close()
+
 	userRepository := repositories.NewUserRepository(db)
 	refreshTokenRepository := repositories.NewRefreshTokenRepository(db)
-	userService := services.NewUserService(userRepository, refreshTokenRepository)
+	userService, err := services.NewUserService(userRepository, refreshTokenRepository, cfg.JWTSecret)
+	if err != nil {
+		fail("service init failed", err)
+	}
 	userHandler := handlers.NewUserHandler(userService)
-	r := routes.SetupRoutes(userHandler)
+
+	routeCfg := routes.DefaultRouteConfig(cfg.JWTSecret)
+	r := routes.SetupRoutesWithConfig(userHandler, routeCfg)
 	if err := attachEmbeddedSPA(r); err != nil {
-		log.Printf("WARN: frontend/dist not found (%v)", err)
-		log.Println("WARN: jalankan: npm --prefix frontend run build  atau dev: npm --prefix frontend run dev")
-		log.Println("WARN: API tetap jalan di /api, tapi \"/\" akan 404 sampai frontend dibuild")
-	} else {
-		log.Println("Frontend embedded from frontend/dist (single binary mode)")
+		slog.Warn("frontend/dist missing; API only", "err", err)
 	}
-	port := config.GetEnvDefault("APP_PORT", "1067")
-	if err := writePidFile(); err != nil {
-		log.Printf("WARN: could not write pid file: %v", err)
-	}
-	defer os.Remove(pidFile)
+
+	// Background cleanup of expired refresh tokens every hour.
+	go func() {
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
+		for range t.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			if n, err := userService.CleanupExpiredTokens(ctx); err != nil {
+				slog.Warn("cleanup expired tokens failed", "err", err)
+			} else if n > 0 {
+				slog.Info("cleaned expired tokens", "count", n)
+			}
+			cancel()
+		}
+	}()
 
 	server := &http.Server{
-		Addr:         ":" + port,
+		Addr:         ":" + cfg.AppPort,
 		Handler:      r,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 	go func() {
-		log.Printf("Application is running on http://localhost:%s\n", port)
-		log.Printf("API available at http://localhost:%s/api\n", port)
+		slog.Info("listening", "port", cfg.AppPort, "api", "/api", "health", "/healthz")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("Server failed to start:", err)
+			slog.Error("server failed", "err", err)
+			os.Exit(1)
 		}
 	}()
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	slog.Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
+		slog.Error("forced shutdown", "err", err)
+		os.Exit(1)
 	}
-	log.Println("Server exited gracefully")
+	slog.Info("server exited gracefully")
 }
-
-func writePidFile() error {
-	return os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0644)
-}
-
-func readPidFile() (int, error) {
-	b, err := os.ReadFile(pidFile)
-	if err != nil {
-		return 0, err
-	}
-	return strconv.Atoi(strings.TrimSpace(string(b)))
-}
-
-var _ = fmt.Sprintf
-var _ = readPidFile
 
 func attachEmbeddedSPA(r *chi.Mux) error {
 	sub, err := fs.Sub(embeddedDist, "frontend/dist")
@@ -109,37 +125,53 @@ func attachEmbeddedSPA(r *chi.Mux) error {
 	if _, err := fs.Stat(sub, "index.html"); err != nil {
 		return err
 	}
-	r.NotFound(spaHandler(sub).ServeHTTP)
+	// Cache index.html at startup instead of reading per request.
+	indexData, err := fs.ReadFile(sub, "index.html")
+	if err != nil {
+		return err
+	}
+	r.NotFound(spaHandler(sub, indexData).ServeHTTP)
 	return nil
 }
 
-func spaHandler(staticFS fs.FS) http.Handler {
+func spaHandler(staticFS fs.FS, indexData []byte) http.Handler {
 	fileServer := http.FileServer(http.FS(staticFS))
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if strings.HasPrefix(req.URL.Path, "/api") {
-			http.NotFound(w, req)
+		if strings.HasPrefix(req.URL.Path, "/api") || strings.HasPrefix(req.URL.Path, "/healthz") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"Not found"}`))
 			return
 		}
 		path := strings.TrimPrefix(req.URL.Path, "/")
 		if path == "" {
-			serveIndex(staticFS, w, req)
+			serveIndexBytes(w, indexData)
+			return
+		}
+		// Prevent path traversal escaping embed FS.
+		if strings.Contains(path, "..") {
+			serveIndexBytes(w, indexData)
 			return
 		}
 		if f, err := fs.Stat(staticFS, path); err == nil && !f.IsDir() {
 			fileServer.ServeHTTP(w, req)
 			return
 		}
-		serveIndex(staticFS, w, req)
+		serveIndexBytes(w, indexData)
 	})
 }
 
-func serveIndex(staticFS fs.FS, w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(staticFS, "index.html")
-	if err != nil {
-		http.Error(w, "index.html not found", http.StatusNotFound)
-		return
-	}
+func serveIndexBytes(w http.ResponseWriter, data []byte) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+}
+
+// fail logs a fatal startup error and removes the PID file written earlier
+// (os.Exit skips defers, so cleanup must happen explicitly here).
+func fail(msg string, err error) {
+	slog.Error(msg, "err", err)
+	pidfile.Remove()
+	os.Exit(1)
 }
