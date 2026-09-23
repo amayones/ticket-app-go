@@ -1,0 +1,12 @@
+.env
+
+*.exe
+*.log
+
+.vscode/
+.idea/
+
+frontend/node_modules/
+frontend/dist/*
+!frontend/dist/.gitkeep
+
