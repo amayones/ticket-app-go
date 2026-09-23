@@ -9,7 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist/*
-!dist/.gitkeep
+!dist/.gitignore
 dist-ssr
 *.local
 
