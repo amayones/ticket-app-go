@@ -1,0 +1,105 @@
+version: '3'
+
+vars:
+  APP_EXE: app.exe
+  STOP_EXE: stop.exe
+  FRONTEND_DIR: frontend
+
+tasks:
+  default:
+    desc: Build frontend + backend (single binary)
+    cmds:
+      - task: build
+
+  install:
+    desc: Install frontend dependencies (reproducible)
+    dir: '{{.FRONTEND_DIR}}'
+    cmds:
+      - npm ci --no-audit --no-fund
+    sources:
+      - package-lock.json
+      - package.json
+
+  build-frontend:
+    desc: Build React frontend into frontend/dist
+    dir: '{{.FRONTEND_DIR}}'
+    cmds:
+      - npm run build
+      # vite emptyOutDir wipes the embed placeholder; recreate it so
+      # //go:embed all:frontend/dist still compiles on fresh clones.
+      - powershell -NoProfile -Command "Set-Content -Path ./dist/.gitignore -Value '*','!.gitignore'"
+    sources:
+      - src/**/*.*
+      - index.html
+      - vite.config.js
+      - package.json
+    generates:
+      - dist/index.html
+
+  build-backend:
+    desc: Vet + build app.exe and stop.exe with optimizations
+    cmds:
+      - go vet ./...
+      - go build -trimpath -ldflags="-s -w -X main.version={{.VERSION | default "dev"}}" -o {{.APP_EXE}} .
+      - go build -trimpath -ldflags="-s -w" -o {{.STOP_EXE}} ./cmd/stop
+    vars:
+      VERSION:
+        sh: git rev-parse --short HEAD 2>/dev/null || echo dev
+    sources:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+      - frontend/dist/index.html
+    generates:
+      - '{{.APP_EXE}}'
+      - '{{.STOP_EXE}}'
+
+  build:
+    desc: Full single-binary build (frontend + backend)
+    cmds:
+      - task: build-frontend
+      - task: build-backend
+
+  run:
+    desc: Build and run in foreground
+    cmds:
+      - task: build
+      - ./{{.APP_EXE}}
+
+  tray:
+    desc: Build and run hidden in background (Windows)
+    cmds:
+      - task: build
+      - ./{{.APP_EXE}} --hide
+
+  stop:
+    desc: Stop hidden app gracefully via PID file
+    cmds:
+      - ./{{.STOP_EXE}}
+
+  watch:
+    desc: Auto rebuild on change (prod-like loop)
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/watch.ps1
+
+  dev:
+    desc: Open Vite HMR + go run in 2 windows (daily development)
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1
+
+  test:
+    desc: Go vet + race tests
+    cmds:
+      - go vet ./...
+      - go test -race ./...
+
+  lint-frontend:
+    desc: Lint frontend
+    dir: '{{.FRONTEND_DIR}}'
+    cmds:
+      - npm run lint
+
+  clean:
+    desc: Remove binaries and frontend build output (cross-platform)
+    cmds:
+      - powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue '{{.APP_EXE}}','{{.STOP_EXE}}'; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '{{.FRONTEND_DIR}}/dist/assets','{{.FRONTEND_DIR}}/dist/index.html'"
