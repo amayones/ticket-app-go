@@ -15,6 +15,8 @@ import {
   PasswordInput,
   SkeletonRows,
   TextField,
+  Tooltip,
+  useSmoothLoading,
   useToast,
 } from '../components'
 import EditUserModal from './EditUserModal.jsx'
@@ -28,6 +30,7 @@ export default function UsersList({ onAccountDeleted }) {
   const [users, setUsers] = useState([])
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
+  const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null)
   const [confirm, setConfirm] = useState(null) // { type: 'delete'|'logoutAll', user }
@@ -145,7 +148,7 @@ export default function UsersList({ onAccountDeleted }) {
           </Alert>
         )}
 
-        {loading ? (
+        {showLoading ? (
           <SkeletonRows rows={4} />
         ) : users.length === 0 ? (
           <EmptyState
@@ -181,33 +184,36 @@ export default function UsersList({ onAccountDeleted }) {
                   </div>
                   {isMe && (
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <button
-                        type="button"
-                        title="Edit profil"
-                        aria-label={`Edit ${u.username}`}
-                        onClick={() => setEditing(u)}
-                        className="rounded-lg p-2 text-zinc-500 transition hover:bg-white hover:text-violet-600 hover:shadow-sm dark:hover:bg-zinc-800 dark:hover:text-violet-300"
-                      >
-                        <Icon name="pencil" className="h-4.5 w-4.5" />
-                      </button>
-                      <button
-                        type="button"
-                        title="Keluarkan semua sesi"
-                        aria-label={`Keluarkan semua sesi ${u.username}`}
-                        onClick={() => setConfirm({ type: 'logoutAll', user: u })}
-                        className="rounded-lg p-2 text-zinc-500 transition hover:bg-white hover:text-amber-600 hover:shadow-sm dark:hover:bg-zinc-800 dark:hover:text-amber-300"
-                      >
-                        <Icon name="logout" className="h-4.5 w-4.5" />
-                      </button>
-                      <button
-                        type="button"
-                        title="Hapus akun"
-                        aria-label={`Hapus ${u.username}`}
-                        onClick={() => setConfirm({ type: 'delete', user: u })}
-                        className="rounded-lg p-2 text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600 hover:shadow-sm dark:hover:bg-rose-950 dark:hover:text-rose-300"
-                      >
-                        <Icon name="trash" className="h-4.5 w-4.5" />
-                      </button>
+                      <Tooltip label="Edit profil">
+                        <button
+                          type="button"
+                          aria-label={`Edit ${u.username}`}
+                          onClick={() => setEditing(u)}
+                          className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-white hover:text-zinc-900 hover:shadow-sm dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                        >
+                          <Icon name="pencil" className="h-4 w-4" />
+                        </button>
+                      </Tooltip>
+                      <Tooltip label="Keluarkan semua sesi">
+                        <button
+                          type="button"
+                          aria-label={`Keluarkan semua sesi ${u.username}`}
+                          onClick={() => setConfirm({ type: 'logoutAll', user: u })}
+                          className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-white hover:text-zinc-900 hover:shadow-sm dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                        >
+                          <Icon name="logout" className="h-4 w-4" />
+                        </button>
+                      </Tooltip>
+                      <Tooltip label="Hapus akun">
+                        <button
+                          type="button"
+                          aria-label={`Hapus ${u.username}`}
+                          onClick={() => setConfirm({ type: 'delete', user: u })}
+                          className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-rose-50 hover:text-rose-600 hover:shadow-sm dark:hover:bg-rose-950 dark:hover:text-rose-300"
+                        >
+                          <Icon name="trash" className="h-4 w-4" />
+                        </button>
+                      </Tooltip>
                     </div>
                   )}
                 </li>
@@ -216,7 +222,7 @@ export default function UsersList({ onAccountDeleted }) {
           </ul>
         )}
 
-        {!loading && users.length > 0 && (
+        {!showLoading && users.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
             <Pagination
               offset={offset}

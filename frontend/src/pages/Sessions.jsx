@@ -11,6 +11,7 @@ import {
   Icon,
   Pagination,
   SkeletonRows,
+  useSmoothLoading,
   useToast,
 } from '../components'
 
@@ -32,6 +33,7 @@ export default function Sessions() {
   const [sessions, setSessions] = useState([])
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
+  const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
   const [revoking, setRevoking] = useState(null)
 
@@ -118,7 +120,7 @@ export default function Sessions() {
           </Alert>
         )}
 
-        {loading ? (
+        {showLoading ? (
           <SkeletonRows rows={3} />
         ) : sessions.length === 0 ? (
           <EmptyState
@@ -132,7 +134,7 @@ export default function Sessions() {
                 key={s.id}
                 className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 dark:border-zinc-800 dark:bg-zinc-900/40"
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
                   <Icon name="key" className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -158,7 +160,7 @@ export default function Sessions() {
           </ul>
         )}
 
-        {tab === 'all' && !loading && sessions.length > 0 && (
+        {tab === 'all' && !showLoading && sessions.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
             <Pagination
               offset={offset}
@@ -171,7 +173,7 @@ export default function Sessions() {
           </div>
         )}
 
-        {tab === 'mine' && !loading && sessions.length > 0 && (
+        {tab === 'mine' && !showLoading && sessions.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
             <Button variant="danger" size="sm" onClick={logoutAll}>
               <Icon name="logout" className="h-4 w-4" />

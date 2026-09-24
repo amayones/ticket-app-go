@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client.js'
-import { Alert, Badge, Button, Card, CardTitle, Icon, Skeleton, useToast } from '../components'
+import { Alert, Badge, Button, Card, CardTitle, Icon, Skeleton, useSmoothLoading, useToast } from '../components'
 
 function StatCard({ icon, label, value, tone }) {
   const tones = {
-    brand: 'bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-300',
-    success: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300',
     danger: 'bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-300',
-    info: 'bg-sky-100 text-sky-600 dark:bg-sky-950 dark:text-sky-300',
-    warning: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
     neutral: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
   }
   return (
@@ -29,6 +25,7 @@ export default function Security() {
   const [summary, setSummary] = useState(null)
   const [recent, setRecent] = useState([])
   const [loading, setLoading] = useState(true)
+  const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
@@ -69,7 +66,7 @@ export default function Security() {
             {error}
           </Alert>
         )}
-        {loading || !summary ? (
+        {showLoading || !summary ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <Skeleton key={i} className="h-[76px] rounded-2xl" />
@@ -77,24 +74,24 @@ export default function Security() {
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <StatCard icon="users" label="Total pengguna" value={summary.total_users} tone="brand" />
-            <StatCard icon="shield" label="Total role" value={summary.total_roles} tone="info" />
-            <StatCard icon="key" label="Sesi aktif" value={summary.active_sessions} tone="success" />
+            <StatCard icon="users" label="Total pengguna" value={summary.total_users} tone="neutral" />
+            <StatCard icon="shield" label="Total role" value={summary.total_roles} tone="neutral" />
+            <StatCard icon="key" label="Sesi aktif" value={summary.active_sessions} tone="neutral" />
             <StatCard icon="list" label="Aksi audit 24 jam" value={summary.audit_last_24h} tone="neutral" />
             <StatCard
               icon="warning"
               label="Error sistem 24 jam"
               value={summary.errors_last_24h}
-              tone={summary.errors_last_24h > 0 ? 'danger' : 'success'}
+              tone={summary.errors_last_24h > 0 ? 'danger' : 'neutral'}
             />
-            <StatCard icon="clock" label="Perlu perhatian" value={summary.errors_last_24h > 0 ? 'Ya' : 'Tidak'} tone={summary.errors_last_24h > 0 ? 'warning' : 'success'} />
+            <StatCard icon="clock" label="Perlu perhatian" value={summary.errors_last_24h > 0 ? 'Ya' : 'Tidak'} tone={summary.errors_last_24h > 0 ? 'danger' : 'neutral'} />
           </div>
         )}
       </Card>
 
       <Card>
         <CardTitle description="8 aktivitas terakhir dari semua user.">Aktivitas terkini</CardTitle>
-        {loading ? (
+        {showLoading ? (
           <Skeleton className="h-24" />
         ) : recent.length === 0 ? (
           <p className="text-sm text-zinc-500">Belum ada aktivitas tercatat.</p>

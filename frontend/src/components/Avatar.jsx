@@ -1,19 +1,13 @@
-const GRADIENTS = [
-  'from-violet-500 to-fuchsia-500',
-  'from-sky-500 to-indigo-500',
-  'from-emerald-500 to-teal-500',
-  'from-amber-500 to-orange-500',
-  'from-rose-500 to-pink-500',
-  'from-cyan-500 to-blue-500',
-]
+// Lingkaran inisial username — satu gradien netral agar tidak warna-warni.
+// Variasi kecil per nama (terang/gelap) tanpa mengubah hue.
+const SHADES = ['from-zinc-500 to-zinc-700', 'from-zinc-600 to-zinc-800', 'from-slate-500 to-slate-700']
 
-function gradientFor(name) {
+function shadeFor(name) {
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  return GRADIENTS[hash % GRADIENTS.length]
+  return SHADES[hash % SHADES.length]
 }
 
-// Lingkaran inisial username dengan gradien stabil per nama.
 export default function Avatar({ name = '?', size = 'md', className = '' }) {
   const initials = name.trim().slice(0, 2).toUpperCase() || '?'
   const sizes = {
@@ -24,7 +18,7 @@ export default function Avatar({ name = '?', size = 'md', className = '' }) {
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br font-bold text-white ${gradientFor(name)} ${sizes[size] || sizes.md} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br font-bold text-white ${shadeFor(name)} ${sizes[size] || sizes.md} ${className}`}
     >
       {initials}
     </span>
