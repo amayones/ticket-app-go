@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api/client.js'
 import { Alert, Button, Modal, TextField, useToast } from '../components'
 
@@ -6,11 +6,21 @@ import { Alert, Button, Modal, TextField, useToast } from '../components'
 // Dipasang dengan key={user.code} oleh induk agar form ter-reset tiap ganti user.
 export default function EditUserModal({ user, onClose, onSaved }) {
   const toast = useToast()
+  const me = api.currentUser()
+  const canAssignRole = me?.role === 'ADMIN'
   const [username, setUsername] = useState(user?.username || '')
   const [email, setEmail] = useState(user?.email || '')
   const [password, setPassword] = useState('')
+  const [role, setRole] = useState(user?.role_code || 'USER')
+  const [roles, setRoles] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (canAssignRole) {
+      api.listRoles().then(setRoles).catch(() => setRoles([]))
+    }
+  }, [canAssignRole])
 
   async function submit(e) {
     e.preventDefault()
@@ -28,8 +38,18 @@ export default function EditUserModal({ user, onClose, onSaved }) {
     }
     setLoading(true)
     try {
-      await api.updateUser(user.code, patch)
-      toast.success('Profil berhasil diperbarui.')
+      if (Object.keys(patch).length > 0) {
+        await api.updateUser(user.code, patch)
+      }
+      if (canAssignRole && role !== user.role_code) {
+        await api.updateUserRole(user.code, role)
+        toast.success(`Role @${user.username} diubah ke ${role}.`)
+      } else if (Object.keys(patch).length > 0) {
+        toast.success('Profil berhasil diperbarui.')
+      } else {
+        setError('Tidak ada perubahan. Ubah salah satu field terlebih dulu.')
+        return
+      }
       onSaved()
       onClose()
     } catch (err) {
@@ -85,6 +105,25 @@ export default function EditUserModal({ user, onClose, onSaved }) {
           autoComplete="new-password"
           hint="Kosongkan bila tidak ingin mengganti password (min 8 karakter)."
         />
+        {canAssignRole && (
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Role</span>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            >
+              {(roles.length > 0 ? roles : [{ code: user?.role_code || 'USER', name: '' }]).map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.code}{r.name ? ` — ${r.name}` : ''}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
+              Hanya admin yang dapat mengganti role.
+            </span>
+          </label>
+        )}
       </form>
     </Modal>
   )
