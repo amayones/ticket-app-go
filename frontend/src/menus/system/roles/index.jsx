@@ -21,7 +21,7 @@ import {
 function groupPermissions(perms) {
   const groups = {}
   for (const p of perms) {
-    const g = p.group || 'LAINNYA'
+    const g = `MODULE ${p.group || 'OTHER'}`
     if (!groups[g]) groups[g] = []
     groups[g].push(p)
   }
