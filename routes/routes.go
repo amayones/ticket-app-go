@@ -82,6 +82,7 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 	need := func(perm string) func(http.Handler) http.Handler {
 		return appmw.RequirePermission(d.Roles.Service, perm)
 	}
+	adminOnly := appmw.RequireRole(models.RoleAdmin)
 
 	r.Route("/api", func(r chi.Router) {
 		// Menu: users (auth inti + CRUD akun).
@@ -90,41 +91,41 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 		r.With(refreshLimiter.Middleware).Post("/logout", d.Users.Logout)
 		r.With(auth).Get("/roles", d.Roles.ListRoles)
 		r.Route("/users", func(r chi.Router) {
+			r.With(auth).Get("/me", d.Users.GetMe)
+			r.With(auth, need(models.MenuUsers)).Post("/", d.Users.CreateUser)
 			r.With(auth).Get("/", d.Users.GetUsers)
-			// Tanpa registrasi publik: tambah user hanya oleh pemegang USER_CREATE.
-			r.With(auth, need(models.PermUserCreate)).Post("/", d.Users.CreateUser)
 			r.With(auth).Get("/{code}", d.Users.GetUserByCode)
 			r.With(auth).Put("/{code}", d.Users.UpdateUser)
 			r.With(auth).Delete("/{code}", d.Users.DeleteUser)
 			r.With(auth).Post("/{code}/logout-all", d.Users.LogoutAll)
-			r.With(auth, need(models.PermUserRoleAssign)).Put("/{code}/role", d.Roles.UpdateUserRole)
+			r.With(auth, need(models.MenuUsers)).Put("/{code}/role", d.Roles.UpdateUserRole)
 		})
 
 		r.Route("/admin", func(r chi.Router) {
 			// Menu: roles (RBAC).
-			r.With(auth, need(models.PermRoleManage)).Post("/roles", d.Roles.CreateRole)
-			r.With(auth, need(models.PermRoleRead)).Get("/roles/{code}", d.Roles.GetRoleDetail)
-			r.With(auth, need(models.PermRoleManage)).Delete("/roles/{code}", d.Roles.DeleteRole)
-			r.With(auth, need(models.PermRoleRead)).Get("/permissions", d.Roles.ListPermissions)
-			r.With(auth, need(models.PermPermissionAssign)).Put("/roles/{code}/permissions", d.Roles.SetRolePermissions)
+			r.With(auth, adminOnly, need(models.MenuRoles)).Post("/roles", d.Roles.CreateRole)
+			r.With(auth, adminOnly, need(models.MenuRoles)).Get("/roles/{code}", d.Roles.GetRoleDetail)
+			r.With(auth, adminOnly, need(models.MenuRoles)).Delete("/roles/{code}", d.Roles.DeleteRole)
+			r.With(auth, adminOnly, need(models.MenuRoles)).Get("/permissions", d.Roles.ListPermissions)
+			r.With(auth, adminOnly, need(models.MenuRoles)).Put("/roles/{code}/permissions", d.Roles.SetRolePermissions)
 			// Menu: sessions.
-			r.With(auth).Get("/sessions", d.Sessions.ListMySessions)
-			r.With(auth, need(models.PermSessionManage)).Get("/sessions/all", d.Sessions.ListAllSessions)
-			r.With(auth).Delete("/sessions/{id}", d.Sessions.RevokeSession)
+			r.With(auth, adminOnly).Get("/sessions", d.Sessions.ListMySessions)
+			r.With(auth, adminOnly, need(models.MenuSessions)).Get("/sessions/all", d.Sessions.ListAllSessions)
+			r.With(auth, adminOnly).Delete("/sessions/{id}", d.Sessions.RevokeSession)
 			// Menu: audit.
-			r.With(auth, need(models.PermAuditRead)).Get("/audit", d.Audit.ListAudit)
+			r.With(auth, adminOnly, need(models.MenuAudit)).Get("/audit", d.Audit.ListAudit)
 			// Menu: security.
-			r.With(auth, need(models.PermSecurityRead)).Get("/security/summary", d.Security.SecuritySummary)
+			r.With(auth, adminOnly, need(models.MenuSecurity)).Get("/security/summary", d.Security.SecuritySummary)
 			// Menu: syslog.
-			r.With(auth, need(models.PermSyslogRead)).Get("/syslogs", d.Syslog.ListSyslog)
-			r.With(auth, need(models.PermSyslogManage)).Delete("/syslogs", d.Syslog.PruneSyslog)
+			r.With(auth, adminOnly, need(models.MenuSyslog)).Get("/syslogs", d.Syslog.ListSyslog)
+			r.With(auth, adminOnly, need(models.MenuSyslog)).Delete("/syslogs", d.Syslog.PruneSyslog)
 			// Menu: notifications.
-			r.With(auth, need(models.PermNotifRead)).Get("/notifications/templates", d.Notifications.ListTemplates)
-			r.With(auth, need(models.PermNotifManage)).Post("/notifications/templates", d.Notifications.CreateTemplate)
-			r.With(auth, need(models.PermNotifManage)).Put("/notifications/templates/{code}", d.Notifications.UpdateTemplate)
-			r.With(auth, need(models.PermNotifManage)).Delete("/notifications/templates/{code}", d.Notifications.DeleteTemplate)
-			r.With(auth, need(models.PermNotifSend)).Post("/notifications/send", d.Notifications.SendNotification)
-			r.With(auth, need(models.PermNotifRead)).Get("/notifications/logs", d.Notifications.ListNotifLogs)
+			r.With(auth, adminOnly, need(models.MenuNotifications)).Get("/notifications/templates", d.Notifications.ListTemplates)
+			r.With(auth, adminOnly, need(models.MenuNotifications)).Post("/notifications/templates", d.Notifications.CreateTemplate)
+			r.With(auth, adminOnly, need(models.MenuNotifications)).Put("/notifications/templates/{code}", d.Notifications.UpdateTemplate)
+			r.With(auth, adminOnly, need(models.MenuNotifications)).Delete("/notifications/templates/{code}", d.Notifications.DeleteTemplate)
+			r.With(auth, adminOnly, need(models.MenuNotifications)).Post("/notifications/send", d.Notifications.SendNotification)
+			r.With(auth, adminOnly, need(models.MenuNotifications)).Get("/notifications/logs", d.Notifications.ListNotifLogs)
 		})
 	})
 	return r
