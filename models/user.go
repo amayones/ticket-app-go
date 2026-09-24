@@ -2,22 +2,29 @@ package models
 
 import "time"
 
+// User adalah baris tabel CPUSER. Identitas luar memakai Code
+// (relasi antar tabel via CODE); ID hanya PK fisik, tidak diekspos ke API.
 type User struct {
-	ID        int       `json:"id"`
+	ID        int       `json:"-"`
+	Code      string    `json:"code"`
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	Password  string    `json:"-"`
+	RoleCode  string    `json:"role_code"`
+	RoleName  string    `json:"role_name,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ToResponse converts the DB entity to the public API shape
-// (never leaks password hash).
+// (never leaks password hash or internal ID).
 func (u User) ToResponse() UserResponse {
 	return UserResponse{
-		ID:        u.ID,
+		Code:      u.Code,
 		Username:  u.Username,
 		Email:     u.Email,
+		RoleCode:  u.RoleCode,
+		RoleName:  u.RoleName,
 		CreatedAt: u.CreatedAt,
 		UpdatedAt: u.UpdatedAt,
 	}
@@ -26,9 +33,11 @@ func (u User) ToResponse() UserResponse {
 // UserResponse is the API DTO. Keep separate from User so DB schema
 // changes don't silently become API breaking changes.
 type UserResponse struct {
-	ID        int       `json:"id"`
+	Code      string    `json:"code"`
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
+	RoleCode  string    `json:"role_code"`
+	RoleName  string    `json:"role_name,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
