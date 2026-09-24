@@ -115,6 +115,77 @@ export const api = {
   async listRoles() {
     return request('/api/roles', { auth: true })
   },
+  // --- Role & Permission (RBAC, admin) ---
+  async getRole(code) {
+    return request(`/api/admin/roles/${code}`, { auth: true })
+  },
+  async createRole(code, name) {
+    return request('/api/admin/roles', { method: 'POST', body: { code, name }, auth: true })
+  },
+  async deleteRole(code) {
+    return request(`/api/admin/roles/${code}`, { method: 'DELETE', auth: true })
+  },
+  async listPermissions() {
+    return request('/api/admin/permissions', { auth: true })
+  },
+  async setRolePermissions(code, permissions) {
+    return request(`/api/admin/roles/${code}/permissions`, { method: 'PUT', body: { permissions }, auth: true })
+  },
+  async updateUserRole(code, roleCode) {
+    return request(`/api/users/${code}/role`, { method: 'PUT', body: { role_code: roleCode }, auth: true })
+  },
+  // --- Authentication & Session Management ---
+  async listMySessions() {
+    const data = await request('/api/admin/sessions', { auth: true })
+    return Array.isArray(data) ? data : []
+  },
+  async listAllSessions(limit = 20, offset = 0) {
+    const data = await request(`/api/admin/sessions/all?limit=${limit}&offset=${offset}`, { auth: true })
+    return Array.isArray(data) ? data : []
+  },
+  async revokeSession(id) {
+    return request(`/api/admin/sessions/${id}`, { method: 'DELETE', auth: true })
+  },
+  // --- Audit Log ---
+  async listAudit({ action = '', entity = '', actor = '', limit = 20, offset = 0 } = {}) {
+    const q = new URLSearchParams({ action, entity, actor, limit, offset })
+    const data = await request(`/api/admin/audit?${q}`, { auth: true })
+    return Array.isArray(data) ? data : []
+  },
+  // --- Security Center ---
+  async securitySummary() {
+    return request('/api/admin/security/summary', { auth: true })
+  },
+  // --- Error / System Log ---
+  async listSyslogs({ level = '', limit = 20, offset = 0 } = {}) {
+    const q = new URLSearchParams({ level, limit, offset })
+    const data = await request(`/api/admin/syslogs?${q}`, { auth: true })
+    return Array.isArray(data) ? data : []
+  },
+  async pruneSyslogs(days = 30) {
+    return request(`/api/admin/syslogs?days=${days}`, { method: 'DELETE', auth: true })
+  },
+  // --- Notification Template & Log ---
+  async listTemplates(activeOnly = false) {
+    const data = await request(`/api/admin/notifications/templates${activeOnly ? '?active=1' : ''}`, { auth: true })
+    return Array.isArray(data) ? data : []
+  },
+  async createTemplate(payload) {
+    return request('/api/admin/notifications/templates', { method: 'POST', body: payload, auth: true })
+  },
+  async updateTemplate(code, payload) {
+    return request(`/api/admin/notifications/templates/${code}`, { method: 'PUT', body: payload, auth: true })
+  },
+  async deleteTemplate(code) {
+    return request(`/api/admin/notifications/templates/${code}`, { method: 'DELETE', auth: true })
+  },
+  async sendNotification(payload) {
+    return request('/api/admin/notifications/send', { method: 'POST', body: payload, auth: true })
+  },
+  async listNotifLogs(limit = 20, offset = 0) {
+    const data = await request(`/api/admin/notifications/logs?limit=${limit}&offset=${offset}`, { auth: true })
+    return Array.isArray(data) ? data : []
+  },
   async health() {
     return request('/healthz')
   },
