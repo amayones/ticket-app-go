@@ -21,8 +21,10 @@ Browser :1067 ─────────────────► app.exe :10
 - Refresh token 7 hari dengan rotasi
 - Maksimal 5 sesi per user
 - RBAC sederhana: **satu permission untuk satu menu**
-- Role `ADMIN` hanya dapat memakai menu admin yang diberi aksesnya
-- Role non-ADMIN dapat memakai menu `user/` bila role diberi akses menu tersebut
+- Semua role dapat memakai menu bila role tersebut diberi akses `MENU_*`
+- Module `ACCOUNT` untuk dashboard, module `SYSTEM` untuk menu operasional
+- Tidak ada pembatasan berdasarkan nama role atau folder admin/user
+- Role & Permission: daftar role di kiri, matriks akses menu di kanan
 - Role & Permission: daftar role di kiri, matriks akses menu di kanan
 - Audit log, system log, dan notifikasi
 - Popup login ulang ketika sesi habis tanpa pindah halaman
@@ -205,17 +207,17 @@ FROM dbo.CPPERMISSION
 ORDER BY CODE;
 ```
 
-Harus menghasilkan 8 permission:
+Hasil yang benar:
 
 ```text
-MENU_AUDIT
-MENU_DASHBOARD
-MENU_NOTIFICATIONS
-MENU_ROLES
-MENU_SECURITY
-MENU_SESSIONS
-MENU_SYSLOG
-MENU_USERS
+MENU_DASHBOARD  ACCOUNT
+MENU_AUDIT      SYSTEM
+MENU_NOTIFICATIONS SYSTEM
+MENU_ROLES      SYSTEM
+MENU_SECURITY   SYSTEM
+MENU_SESSIONS   SYSTEM
+MENU_SYSLOG     SYSTEM
+MENU_USERS      SYSTEM
 ```
 
 ### Verifikasi akses admin dan user
@@ -228,14 +230,15 @@ GROUP BY ROLE_CODE
 ORDER BY ROLE_CODE;
 ```
 
-Hasil database development:
+Pada fresh install, hasil default:
 
 ```text
 ADMIN  8
 USER   1
 ```
 
-User awal hanya mendapat `MENU_DASHBOARD`.
+`USER` hanya mendapat `MENU_DASHBOARD`. Setelah admin mencentang menu lain
+untuk role USER, query yang sama dapat menunjukkan `USER 8`.
 
 ### Verifikasi user
 
@@ -357,56 +360,53 @@ SESSION_MANAGE
 NOTIF_SEND
 ```
 
-## 2.1. Dua Tipe Menu
+## 2.1. Struktur Module Menu
+
+Folder pertama adalah module/kategori, bukan batas role:
 
 ```text
-frontend/src/menus/admin/<menu>/  -> khusus role ADMIN
-frontend/src/menus/user/<menu>/   -> semua role yang diberi akses menu
+frontend/src/menus/account/<menu>/  -> MODULE ACCOUNT
+frontend/src/menus/system/<menu>/   -> MODULE SYSTEM
 ```
 
-Frontend otomatis memindai folder tersebut melalui:
+Frontend otomatis memindai kedua module melalui `menus/registry.js`.
+Module hanya mengelompokkan menu di matriks. Akses tetap ditentukan oleh
+permission menu.
 
 ```text
-frontend/src/menus/registry.js
+menus/account/dashboard -> MENU_DASHBOARD
+menus/system/users      -> MENU_USERS
+menus/system/roles      -> MENU_ROLES
 ```
 
-Nama key menu otomatis dipetakan ke permission:
-
-```text
-laporan       -> MENU_LAPORAN
-user-profile  -> MENU_USER_PROFILE
-```
+Tidak ada lagi folder `menus/admin` atau `menus/user` sebagai pembatas akses.
+Semua role—ADMIN, USER, dan role custom—boleh memakai menu yang sama bila
+role tersebut memiliki `MENU_*` yang sesuai.
 
 ## 2.2. Alur Memberi Akses Menu
 
 1. Admin membuat atau memilih role.
-2. Admin_centang menu yang boleh diakses role tersebut.
-3. Admin klik **Simpan permission**.
-4. Permission tersimpan di `CPROLEPERMISSION`.
-5. Saat login, frontend mengambil permission user dari `GET /api/users/me`.
-6. Sidebar hanya menampilkan menu yang permission-nya dimiliki user.
-7. Backend juga memeriksa permission yang sama pada endpoint menu.
+2. Matriks menampilkan module `ACCOUNT` dan `SYSTEM`.
+3. Admin centang menu yang boleh diakses role tersebut.
+4. Admin klik **Simpan permission**.
+5. Permission tersimpan di `CPROLEPERMISSION`.
+6. Saat login, frontend mengambil permission user dari `GET /api/users/me`.
+7. Sidebar hanya menampilkan menu yang permission-nya dimiliki user.
+8. Backend juga memeriksa permission yang sama pada endpoint menu.
 
-Jadi, untuk menu `user/laporan`:
+Contoh:
 
 ```text
-Role EDITOR + MENU_LAPORAN  -> menu tampil
-Role EDITOR tanpa akses     -> menu tidak tampil
-ADMIN                       -> melihat menu admin yang diberi akses
+Role EDITOR + MENU_LAPORAN -> menu Laporan tampil
+Role EDITOR tanpa akses    -> menu Laporan tidak tampil
+Role ADMIN                 -> semua menu yang dicentang
 ```
-
-Admin dapat langsung memberi akses menu ke role mana pun dari halaman
-**Role & Permission**. Tidak perlu membuat folder menu per role.
 
 ## 2.3. Kenapa User Harus Login Ulang?
 
 Permission user diambil saat login. Jika admin baru memberi atau mencabut
-akses menu, user yang sedang login perlu:
-
-1. Logout.
-2. Login ulang.
-
-Setelah login ulang, sidebar dan permission user baru dimuat.
+akses menu, user yang sedang login perlu logout/login ulang. Setelah itu,
+sidebar dimuat ulang sesuai permission terbaru.
 
 ---
 
@@ -416,15 +416,15 @@ Setelah login ulang, sidebar dan permission user baru dimuat.
 go-core/
 ├── main.go
 ├── routes/                 # registrasi endpoint
-├── middleware/              # JWT, role ADMIN, permission menu
-├── models/                  # konstanta permission MENU_* dan DTO
+├── middleware/             # JWT + permission menu
+├── models/                 # konstanta permission MENU_* dan DTO
 ├── features/               # service, repository, handler backend
 ├── frontend/
 │   ├── src/api/client.js   # request, login, session, getMe
 │   ├── src/menus/
-│   │   ├── registry.js     # auto-scan menu
-│   │   ├── admin/          # menu khusus ADMIN
-│   │   └── user/           # menu semua role sesuai permission
+│   │   ├── registry.js     # auto-scan menu per module
+│   │   ├── account/        # MODULE ACCOUNT
+│   │   └── system/         # MODULE SYSTEM
 │   ├── src/components/     # UI kit
 │   └── src/pages/          # LoginForm
 ├── scripts/                # migrate*.sql dan build script
@@ -438,15 +438,13 @@ go-core/
 ```text
 Frontend menu
     ↓
-menus/admin|user/<menu>/api.js
+menus/<module>/<menu>/api.js
     ↓
 apiRequest dari api/client.js
     ↓
 Authorization: Bearer <access_token>
     ↓
 middleware NewAuth
-    ↓
-middleware RequireRole ADMIN (jika menu admin)
     ↓
 middleware RequirePermission MENU_<MENU>
     ↓
@@ -489,7 +487,7 @@ task build
 | `Tercatat 0 dari 0 permission` | `CPPERMISSION` masih kosong/permission lama belum dimigrasi → jalankan `task migrate`. |
 | Dashboard `user not found` | Restart backend dengan binary terbaru, logout/login ulang, dan pastikan database `Go` berisi user. |
 | Login berhasil tetapi sidebar kosong | Permission role belum diberikan atau user belum login ulang → buka Role & Permission, centang menu, simpan, lalu login ulang. |
-| Menu baru tidak muncul | Folder bukan `menus/user/<menu>/`, `index.jsx` tidak punya `export default`, `meta` belum diisi, atau `MENU_<MENU>` belum di-seed. |
+| Menu baru tidak muncul | Folder bukan `menus/<module>/<menu>/`, `index.jsx` tidak punya `export default`, `meta` belum diisi, atau `MENU_<MENU>` belum di-seed. |
 | Menu baru muncul untuk semua role | Permission menu belum diberikan/di-filter dengan benar; cek `CPROLEPERMISSION` role tersebut. |
 | Permission endpoint 403 | User belum memiliki `MENU_<MENU>` atau request dikirim ke role/menu yang salah. |
 | `WARN frontend/dist missing` | Normal saat development; build frontend dengan `task build-frontend` jika ingin menghapus warning. |
@@ -508,10 +506,10 @@ tutorial/README.md
 
 Tutorial terbaru menjelaskan:
 
-1. Menambah menu `user/` untuk semua role.
-2. Membuat permission `MENU_<MENU>`.
-3. Seed permission ke database.
-4. Mendaftarkan route backend dengan permission menu yang sama.
-5. Mengatur akses dari halaman Role & Permission.
-6. Login ulang dan memastikan menu otomatis muncul di sidebar.
-7. Menghapus akses dan memastikan menu hilang kembali.
+1. Menambah module `ACCOUNT` atau `SYSTEM`.
+2. Menambah menu di `menus/<module>/<menu>/`.
+3. Membuat permission `MENU_<MENU>`.
+4. Seed permission ke database.
+5. Mendaftarkan route backend dengan permission menu yang sama.
+6. Mengatur akses dari halaman Role & Permission.
+7. Login ulang dan memastikan menu otomatis muncul di sidebar.
