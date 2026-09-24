@@ -20,10 +20,19 @@ const NAV = [
   { key: 'notif', label: 'Notifikasi', icon: 'bell', admin: true },
 ]
 
+function sidebarPref() {
+  try {
+    return localStorage.getItem('go-core-sidebar') === 'collapsed'
+  } catch {
+    return false
+  }
+}
+
 function Shell() {
   const toast = useToast()
   const [view, setView] = useState(api.isLoggedIn() ? 'users' : 'login')
   const [loggedIn, setLoggedIn] = useState(api.isLoggedIn())
+  const [collapsed, setCollapsed] = useState(sidebarPref)
   const me = api.currentUser()
   const isAdmin = me?.role === 'ADMIN'
   const visibleNav = NAV.filter((n) => !n.admin || isAdmin)
@@ -48,6 +57,17 @@ function Shell() {
     toast.warning('Akun Anda telah dihapus.', { title: 'Akun dihapus' })
   }
 
+  function toggleSidebar() {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem('go-core-sidebar', c ? 'open' : 'collapsed')
+      } catch {
+        // abaikan (mode privat)
+      }
+      return !c
+    })
+  }
+
   // Halaman login fokus: tanpa navbar, kartu di tengah layar.
   if (!loggedIn) {
     return (
@@ -64,44 +84,76 @@ function Shell() {
 
   return (
     <div className="flex min-h-screen w-full bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      {/* Sidebar (desktop) */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-zinc-200 bg-white p-4 md:flex dark:border-zinc-800 dark:bg-zinc-900">
-        <span className="flex items-center gap-2 px-2 pb-4 text-base font-bold tracking-tight">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 text-sm text-white">
-            G
+      {/* Sidebar (desktop) — bisa dilipat via tombol chevron */}
+      <aside
+        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white p-3 transition-all duration-200 md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
+          collapsed ? 'w-[76px]' : 'w-60'
+        }`}
+      >
+        <div className="flex items-center gap-1 px-1 pb-4">
+          <span className="flex flex-1 items-center gap-2 text-base font-bold tracking-tight">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 text-sm text-white">
+              G
+            </span>
+            {!collapsed && <span className="truncate">Go Core</span>}
           </span>
-          Go Core
-        </span>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            title={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+            aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+            className="shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+          >
+            <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} className="h-5 w-5" />
+          </button>
+        </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
           {visibleNav.map((n) => (
             <button
               key={n.key}
               type="button"
+              title={n.label}
               onClick={() => setView(n.key)}
               className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                collapsed ? 'justify-center' : ''
+              } ${
                 activeNav === n.key
                   ? 'bg-violet-600 text-white shadow-sm'
                   : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
               }`}
             >
               <Icon name={n.icon} className="h-5 w-5 shrink-0" />
-              {n.label}
+              {!collapsed && <span className="truncate">{n.label}</span>}
             </button>
           ))}
         </nav>
         <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
-          <div className="mb-2 flex items-center gap-2 px-2">
-            <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
-              <span className="block truncate font-semibold text-zinc-700 dark:text-zinc-200">@{me?.username}</span>
-              <span className="font-mono">{me?.code}</span>
-            </span>
-            <Badge tone={isAdmin ? 'danger' : 'brand'}>{me?.role}</Badge>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Button variant="secondary" size="sm" fullWidth onClick={logout}>
-              <Icon name="logout" className="h-4 w-4" />
-              Logout
-            </Button>
+          {!collapsed && (
+            <div className="mb-2 flex items-center gap-2 px-2">
+              <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
+                <span className="block truncate font-semibold text-zinc-700 dark:text-zinc-200">@{me?.username}</span>
+                <span className="font-mono">{me?.code}</span>
+              </span>
+              <Badge tone={isAdmin ? 'danger' : 'brand'}>{me?.role}</Badge>
+            </div>
+          )}
+          <div className={`flex items-center gap-1.5 ${collapsed ? 'flex-col' : ''}`}>
+            {collapsed ? (
+              <button
+                type="button"
+                onClick={logout}
+                title="Logout"
+                aria-label="Logout"
+                className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              >
+                <Icon name="logout" className="h-5 w-5" />
+              </button>
+            ) : (
+              <Button variant="secondary" size="sm" fullWidth onClick={logout}>
+                <Icon name="logout" className="h-4 w-4" />
+                Logout
+              </Button>
+            )}
             <ThemeToggle />
           </div>
         </div>
@@ -142,7 +194,7 @@ function Shell() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-4xl flex-1 px-3 py-4 sm:px-4 sm:py-6">
+        <main className="mx-auto w-full max-w-5xl flex-1 px-3 py-4 transition-all duration-200 sm:px-4 sm:py-6">
           {activeNav === 'users' && <UsersList onAccountDeleted={handleAccountDeleted} />}
           {activeNav === 'roles' && isAdmin && <Roles />}
           {activeNav === 'sessions' && <Sessions />}
