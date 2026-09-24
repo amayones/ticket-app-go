@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api/client.js'
-import { Alert, Button, Modal, TextField, useToast } from '../components'
+import { api } from '../../../../api/client.js'
+import { updateUser, updateUserRole } from '../api.js'
+import { listRoles } from '../../roles/api.js'
+import { Alert, Button, Modal, TextField, useToast } from '../../../../components'
 
 // Modal edit user: hanya mengirim field yang diubah (patch parsial).
 // Dipasang dengan key={user.code} oleh induk agar form ter-reset tiap ganti user.
@@ -18,7 +20,7 @@ export default function EditUserModal({ user, onClose, onSaved }) {
 
   useEffect(() => {
     if (canAssignRole) {
-      api.listRoles().then(setRoles).catch(() => setRoles([]))
+      listRoles().then(setRoles).catch(() => setRoles([]))
     }
   }, [canAssignRole])
 
@@ -39,10 +41,10 @@ export default function EditUserModal({ user, onClose, onSaved }) {
     setLoading(true)
     try {
       if (Object.keys(patch).length > 0) {
-        await api.updateUser(user.code, patch)
+        await updateUser(user.code, patch)
       }
       if (canAssignRole && role !== user.role_code) {
-        await api.updateUserRole(user.code, role)
+        await updateUserRole(user.code, role)
         toast.success(`Role @${user.username} diubah ke ${role}.`)
       } else if (Object.keys(patch).length > 0) {
         toast.success('Profil berhasil diperbarui.')
