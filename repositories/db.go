@@ -1,9 +1,31 @@
 package repositories
 
+// Shared kernel DB: dialek, timeout, dan helper row. Dipakai semua
+// repository fitur (features/<menu>). Query SQL-nya sendiri tinggal
+// di file repository tiap menu.
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 )
+
+const (
+	DefaultListLimit = 50
+	MaxListLimit     = 200
+	queryTimeout     = 5 * time.Second
+)
+
+func WithTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, queryTimeout)
+}
+
+func NullStr(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
 
 // Dialect memilih sintaks SQL per engine. Semua query ditulis dengan
 // placeholder "?" lalu di-rebind saat eksekusi (Bind).
@@ -73,8 +95,8 @@ func (d Dialect) IsTrue() string {
 
 // pageMSSQL and pageStd render pagination. MSSQL takes (offset, limit),
 // postgres/sqlite take (limit, offset) — argument order differs!
-func pageMSSQL() string { return "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY" }
-func pageStd() string   { return "LIMIT ? OFFSET ?" }
+func PageMSSQL() string { return "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY" }
+func PageStd() string   { return "LIMIT ? OFFSET ?" }
 
 // Table qualifies the table name. MSSQL keeps dbo. (login default schema
 // may vary); postgres/sqlite use the bare name (dbo schema does not exist
