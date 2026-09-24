@@ -26,32 +26,6 @@ CREATE TABLE dbo.CPPERMISSION (
   CONSTRAINT UQ_CPPERM_CODE UNIQUE NONCLUSTERED (CODE)
 );
 
--- Seed permission (CODE, NAME, GROUP, DESCRIPTION)
-DECLARE @perms TABLE (CODE NVARCHAR(40), NAME NVARCHAR(100), PERMGROUP NVARCHAR(40), DESCRIPTION NVARCHAR(255));
-INSERT INTO @perms VALUES
-  (N'USER_READ',        N'Lihat user',            N'USER',         N'Melihat daftar & detail akun'),
-  (N'USER_CREATE',      N'Buat user',             N'USER',         N'Mendaftarkan akun baru'),
-  (N'USER_UPDATE',      N'Ubah user lain',        N'USER',         N'Mengubah akun milik user lain (akun sendiri selalu boleh)'),
-  (N'USER_DELETE',      N'Hapus user lain',       N'USER',         N'Menghapus akun milik user lain (akun sendiri selalu boleh)'),
-  (N'USER_ROLE_ASSIGN', N'Atur role user',        N'USER',         N'Mengganti role akun'),
-  (N'ROLE_READ',        N'Lihat role',            N'ROLE',         N'Melihat daftar role & permission'),
-  (N'ROLE_MANAGE',      N'Kelola role',           N'ROLE',         N'Membuat & menghapus role'),
-  (N'PERMISSION_ASSIGN',N'Atur permission role',  N'ROLE',         N'Mencentang permission milik role'),
-  (N'SESSION_READ',     N'Lihat sesi sendiri',    N'SESSION',      N'Melihat sesi login milik sendiri'),
-  (N'SESSION_REVOKE',   N'Cabut sesi sendiri',    N'SESSION',      N'Mencabut sesi login milik sendiri'),
-  (N'SESSION_MANAGE',   N'Kelola semua sesi',     N'SESSION',      N'Melihat & mencabut sesi semua user'),
-  (N'AUDIT_READ',       N'Lihat audit log',       N'AUDIT',        N'Melihat jejak aksi user'),
-  (N'SECURITY_READ',    N'Lihat security center', N'SECURITY',     N'Melihat ringkasan keamanan'),
-  (N'SYSLOG_READ',      N'Lihat system log',      N'SYSLOG',       N'Melihat log error/sistem'),
-  (N'SYSLOG_MANAGE',    N'Hapus system log',      N'SYSLOG',       N'Menghapus log lama'),
-  (N'NOTIF_READ',       N'Lihat notifikasi',      N'NOTIFICATION', N'Melihat template & riwayat notifikasi'),
-  (N'NOTIF_MANAGE',     N'Kelola template',       N'NOTIFICATION', N'Membuat, mengubah, menonaktifkan template'),
-  (N'NOTIF_SEND',       N'Kirim notifikasi',      N'NOTIFICATION', N'Mengirim / test-kirim notifikasi');
-
-INSERT INTO dbo.CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION)
-SELECT CODE, NAME, PERMGROUP, DESCRIPTION FROM @perms p
-WHERE NOT EXISTS (SELECT 1 FROM dbo.CPPERMISSION x WHERE x.CODE = p.CODE);
-
 -- 2. CPROLEPERMISSION ----------------------------------------------------------
 IF OBJECT_ID(N'dbo.CPROLEPERMISSION', N'U') IS NULL
 CREATE TABLE dbo.CPROLEPERMISSION (
@@ -63,19 +37,51 @@ CREATE TABLE dbo.CPROLEPERMISSION (
   CONSTRAINT FK_CRP_PERM FOREIGN KEY (PERMISSION_CODE) REFERENCES dbo.CPPERMISSION (CODE) ON DELETE CASCADE
 );
 
--- ADMIN = semua permission
+-- Bersihkan permission lama per-fitur; RBAC sekarang satu permission per menu.
+DELETE FROM dbo.CPROLEPERMISSION
+WHERE PERMISSION_CODE IN (
+  N'USER_READ', N'USER_CREATE', N'USER_UPDATE', N'USER_DELETE', N'USER_ROLE_ASSIGN',
+  N'ROLE_READ', N'ROLE_MANAGE', N'PERMISSION_ASSIGN',
+  N'SESSION_READ', N'SESSION_REVOKE', N'SESSION_MANAGE',
+  N'AUDIT_READ', N'SECURITY_READ', N'SYSLOG_READ', N'SYSLOG_MANAGE',
+  N'NOTIF_READ', N'NOTIF_MANAGE', N'NOTIF_SEND'
+);
+DELETE FROM dbo.CPPERMISSION
+WHERE CODE IN (
+  N'USER_READ', N'USER_CREATE', N'USER_UPDATE', N'USER_DELETE', N'USER_ROLE_ASSIGN',
+  N'ROLE_READ', N'ROLE_MANAGE', N'PERMISSION_ASSIGN',
+  N'SESSION_READ', N'SESSION_REVOKE', N'SESSION_MANAGE',
+  N'AUDIT_READ', N'SECURITY_READ', N'SYSLOG_READ', N'SYSLOG_MANAGE',
+  N'NOTIF_READ', N'NOTIF_MANAGE', N'NOTIF_SEND'
+);
+
+-- Seed permission (CODE, NAME, GROUP, DESCRIPTION) — satu permission per menu.
+-- Jika role punya permission ini, menu-nya tampil di sidebar.
+DECLARE @perms TABLE (CODE NVARCHAR(40), NAME NVARCHAR(100), PERMGROUP NVARCHAR(40), DESCRIPTION NVARCHAR(255));
+INSERT INTO @perms VALUES
+  (N'MENU_DASHBOARD',    N'Lihat dashboard',          N'MENU',      N'Menampilkan profil & keamanan akun'),
+  (N'MENU_USERS',        N'Kelola pengguna',          N'MENU',      N'Melihat, membuat, mengubah, dan menghapus akun'),
+  (N'MENU_ROLES',        N'Kelola role & permission', N'MENU',      N'Mengelola role dan matriks permission RBAC'),
+  (N'MENU_SESSIONS',     N'Kelola sesi',              N'MENU',      N'Melihat & mencabut sesi login'),
+  (N'MENU_AUDIT',        N'Lihat audit log',          N'MENU',      N'Melihat jejak aksi user & IP'),
+  (N'MENU_SECURITY',     N'Lihat security center',    N'MENU',      N'Melihat ringkasan keamanan sistem'),
+  (N'MENU_SYSLOG',       N'Lihat system log',         N'MENU',      N'Melihat log error/sistem aplikasi'),
+  (N'MENU_NOTIFICATIONS',N'Kelola notifikasi',        N'MENU',      N'Mengelola template & mengirim notifikasi');
+
+INSERT INTO dbo.CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION)
+SELECT CODE, NAME, PERMGROUP, DESCRIPTION FROM @perms p
+WHERE NOT EXISTS (SELECT 1 FROM dbo.CPPERMISSION x WHERE x.CODE = p.CODE);
+
+-- ADMIN = semua permission (tampil semua menu)
 INSERT INTO dbo.CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
 SELECT N'ADMIN', CODE FROM dbo.CPPERMISSION
 WHERE NOT EXISTS (
   SELECT 1 FROM dbo.CPROLEPERMISSION x WHERE x.ROLE_CODE = N'ADMIN' AND x.PERMISSION_CODE = CPPERMISSION.CODE
 );
 
--- USER = hak dasar (aksi milik sendiri tetap dijaga requireSelf di API)
+-- USER = hanya dashboard (tampil user/dashboard saja)
 INSERT INTO dbo.CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
-SELECT N'USER', v.CODE FROM (VALUES
-  (N'USER_READ'), (N'USER_UPDATE'), (N'USER_DELETE'),
-  (N'SESSION_READ'), (N'SESSION_REVOKE')
-) v(CODE)
+SELECT N'USER', CODE FROM (VALUES (N'MENU_DASHBOARD')) v(CODE)
 WHERE NOT EXISTS (
   SELECT 1 FROM dbo.CPROLEPERMISSION x WHERE x.ROLE_CODE = N'USER' AND x.PERMISSION_CODE = v.CODE
 );
