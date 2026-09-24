@@ -1,4 +1,4 @@
-package repositories
+package syslog
 
 import (
 	"context"
@@ -6,29 +6,30 @@ import (
 	"time"
 
 	"golang-backend/models"
+	"golang-backend/repositories"
 )
 
-// SyslogRepositoryInterface persists and reads CPSYSLOG.
-type SyslogRepositoryInterface interface {
+// RepositoryInterface persists and reads CPSYSLOG.
+type RepositoryInterface interface {
 	Create(ctx context.Context, log *models.SysLog) error
 	List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error)
 	CountSince(ctx context.Context, hours int, level string) (int, error)
 	PruneBefore(ctx context.Context, days int) (int64, error)
 }
 
-type SyslogRepository struct {
+type Repository struct {
 	db      *sql.DB
-	dialect Dialect
+	dialect repositories.Dialect
 }
 
-func NewSyslogRepository(db *sql.DB, dialect Dialect) SyslogRepositoryInterface {
-	return &SyslogRepository{db: db, dialect: dialect}
+func NewRepository(db *sql.DB, dialect repositories.Dialect) RepositoryInterface {
+	return &Repository{db: db, dialect: dialect}
 }
 
-func (r *SyslogRepository) table() string { return r.dialect.Table("CPSYSLOG") }
+func (r *Repository) table() string { return r.dialect.Table("CPSYSLOG") }
 
-func (r *SyslogRepository) Create(ctx context.Context, log *models.SysLog) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Create(ctx context.Context, log *models.SysLog) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	_, err := r.db.ExecContext(ctx, r.dialect.Bind(`
 		INSERT INTO `+r.table()+` (CODE, LEVEL, SOURCE, MESSAGE)
@@ -37,18 +38,18 @@ func (r *SyslogRepository) Create(ctx context.Context, log *models.SysLog) error
 	return err
 }
 
-func (r *SyslogRepository) List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error) {
+func (r *Repository) List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error) {
 	limit := f.Limit
 	if limit <= 0 {
-		limit = DefaultListLimit
+		limit = repositories.DefaultListLimit
 	}
-	if limit > MaxListLimit {
-		limit = MaxListLimit
+	if limit > repositories.MaxListLimit {
+		limit = repositories.MaxListLimit
 	}
 	if f.Offset < 0 {
 		f.Offset = 0
 	}
-	ctx, cancel := withTimeout(ctx)
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `
 		SELECT CODE, LEVEL, SOURCE, MESSAGE, CREATED_AT
@@ -56,11 +57,11 @@ func (r *SyslogRepository) List(ctx context.Context, f models.SyslogFilter) ([]m
 		WHERE (? = '' OR LEVEL = ?)
 		ORDER BY ID DESC `
 	var args []any
-	if r.dialect == DialectMSSQL {
-		query += pageMSSQL()
+	if r.dialect == repositories.DialectMSSQL {
+		query += repositories.PageMSSQL()
 		args = []any{f.Level, f.Level, f.Offset, limit}
 	} else {
-		query += pageStd()
+		query += repositories.PageStd()
 		args = []any{f.Level, f.Level, limit, f.Offset}
 	}
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), args...)
@@ -82,8 +83,8 @@ func (r *SyslogRepository) List(ctx context.Context, f models.SyslogFilter) ([]m
 	return out, nil
 }
 
-func (r *SyslogRepository) CountSince(ctx context.Context, hours int, level string) (int, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) CountSince(ctx context.Context, hours int, level string) (int, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(`
@@ -93,8 +94,8 @@ func (r *SyslogRepository) CountSince(ctx context.Context, hours int, level stri
 	return n, err
 }
 
-func (r *SyslogRepository) PruneBefore(ctx context.Context, days int) (int64, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) PruneBefore(ctx context.Context, days int) (int64, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	res, err := r.db.ExecContext(ctx, r.dialect.Bind(
 		`DELETE FROM `+r.table()+` WHERE CREATED_AT < ?`),
