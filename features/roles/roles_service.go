@@ -179,21 +179,30 @@ func (s *Service) SetRolePermissions(ctx context.Context, roleCode string, permC
 		}
 		return fmt.Errorf("get role: %w", err)
 	}
-	// Validasi semua kode permission ada.
 	all, err := s.roles.ListPermissions(ctx)
 	if err != nil {
 		return fmt.Errorf("list permissions: %w", err)
 	}
 	known := make(map[string]bool, len(all))
 	for _, p := range all {
-		known[p.Code] = true
-	}
-	for _, pc := range permCodes {
-		if !known[pc] {
-			return fmt.Errorf("unknown permission: %s", pc)
+		if strings.HasPrefix(p.Code, "MENU_") {
+			known[p.Code] = true
 		}
 	}
-	if err := s.roles.SetRolePermissions(ctx, roleCode, permCodes); err != nil {
+	cleaned := make([]string, 0, len(permCodes))
+	seen := make(map[string]bool, len(permCodes))
+	for _, pc := range permCodes {
+		pc = strings.TrimSpace(strings.ToUpper(pc))
+		if !strings.HasPrefix(pc, "MENU_") || !known[pc] {
+			return fmt.Errorf("unknown menu permission: %s", pc)
+		}
+		if seen[pc] {
+			continue
+		}
+		seen[pc] = true
+		cleaned = append(cleaned, pc)
+	}
+	if err := s.roles.SetRolePermissions(ctx, roleCode, cleaned); err != nil {
 		return fmt.Errorf("set role permissions: %w", err)
 	}
 	return nil
