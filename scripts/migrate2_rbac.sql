@@ -59,14 +59,14 @@ WHERE CODE IN (
 -- Jika role punya permission ini, menu-nya tampil di sidebar.
 DECLARE @perms TABLE (CODE NVARCHAR(40), NAME NVARCHAR(100), PERMGROUP NVARCHAR(40), DESCRIPTION NVARCHAR(255));
 INSERT INTO @perms VALUES
-  (N'MENU_DASHBOARD',    N'Akses menu Dashboard',       N'MENU', N'Seluruh fungsi dashboard untuk role ini'),
-  (N'MENU_USERS',        N'Akses menu User Account',   N'MENU', N'Seluruh fungsi pengelolaan pengguna'),
-  (N'MENU_ROLES',        N'Akses menu Role & Permission', N'MENU', N'Seluruh fungsi pengelolaan role'),
-  (N'MENU_SESSIONS',     N'Akses menu Sesi',           N'MENU', N'Seluruh fungsi pengelolaan sesi'),
-  (N'MENU_AUDIT',        N'Akses menu Audit Log',      N'MENU', N'Seluruh fungsi audit log'),
-  (N'MENU_SECURITY',     N'Akses menu Security Center', N'MENU', N'Seluruh fungsi security center'),
-  (N'MENU_SYSLOG',       N'Akses menu System Log',     N'MENU', N'Seluruh fungsi system log'),
-  (N'MENU_NOTIFICATIONS',N'Akses menu Notifikasi',     N'MENU', N'Seluruh fungsi notifikasi');
+  (N'MENU_DASHBOARD',    N'Akses menu Dashboard',       N'ACCOUNT', N'Seluruh fungsi dashboard untuk role ini'),
+  (N'MENU_USERS',        N'Akses menu User Account',   N'SYSTEM', N'Seluruh fungsi pengelolaan pengguna'),
+  (N'MENU_ROLES',        N'Akses menu Role & Permission', N'SYSTEM', N'Seluruh fungsi pengelolaan role'),
+  (N'MENU_SESSIONS',     N'Akses menu Sesi',           N'SYSTEM', N'Seluruh fungsi pengelolaan sesi'),
+  (N'MENU_AUDIT',        N'Akses menu Audit Log',      N'SYSTEM', N'Seluruh fungsi audit log'),
+  (N'MENU_SECURITY',     N'Akses menu Security Center', N'SYSTEM', N'Seluruh fungsi security center'),
+  (N'MENU_SYSLOG',       N'Akses menu System Log',     N'SYSTEM', N'Seluruh fungsi system log'),
+  (N'MENU_NOTIFICATIONS',N'Akses menu Notifikasi',     N'SYSTEM', N'Seluruh fungsi notifikasi');
 
 INSERT INTO dbo.CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION)
 SELECT CODE, NAME, PERMGROUP, DESCRIPTION FROM @perms p
