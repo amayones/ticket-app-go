@@ -13,9 +13,10 @@ Hanya ada **2 tipe folder menu** (dipindai otomatis oleh
 | `menus/user/<menu>/` | semua role yang memiliki permission menunya |
 
 > Menu `user/` hanya tampil jika role memiliki permission
-> `MENU_<NAMA_MENU>`. Permission yang sama dipakai backend pada route
-> sebagai `RequirePermission`, sehingga menu tanpa akses tidak tampil
-> dan request langsungnya mendapat `403`.
+> `MENU_<NAMA_MENU>`. **Satu permission menu otomatis memberi akses ke
+> seluruh fungsi di menu itu** — tidak ada checkbox/permission per fungsi.
+> Permission yang sama dipakai backend pada seluruh route menu sebagai
+> `RequirePermission`, sehingga request langsung tanpa akses mendapat `403`.
 > Menu `admin/` tetap khusus role `ADMIN`, meskipun role tersebut
 > memiliki permission menu yang sama.
 
@@ -146,10 +147,12 @@ Sama seperti A4 dari folder `frontend/`.
 
 ✅ **Checkpoint B3** — `✓ built in ...`, tanpa baris `error` di lint.
 
-### B4. Atur permission per role (ini yang membedakan antar-role)
+### B4. Atur permission menu per role
 
-Menu `user/laporan` langsung tampil di semua role, tapi endpoint-nya
-wajib diproteksi permission. Dua cara (pilih satu):
+Setiap menu memiliki **satu checkbox**. Jika dicentang, role tersebut
+mendapat seluruh fungsi menu itu; jika tidak dicentang, menu tidak tampil
+ dan endpoint menu tersebut mendapat `403`. Tidak perlu membuat permission
+terpisah untuk create, update, delete, atau aksi lain.
 
 **Cara 1 — via UI (tanpa SQL):**
 
