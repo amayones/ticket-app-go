@@ -8,14 +8,20 @@ diizinkan. Setelah user login ulang, menu otomatis muncul di sidebar.
 
 ## Aturan Utama
 
-Ada dua tipe folder menu:
+Struktur folder menu:
 
 ```text
-frontend/src/menus/admin/<menu>/  -> hanya role ADMIN
-frontend/src/menus/user/<menu>/   -> semua role yang diberi akses menu
+frontend/src/menus/<module>/<menu>/  -> semua role yang diberi akses menu
 ```
 
-Tutorial ini memakai `menus/user/`.
+Module yang tersedia:
+
+```text
+menus/account/  -> ACCOUNT
+menus/system/   -> SYSTEM
+```
+
+Tutorial ini memakai `menus/system/`.
 
 Satu permission mewakili satu menu:
 
@@ -137,13 +143,13 @@ Harus menghasilkan satu baris.
 ## 2.1. Copy Template
 
 ```bash
-cp -r tutorial/templates/frontend-menu frontend/src/menus/user/laporan
+cp -r tutorial/templates/frontend-menu frontend/src/menus/system/laporan
 ```
 
 ✅ **Checkpoint 2.1**
 
 ```bash
-ls frontend/src/menus/user/laporan
+ls frontend/src/menus/system/laporan
 ```
 
 Harus ada:
@@ -155,7 +161,7 @@ index.jsx
 
 ## 2.2. Isi `index.jsx`
 
-Buka `frontend/src/menus/user/laporan/index.jsx`.
+Buka `frontend/src/menus/system/laporan/index.jsx`.
 
 Atur metadata:
 
@@ -172,7 +178,7 @@ Ganti isi halaman dengan komponen yang dibutuhkan.
 ✅ **Checkpoint 2.2**
 
 ```bash
-grep -n "export default\|export const meta" frontend/src/menus/user/laporan/index.jsx
+grep -n "export default\|export const meta" frontend/src/menus/system/laporan/index.jsx
 ```
 
 Harus ada dua baris export:
@@ -186,7 +192,7 @@ Jangan lupa membuat komponen utama dengan `export default`.
 
 ## 2.3. Isi `api.js`
 
-Buka `frontend/src/menus/user/laporan/api.js`.
+Buka `frontend/src/menus/system/laporan/api.js`.
 
 Ganti placeholder `<menu>` dengan endpoint yang benar.
 
@@ -221,7 +227,7 @@ export async function createLaporan(payload) {
 ✅ **Checkpoint 2.3**
 
 ```bash
-grep -rn "<menu>" frontend/src/menus/user/laporan || echo OK-tidak-ada-placeholder
+grep -rn "<menu>" frontend/src/menus/system/laporan || echo OK-tidak-ada-placeholder
 ```
 
 Harus menghasilkan:
@@ -235,7 +241,7 @@ OK-tidak-ada-placeholder
 Frontend otomatis mengubah nama folder menjadi permission:
 
 ```text
-frontend/src/menus/user/laporan/
+frontend/src/menus/system/laporan/
              ↓
 MENU_LAPORAN
 ```
@@ -245,10 +251,10 @@ Jadi tidak perlu menambah daftar menu manual di `registry.js`.
 ✅ **Checkpoint 2.4**
 
 ```bash
-grep -n "permissionFor\|menus/user" frontend/src/menus/registry.js
+grep -n "permissionFor\|menus/system" frontend/src/menus/registry.js
 ```
 
-Pastikan `menus/user/` dipindai oleh `import.meta.glob`.
+Pastikan `menus/system/` dipindai oleh `import.meta.glob`.
 
 ---
 
@@ -270,8 +276,8 @@ dan `r.dialect.Bind(query)`.
 
 ## 3.1. Tambahkan Permission di Route
 
-Karena menu ini dapat dipakai semua role, jangan masukkan route ke blok
-`/api/admin` yang hanya untuk ADMIN.
+Route menu dapat berada di path `/api/<menu>` atau `/api/admin/<menu>`.
+Nama path tidak membatasi role; yang membatasi hanya permission menu.
 
 Contoh route di `routes/routes.go`:
 
@@ -486,7 +492,7 @@ Jika menu tidak diperlukan:
 1. Hapus folder frontend:
 
 ```bash
-rm -r frontend/src/menus/user/laporan
+rm -r frontend/src/menus/system/laporan
 ```
 
 2. Hapus konstanta `MenuLaporan` dari `models/permission.go`.
@@ -509,7 +515,7 @@ WHERE CODE = 'MENU_LAPORAN';
 
 # Checklist Akhir
 
-- [ ] Menu diletakkan di `frontend/src/menus/user/<menu>/`.
+- [ ] Menu diletakkan di `frontend/src/menus/<module>/<menu>/`.
 - [ ] `index.jsx` memiliki `export default` dan `export const meta`.
 - [ ] `api.js` tidak memakai `apiRequest` tanpa `auth: true` untuk endpoint privat.
 - [ ] Tidak ada placeholder `<menu>`.
