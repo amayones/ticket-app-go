@@ -23,6 +23,32 @@ const store = {
   },
 }
 
+// Event global saat sesi benar-benar habis (refresh gagal / tidak ada).
+// App.jsx mendengarkan ini untuk menampilkan popup login ulang di tempat,
+// tanpa pindah halaman. Guard agar parallel 401 tidak spam event.
+export const SESSION_EXPIRED_EVENT = 'go-core:session-expired'
+let expiredNotified = false
+
+function notifySessionExpired() {
+  if (expiredNotified) return
+  expiredNotified = true
+  try {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
+  } catch {
+    // abaikan (non-browser / mode privat)
+  }
+}
+
+export function onSessionExpired(listener) {
+  window.addEventListener(SESSION_EXPIRED_EVENT, listener)
+  return () => window.removeEventListener(SESSION_EXPIRED_EVENT, listener)
+}
+
+function failSession() {
+  store.clear()
+  notifySessionExpired()
+}
+
 async function request(path, { method = 'GET', body, auth = false, retry = true } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   if (auth && store.access) headers.Authorization = `Bearer ${store.access}`
@@ -31,10 +57,14 @@ async function request(path, { method = 'GET', body, auth = false, retry = true 
     headers,
     body: body ? JSON.stringify(body) : undefined,
   })
-  if (res.status === 401 && auth && retry && store.refresh) {
-    const ok = await tryRefresh()
-    if (ok) return request(path, { method, body, auth, retry: false })
-    store.clear()
+  if (res.status === 401 && auth) {
+    // Coba rotasi refresh-token sekali; kalau gagal / tidak ada refresh,
+    // sesi dianggap habis -> bersihkan + beri tahu UI detik itu juga.
+    if (retry && store.refresh) {
+      const ok = await tryRefresh()
+      if (ok) return request(path, { method, body, auth, retry: false })
+    }
+    failSession()
   }
   let data = null
   try {
@@ -88,6 +118,7 @@ export const api = {
   async login(username, password) {
     const data = await request('/api/login', { method: 'POST', body: { username, password } })
     store.set(data.access_token, data.refresh_token)
+    expiredNotified = false
     return data
   },
   async logout() {
