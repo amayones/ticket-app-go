@@ -28,7 +28,7 @@ func (s *stubService) ListUsers(ctx context.Context, limit, offset int) ([]model
 func (s *stubService) GetUserByCode(ctx context.Context, code string) (*models.User, error) {
 	return &models.User{Code: code, Username: "budi", Email: "budi@x.com", RoleCode: models.RoleUser}, nil
 }
-func (s *stubService) CreateUser(ctx context.Context, u, e, p string) (string, error) {
+func (s *stubService) CreateUser(ctx context.Context, u, e, p, role string) (string, error) {
 	if u == "" || e == "" || p == "" {
 		return "", services.ErrInputRequired
 	}
@@ -165,11 +165,8 @@ func TestAuditWiring(t *testing.T) {
 	if rec := doReq(t, r, "GET", "/healthz", "", ""); rec.Code != 200 {
 		t.Fatalf("healthz: got %d (%s)", rec.Code, rec.Body.String())
 	}
-	if rec := doReq(t, r, "POST", "/api/users", `{"username":"x"}`, ""); rec.Code != 400 {
-		t.Fatalf("register unknown field must 400, got %d (%s)", rec.Code, rec.Body.String())
-	}
-	if rec := doReq(t, r, "POST", "/api/users", `{"username":"budi","email":"b@x.com","password":"password123"}`, ""); rec.Code != 201 {
-		t.Fatalf("register: got %d (%s)", rec.Code, rec.Body.String())
+	if rec := doReq(t, r, "POST", "/api/users", `{"username":"budi","email":"b@x.com","password":"password123"}`, ""); rec.Code != 401 {
+		t.Fatalf("create user without token must 401, got %d (%s)", rec.Code, rec.Body.String())
 	}
 	if rec := doReq(t, r, "POST", "/api/login", `{"username":"b","password":"p"}`, ""); rec.Code != 401 || !strings.Contains(rec.Body.String(), "error") {
 		t.Fatalf("login bad creds must be 401 JSON, got %d (%s)", rec.Code, rec.Body.String())
@@ -234,6 +231,7 @@ func TestAdminRBAC(t *testing.T) {
 		{"GET", "/api/admin/syslogs", ""},
 		{"GET", "/api/admin/notifications/templates", ""},
 		{"GET", "/api/admin/notifications/logs", ""},
+		{"POST", "/api/users", `{"username":"budi","email":"b@x.com","password":"password123"}`},
 		{"POST", "/api/admin/roles", `{"code":"EDITOR","name":"Editor"}`},
 		{"PUT", "/api/admin/roles/EDITOR/permissions", `{"permissions":["USER_READ"]}`},
 		{"POST", "/api/admin/notifications/send", `{"template_code":"NTM-1","recipient":"a@b.c"}`},
