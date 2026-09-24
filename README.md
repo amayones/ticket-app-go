@@ -167,29 +167,47 @@ Daftar lengkap variabel ada di [tabel konfigurasi](#51-variabel-environment).
 
 Buka SSMS / `sqlcmd`, jalankan:
 
+Skema memakai tabel **huruf besar prefix `CP`** (core app) dengan relasi via
+**CODE** (kolom `ID` tetap ada sebagai IDENTITY tapi tidak dipakai relasi/API):
+
 ```sql
 CREATE DATABASE Go;
 GO
 USE Go;
 GO
-CREATE TABLE users (
-  id INT IDENTITY(1,1) PRIMARY KEY,
-  username NVARCHAR(50) NOT NULL,
-  email NVARCHAR(255) NOT NULL,
-  password NVARCHAR(255) NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT GETDATE(),
-  updated_at DATETIME NOT NULL DEFAULT GETDATE(),
-  CONSTRAINT UQ_users_username UNIQUE (username),
-  CONSTRAINT UQ_users_email UNIQUE (email)
+CREATE TABLE CPROLE (
+  ID INT IDENTITY(1,1) PRIMARY KEY,
+  CODE NVARCHAR(20) NOT NULL UNIQUE,   -- 'ADMIN', 'USER'
+  NAME NVARCHAR(100) NOT NULL,
+  CREATED_AT DATETIME NOT NULL DEFAULT GETDATE(),
+  UPDATED_AT DATETIME NOT NULL DEFAULT GETDATE()
 );
-CREATE TABLE refresh_tokens (
-  id INT IDENTITY(1,1) PRIMARY KEY,
-  user_id INT NOT NULL FOREIGN KEY REFERENCES users(id) ON DELETE CASCADE,
-  token NVARCHAR(512) NOT NULL UNIQUE, -- berisi SHA-256 hex, BUKAN token asli
-  expires_at DATETIME NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT GETDATE()
+INSERT INTO CPROLE (CODE, NAME) VALUES ('ADMIN', 'Administrator'), ('USER', 'Pengguna');
+CREATE TABLE CPUSER (
+  ID INT IDENTITY(1,1) PRIMARY KEY,
+  CODE NVARCHAR(20) NOT NULL UNIQUE,   -- 'USR-XXXXXXXX', identitas publik
+  USERNAME NVARCHAR(50) NOT NULL UNIQUE,
+  EMAIL NVARCHAR(255) NOT NULL UNIQUE,
+  PASSWORD NVARCHAR(255) NOT NULL,
+  ROLE_CODE NVARCHAR(20) NOT NULL DEFAULT 'USER' FOREIGN KEY REFERENCES CPROLE(CODE),
+  CREATED_AT DATETIME NOT NULL DEFAULT GETDATE(),
+  UPDATED_AT DATETIME NOT NULL DEFAULT GETDATE()
+);
+CREATE TABLE CPREFRESHTOKEN (
+  ID INT IDENTITY(1,1) PRIMARY KEY,
+  USER_CODE NVARCHAR(20) NOT NULL FOREIGN KEY REFERENCES CPUSER(CODE) ON DELETE CASCADE,
+  TOKEN NVARCHAR(512) NOT NULL UNIQUE, -- berisi SHA-256 hex, BUKAN token asli
+  EXPIRES_AT DATETIME NOT NULL,
+  CREATED_AT DATETIME NOT NULL DEFAULT GETDATE()
 );
 ```
+
+> Punya database lama (`users`/`refresh_tokens`)? Jangan buat manual — jalankan
+> migrasi otomatis yang memindahkan data + membuat kode + menghapus tabel lama:
+> `task migrate` (butuh `sqlcmd`) atau
+> `sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate.sql`.
+> Jadikan user pertama sebagai admin: 
+> `UPDATE CPUSER SET ROLE_CODE='ADMIN' WHERE USERNAME='budi';`
 
 ### Langkah 4 — Jalankan mode development (2 terminal)
 
@@ -225,7 +243,7 @@ curl http://localhost:1067/healthz
 curl -X POST http://localhost:1067/api/users `
   -H "Content-Type: application/json" `
   -d '{"username":"budi","email":"budi@example.com","password":"password123"}'
-# -> {"id":1,"message":"User created successfully"}
+# -> {"code":"USR-XXXXXX","message":"User created successfully"}
 
 # 3. login
 curl -X POST http://localhost:1067/api/login `
@@ -280,7 +298,7 @@ go-core/
 ├── cmd/stop/               # program kecil penghenti app background
 │
 ├── frontend/               # aplikasi React (Vite)
-├── scripts/                # build.ps1, watch.ps1, dev.ps1
+├── scripts/                # build.ps1, watch.ps1, dev.ps1, migrate.sql (skema CP*)
 ├── Taskfile.yml            # satu pintu semua perintah (task build/test/...)
 │
 ├── Dockerfile              # image production multi-stage
@@ -309,10 +327,10 @@ Peran tiap folder:
 | Folder | Isi file | Tugasnya dalam bahasa sederhana |
 |--------|----------|----------------------------------|
 | `config/` | `env.go`, `database.go` | Baca `.env` **sekali** saat start (`Load()` → struct `Config`), validasi (JWT ≥32 char, port numerik), buka koneksi DB dengan timeout. Tidak pernah `log.Fatal` — selalu kembalikan `error`. |
-| `models/` | `user.go`, `refresh_token.go`, `dto.go` | `User` = baris tabel DB; `UserResponse` = versi aman untuk API (tanpa hash password); `dto.go` = bentuk JSON request (`CreateUserRequest`, `UpdateUserRequest` partial via pointer, dll). |
-| `repositories/` | `user_repository.go`, `refresh_token_repository.go` | Satu-satunya tempat berisi SQL. Semua query pakai parameter (`@p1`, bukan string concat → anti SQL injection), pakai `context` timeout 5 detik, `List` paginated (anti OOM). Token di DB selalu **hash SHA-256**, bukan token asli. |
-| `services/` | `user_service.go` (+ `*_test.go`) | Otak aplikasi: normalisasi email (`trim+lowercase`), validasi, bcrypt, buat/cek JWT, rotasi refresh token, batasi 5 sesi/user, petakan error DB ke error bermakna (`ErrUsernameTaken`, …). Punya unit test (`go test ./services/`). |
-| `handlers/` | `user_handler.go` | Penerjemah HTTP↔service: batasi body 1 MB, tolak field asing, parse `id`, cek "hanya pemilik data" (`requireSelf`), tulis sukses/error **selalu JSON** `{...}` / `{error: ...}`. |
+| `models/` | `user.go`, `refresh_token.go`, `role.go`, `dto.go` | `User` = baris `CPUSER` (identitas luar = `Code`, `ID` disembunyikan dari JSON); `Role` = baris `CPROLE`; `UserResponse` = versi aman untuk API (tanpa hash/ID); `dto.go` = bentuk JSON request (partial via pointer). |
+| `repositories/` | `user_repository.go`, `refresh_token_repository.go`, `role_repository.go` | Satu-satunya tempat berisi SQL (tabel `CPUSER`, `CPREFRESHTOKEN`, `CPROLE`; relasi via `CODE`). Semua query pakai parameter (`@p1`, bukan string concat → anti SQL injection), pakai `context` timeout 5 detik, `List` paginated (anti OOM). Token di DB selalu **hash SHA-256**, bukan token asli. |
+| `services/` | `user_service.go` (+ `*_test.go`) | Otak aplikasi: normalisasi email (`trim+lowercase`), validasi, bcrypt, buat kode `USR-XXXXXXXX` + role default `USER`, buat/cek JWT (`user_code` + `role`), rotasi refresh token, batasi 5 sesi/user, petakan error DB ke error bermakna (`ErrUsernameTaken`, …). Punya unit test (`go test ./services/`). |
+| `handlers/` | `user_handler.go` | Penerjemah HTTP↔service: batasi body 1 MB, tolak field asing, parse `code`, cek "hanya pemilik data" (`requireSelf` bandingkan `user_code` JWT), tulis sukses/error **selalu JSON** `{...}` / `{error: ...}`. |
 | `middleware/` | `auth.go`, `ratelimit.go` | `NewAuth(secret)` = satpam JWT (cek `Bearer`, pin HS256, cek `iss/aud/exp`); `RateLimiter` = pembatas request/menit per IP (anti-spoof XFF, kirim header `Retry-After`). |
 | `routes/` | `routes.go` | Daftar endpoint `/api/*` + `/healthz`, pasang middleware global (`RequestID`, `Logger`, `Recoverer`, `Timeout`), dan rate-limit berbeda per endpoint (login 5/mnt, register 10/mnt, refresh 30/mnt). |
 | `internal/pidfile/` | `pidfile.go` | Satu-satunya penentu lokasi PID file (`%TEMP%\go-core.pid` + fallback nama lama) agar app dan stop.exe **tidak pernah beda path**. |
@@ -447,7 +465,7 @@ TOKEN KEDALUWARSA (otomatis di client.js)
 ```
 
 Aturan keamanan: 1 user maksimal **5 sesi** (login ke-6 menghapus sesi tertua);
-`PUT/DELETE /users/{id}` dan `logout-all` hanya oleh **pemilik id** (403 jika bukan);
+`PUT/DELETE /users/{code}` dan `logout-all` hanya oleh **pemilik code** (403 jika bukan);
 logout token yang tidak dikenal → `401 invalid or expired refresh token`.
 
 ### 3.2 Contoh request/response
@@ -459,12 +477,16 @@ $h = @{ Authorization = "Bearer <access_token>" }
 # List paginated (default limit 50, maks 200):
 curl "http://localhost:1067/api/users?limit=10&offset=0" -H "Authorization: Bearer <token>"
 
-# Update partial — kirim HANYA field yang berubah (tanpa password = password tetap):
-curl -X PUT http://localhost:1067/api/users/1 -H "Authorization: Bearer <token>" `
+# Update partial — kirim HANYA field yang berubah (tanpa password = password tetap).
+# Ganti USR-000002 dengan code milik Anda (lihat dari respons register / daftar users):
+curl -X PUT http://localhost:1067/api/users/USR-000002 -H "Authorization: Bearer <token>" `
   -H "Content-Type: application/json" -d '{"username":"budi2"}'
 
-# Cabut semua sesi user 1:
-curl -X POST http://localhost:1067/api/users/1/logout-all -H "Authorization: Bearer <token>"
+# Cabut semua sesi user tersebut:
+curl -X POST http://localhost:1067/api/users/USR-000002/logout-all -H "Authorization: Bearer <token>"
+
+# Lihat master role:
+curl http://localhost:1067/api/roles -H "Authorization: Bearer <token>"
 ```
 
 ### 3.3 Cara kerja single binary (embed)
@@ -487,15 +509,16 @@ Base URL prod: `http://localhost:1067/` (keduanya satu origin).
 | Method | Path | Auth | Rate-limit | Body | Sukses |
 |--------|------|------|------------|------|--------|
 | GET | `/healthz` | — | — | — | `{"status":"ok"}` |
-| POST | `/api/users` | — | 10/mnt | `{username, email, password}` | `201 {"id","message"}` |
-| POST | `/api/login` | — | 5/mnt | `{username, password}` | `200 {access_token, refresh_token}` |
+| POST | `/api/users` | — | 10/mnt | `{username, email, password}` (role otomatis `USER`) | `201 {"code","message"}` (`code` = `USR-XXXXXXXX`) |
+| POST | `/api/login` | — | 5/mnt | `{username, password}` | `200 {access_token, refresh_token}` (JWT berisi `user_code` + `role`) |
 | POST | `/api/refresh` | — | 30/mnt | `{refresh_token}` | `200 {access_token, refresh_token}` (lama hangus) |
 | POST | `/api/logout` | — | 30/mnt | `{refresh_token}` | `200 {message}` |
-| GET | `/api/users?limit=&offset=` | Bearer | — | — | `200 [...]` (array, `[]` jika kosong) |
-| GET | `/api/users/{id}` | Bearer | — | — | `200 {id,username,email,...}` |
-| PUT | `/api/users/{id}` | Bearer + owner | — | partial `{username?, email?, password?}` | `200 {message}` |
-| DELETE | `/api/users/{id}` | Bearer + owner | — | — | `200 {message}` (+ sesi dibersihkan) |
-| POST | `/api/users/{id}/logout-all` | Bearer + owner | — | — | `200 {message}` |
+| GET | `/api/roles` | Bearer | — | — | `200 [{code,name,...}]` (master `CPROLE`) |
+| GET | `/api/users?limit=&offset=` | Bearer | — | — | `200 [...]` (array item `{code,username,email,role_code,...}`, `[]` jika kosong) |
+| GET | `/api/users/{code}` | Bearer | — | — | `200 {code,username,email,role_code,...}` |
+| PUT | `/api/users/{code}` | Bearer + owner | — | partial `{username?, email?, password?}` | `200 {message}` |
+| DELETE | `/api/users/{code}` | Bearer + owner | — | — | `200 {message}` (+ sesi dibersihkan via CASCADE) |
+| POST | `/api/users/{code}/logout-all` | Bearer + owner | — | — | `200 {message}` |
 
 Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 (maks 254, disimpan lowercase), password 8–72 byte. Semua error: JSON
@@ -516,6 +539,7 @@ Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 | `task tray` | Build + jalan background (`--hide`) | Pakai harian di Windows |
 | `task stop` | Hentikan app background | — |
 | `task watch` | Auto-rebuild tiap ada file berubah | Demo / iterasi prod-like |
+| `task migrate` | Terapkan `scripts/migrate.sql` ke SQL Server | Setelah pull / untuk DB lama (`users` → `CPUSER` + seed `CPROLE`) |
 | `task test` | `go vet` + `go test -race ./...` | Sebelum commit |
 | `task lint-frontend` | `oxlint` | Sebelum commit |
 | `task install` | `npm ci` di frontend | Sinkron dep frontend |
@@ -592,7 +616,7 @@ Checklist sebelum live: `JWT_SECRET` acak ≥32 char & beda dari dev,
 | `stop.exe` → "PID file not found" | App tidak jalan via PID (mungkin crash) → cek Task Manager; hapus `%TEMP%\go-core.pid` jika stale |
 | `go:embed ... no matching files` | `frontend/dist/` kosong total → `task build-frontend` (atau `dist/.gitignore` hilang → kembalikan) |
 | Cross-compile Linux gagal (cgo/gcc) | Tambahkan `CGO_ENABLED=0`: `CGO_ENABLED=0 GOOS=linux go build ./...` |
-| Token lama invalid setelah update server | Wajar sekali — format DB berubah plaintext→hash → user login ulang |
+| Token lama invalid setelah update server | Wajar — JWT kini berisi `user_code` (bukan `user_id`) + tabel jadi `CP*` → semua user wajib login ulang |
 
 **FAQ singkat:**
 - *Data user dari mana?* SQL Server, tabel `users` + `refresh_tokens` (lihat Langkah 3).
