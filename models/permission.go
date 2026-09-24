@@ -2,27 +2,18 @@ package models
 
 import "time"
 
-// Permission codes (seed di scripts/migrate2_rbac.sql). Tambah permission
-// baru = tambah seed + mapping role di SQL, lalu pakai konstantanya di sini.
+// Permission codes (seed di scripts/migrate2_rbac.sql). Satu permission
+// per menu: jika role punya permission ini, menu-nya tampil di sidebar.
+// Tambah menu = tambah konstanta di sini + seed di SQL.
 const (
-	PermUserRead        = "USER_READ"
-	PermUserCreate      = "USER_CREATE"
-	PermUserUpdate      = "USER_UPDATE"
-	PermUserDelete      = "USER_DELETE"
-	PermUserRoleAssign  = "USER_ROLE_ASSIGN"
-	PermRoleRead        = "ROLE_READ"
-	PermRoleManage      = "ROLE_MANAGE"
-	PermPermissionAssign = "PERMISSION_ASSIGN"
-	PermSessionRead     = "SESSION_READ"
-	PermSessionRevoke   = "SESSION_REVOKE"
-	PermSessionManage   = "SESSION_MANAGE"
-	PermAuditRead       = "AUDIT_READ"
-	PermSecurityRead    = "SECURITY_READ"
-	PermSyslogRead      = "SYSLOG_READ"
-	PermSyslogManage    = "SYSLOG_MANAGE"
-	PermNotifRead       = "NOTIF_READ"
-	PermNotifManage     = "NOTIF_MANAGE"
-	PermNotifSend       = "NOTIF_SEND"
+	MenuDashboard     = "MENU_DASHBOARD"
+	MenuUsers         = "MENU_USERS"
+	MenuRoles         = "MENU_ROLES"
+	MenuSessions      = "MENU_SESSIONS"
+	MenuAudit         = "MENU_AUDIT"
+	MenuSecurity      = "MENU_SECURITY"
+	MenuSyslog        = "MENU_SYSLOG"
+	MenuNotifications = "MENU_NOTIFICATIONS"
 )
 
 // Permission adalah baris tabel CPPERMISSION.
