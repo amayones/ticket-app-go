@@ -1,0 +1,90 @@
+/* Animasi & efek khusus untuk UI kit (dipakai bersama utilitas Tailwind). */
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes ui-modal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ui-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ui-toast-progress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+@keyframes ui-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.anim-toast-in {
+  animation: ui-toast-in 0.25s ease-out both;
+}
+
+.anim-modal-pop {
+  animation: ui-modal-pop 0.22s ease-out both;
+}
+
+.anim-fade-in {
+  animation: ui-fade-in 0.18s ease-out both;
+}
+
+.toast-progress {
+  animation-name: ui-toast-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.06) 25%,
+    rgba(0, 0, 0, 0.12) 37%,
+    rgba(0, 0, 0, 0.06) 63%
+  );
+  background-size: 800px 100%;
+  animation: ui-shimmer 1.4s ease infinite;
+}
+
+@media (prefers-color-scheme: dark) {
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.06) 25%,
+      rgba(255, 255, 255, 0.12) 37%,
+      rgba(255, 255, 255, 0.06) 63%
+    );
+    background-size: 800px 100%;
+  }
+}

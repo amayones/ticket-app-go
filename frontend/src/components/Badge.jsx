@@ -1,0 +1,19 @@
+const TONES = {
+  neutral: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200',
+  success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+  danger: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+  warning: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  info: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+  brand: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
+}
+
+// Label status kecil. <Badge tone="success">Aktif</Badge>
+export default function Badge({ tone = 'neutral', children, className = '' }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${TONES[tone] || TONES.neutral} ${className}`}
+    >
+      {children}
+    </span>
+  )
+}

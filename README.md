@@ -21,6 +21,7 @@ skrip build satu pintu (`Taskfile.yml`), CI + Dockerfile siap pakai.
 
 ## Daftar Isi
 
+0. [Panduan Memakai Aplikasi — Klik per Klik](#0-panduan-memakai-aplikasi--klik-per-klik)
 1. [Mulai Cepat — Langkah demi Langkah](#1-mulai-cepat--langkah-demi-langkah)
 2. [Memahami Isi Proyek (Tur Folder)](#2-memahami-isi-proyek-tur-folder)
 3. [Cara Kerja Sistem (Alur Penting)](#3-cara-kerja-sistem-alur-penting)
@@ -28,6 +29,89 @@ skrip build satu pintu (`Taskfile.yml`), CI + Dockerfile siap pakai.
 5. [Referensi Perintah & Konfigurasi](#5-referensi-perintah--konfigurasi)
 6. [Deploy Production](#6-deploy-production)
 7. [Troubleshooting & FAQ](#7-troubleshooting--faq)
+
+---
+
+## 0. Panduan Memakai Aplikasi — Klik per Klik
+
+Bagian ini untuk yang **baru pertama kali membuka aplikasi**: dari browser kosong
+sampai bisa login, daftar, dan mengelola user. Baca bagian ini saja sampai bisa.
+
+### 0.1 Buka aplikasinya di browser
+
+Pastikan backend + frontend sudah jalan (cara menjalankannya ada di
+[Bagian 1](#1-mulai-cepat--langkah-demi-langkah)). Lalu buka alamat berikut:
+
+| Mode | Alamat yang dibuka | Keterangan |
+|------|--------------------|------------|
+| Development | `http://localhost:5173` | Frontend Vite (HMR, otomatis reload tiap simpan file) |
+| Production | `http://localhost:1067/` | Satu binary `app.exe` menyajikan frontend + API sekaligus |
+
+> Port `1067` bisa berbeda bila `APP_PORT` di `.env` diubah. Vite otomatis
+> mengikuti port tersebut untuk proxy `/api`, jadi tidak perlu setting manual.
+
+Saat halaman terbuka Anda melihat **header "Go Core"** di atas dan sebuah kartu
+form di tengah. Ada 2 tab di kanan header: **Login** dan **Register**.
+
+### 0.2 Daftar akun baru (tab Register)
+
+1. Klik tab **Register** di kanan atas.
+2. Isi 3 kolom:
+   - **Username** — minimal 3 karakter, contoh: `budi`
+   - **Email** — harus format email valid, contoh: `budi@example.com`
+   - **Password** — minimal 8 karakter (maks 72). Klik **ikon mata** di kanan
+     kolom untuk mengintip/menyembunyikan ketikan.
+3. Klik tombol **Register** (tombol menampilkan animasi loading saat diproses).
+4. Hasilnya:
+   - **Berhasil** → muncul **notifikasi toast hijau** "Akun dibuat" di kanan
+     atas layar, lalu otomatis pindah ke tab **Login**.
+   - **Gagal** (mis. username sudah dipakai) → muncul **kotak peringatan merah**
+     di dalam form. Kotak ini bisa ditutup dengan tombol **×** di kanannya.
+
+### 0.3 Masuk ke aplikasi (tab Login)
+
+1. Isi **Username** dan **Password** akun yang tadi didaftarkan.
+2. Klik **Login**.
+3. **Berhasil** → muncul toast hijau "Selamat datang kembali!" dan halaman
+   berganti ke **Daftar Pengguna**. Header kini menampilkan tombol
+   **Users** dan **Logout**.
+4. **Gagal** (salah password) → kotak merah "Login gagal" muncul di form dan
+   bisa di-close dengan tombol ×.
+
+### 0.4 Halaman Daftar Pengguna (Users)
+
+Halaman ini menampilkan semua akun dalam bentuk **kartu modern**:
+
+- Setiap baris punya **avatar lingkaran** (inisial username, warna gradien
+  berbeda tiap nama), username dengan awalan `@`, dan email di bawahnya.
+- Baris milik **akun Anda sendiri** ditandai lencana ungu **"Anda"** dan punya
+  3 tombol aksi di kanan:
+  | Tombol | Fungsi |
+  |--------|--------|
+  | ✏️ Pensil | **Edit profil** — membuka dialog: ubah username/email, atau isi password baru (kosongkan bila tidak diganti). Klik **Simpan perubahan**. |
+  | 🚪 Pintu | **Keluarkan semua sesi** — minta konfirmasi, lalu semua perangkat yang login sebagai Anda dikeluarkan (harus login ulang). |
+  | 🗑️ Sampah | **Hapus akun** — dialog konfirmasi merah. Bila menghapus **akun sendiri**, Anda otomatis keluar dan kembali ke halaman Login. |
+- **Pagination** — data tampil 10 per halaman. Pakai tombol **Sebelumnya /
+  Berikutnya** di bawah daftar. Teks "Menampilkan 1–10" menunjukkan posisi.
+- **Muat ulang** — tombol di kanan judul untuk memuat ulang data (ada animasi
+  *skeleton* saat memuat dan tampilan khusus bila data kosong).
+- Semua aksi penting menampilkan **toast**: hijau bila sukses, merah bila gagal
+  (toast hilang sendiri setelah ±4 detik, atau klik **×** untuk menutup manual).
+
+### 0.5 Keluar dari aplikasi (Logout)
+
+Klik tombol **Logout** di header → sesi berakhir, muncul toast "Anda telah
+keluar", dan kembali ke halaman Login.
+
+### 0.6 Hal-hal modern yang bisa dicoba
+
+- **Toast** bisa ditutup manual (tombol ×) atau biarkan hilang otomatis
+  (ada garis progres di bawahnya).
+- **Dialog** (edit/konfirmasi) bisa ditutup dengan tombol ×, klik area gelap di
+  luar dialog, atau tombol **Esc** di keyboard.
+- **Dark mode** mengikuti pengaturan sistem operasi/laptop Anda secara otomatis
+  (coba ubah Windows ke Dark mode → tampilan ikut gelap).
+- Tampilan responsif: buka di HP, kartu dan tombol menyesuaikan layar kecil.
 
 ---
 
@@ -240,25 +324,72 @@ Peran tiap folder:
 ```
 frontend/
 ├── index.html              # judul "Go Core", muat /src/main.jsx
-├── vite.config.js          # baca APP_PORT dari root .env → proxy /api otomatis sinkron
+├── vite.config.js          # plugin React + Tailwind; baca APP_PORT dari root
+│                           # .env → proxy /api otomatis sinkron
 ├── .env.example            # contoh VITE_API_URL (dev)
 ├── public/favicon.svg      # ikon (disajikan apa adanya)
 ├── src/
-│   ├── main.jsx            # entry React (StrictMode)
-│   ├── App.jsx             # shell: topbar Login/Register/Users + state login
-│   ├── App.css             # styling polos (tanpa nesting)
-│   ├── index.css           # base style Vite
+│   ├── main.jsx            # entry React (StrictMode) + import index.css & ui.css
+│   ├── App.jsx             # shell: dibungkus ToastProvider; header, navigasi,
+│   │                       # footer; state login + view
+│   ├── index.css           # token CSS + `@import "tailwindcss"`
 │   ├── api/client.js       # SATU-SATUNYA yang fetch ke backend:
-│   │                       # simpan token di localStorage, auto-refresh 1x saat 401
-│   └── pages/Auth.jsx      # LoginForm, RegisterForm, UsersList
+│   │                       # simpan token di localStorage, auto-refresh 1x saat
+│   │                       # 401; register/login/logout/listUsers/getUser/
+│   │                       # updateUser/deleteUser/logoutAll + currentUser()
+│   │                       # (baca user_id dari klaim JWT, tanpa request)
+│   ├── components/         # UI KIT modern (lihat 2.5): Toast, Alert, Modal,
+│   │   │                   # ConfirmDialog, Button, TextField/PasswordInput,
+│   │   │                   # Spinner/Skeleton, EmptyState, Badge, Pagination,
+│   │   │                   # Avatar, Card, Icon + index.js (barrel export)
+│   │   ├── ui.css          # keyframes: toast slide-in, modal pop, fade,
+│   │   │                   # progress bar, skeleton shimmer
+│   │   └── index.js        # `import { Button, Modal } from '../components'`
+│   └── pages/
+│       ├── Auth.jsx        # LoginForm, RegisterForm (TextField + Button +
+│       │                   # Alert + toast)
+│       ├── Users.jsx       # UsersList: kartu user, pagination 10/halaman,
+│       │                   # skeleton, empty state, aksi edit/logout-all/hapus
+│       └── EditUserModal.jsx # dialog edit (kirim hanya field yang berubah)
 └── dist/                   # HASIL build (di-ignore, jangan edit manual)
     └── .gitignore          # placeholder agar go:embed tetap compile di fresh clone
 ```
 
-Alur data frontend: `Auth.jsx` → `api/client.js` → `fetch(${VITE_API_URL}/api/...)`.
+Alur data frontend: `pages/*.jsx` → `api/client.js` → `fetch(${VITE_API_URL}/api/...)`.
 Saat dev (`npm run dev`), `VITE_API_URL` kosong → request relatif `/api/...` →
 diproxy Vite ke backend. Saat production (di-embed), frontend disajikan dari
 binary yang sama → request relatif otomatis benar.
+
+### 2.5 UI Kit Frontend — komponen modern (Tailwind + custom)
+
+Styling memakai **Tailwind CSS v4** (via plugin `@tailwindcss/vite`, nol file
+konfig — cukup `@import "tailwindcss"` di `index.css`) dipadu komponen custom
+di `src/components/`. Prinsip "modern" yang dipakai: varian warna semantik
+(success/error/warning/info/brand), ikon SVG inline sendiri (tanpa emoji,
+tanpa library ikon), animasi halus (`ui.css`), bisa di-close (tombol ×, klik
+backdrop, tombol Esc), responsif, dark-mode otomatis (`dark:` mengikuti
+`prefers-color-scheme`), dan aksesibel (`role="alert/dialog/status"`,
+`aria-label`).
+
+| Komponen | File | Cara pakai singkat |
+|----------|------|--------------------|
+| Toast (notifikasi global) | `Toast.jsx` + `useToast.js` | Bungkus app dengan `<ToastProvider>`, lalu `const t = useToast(); t.success('…')` / `t.error('…', { title })`. Auto-hilang 4 dtk (error 6 dtk), ada progres bar + tombol ×. |
+| Alert (banner inline) | `Alert.jsx` | `<Alert tone="error" title="…" closable>pesan</Alert>` — untuk error form. |
+| Modal (dialog) | `Modal.jsx` | `<Modal open title onClose footer size="sm\|md\|lg">` — portal ke body, kunci scroll, tutup via Esc/backdrop/×. |
+| ConfirmDialog | `ConfirmDialog.jsx` | `<ConfirmDialog open danger loading onConfirm onCancel message>` — untuk hapus & logout-all. |
+| Button | `Button.jsx` | `<Button variant="primary\|secondary\|danger\|ghost" size="sm\|md\|lg" loading fullWidth>` |
+| TextField / PasswordInput | `TextField.jsx` | `<TextField label error hint>`; password punya toggle intip (ikon mata). |
+| Spinner / PageLoader / Skeleton | `Spinner.jsx` | `<SkeletonRows rows={4}/>` untuk loading daftar. |
+| EmptyState | `EmptyState.jsx` | `<EmptyState title description action={<Button…/>}>` saat data kosong. |
+| Badge | `Badge.jsx` | `<Badge tone="brand">Anda</Badge>` |
+| Pagination | `Pagination.jsx` | `<Pagination offset limit count hasMore onPage>` — offset-based, cocok dengan `limit/offset` backend. |
+| Avatar | `Avatar.jsx` | `<Avatar name size="sm\|md\|lg"/>` — inisial + gradien stabil per nama. |
+| Card / CardTitle | `Card.jsx` | Pembungkus section konten yang konsisten. |
+| Icon | `icons.jsx` | `<Icon name="check\|x\|info\|warning\|eye\|pencil\|trash\|logout\|…"/>` |
+
+Contoh menambah komponen baru yang konsisten: buat `Baru.jsx` + pakai kelas
+Tailwind + varian `dark:` + ikon dari `icons.jsx`, lalu daftarkan di
+`components/index.js` agar bisa diimpor lewat barrel.
 
 ### 2.3 Build & skrip (`Taskfile.yml`, `scripts/`)
 
@@ -288,7 +419,7 @@ Taskfile.yml  →  task build | test | watch | dev | clean | run | tray | stop |
 | `Dockerfile` | Build image: node→build frontend, go→binary, distroless→jalan | ✅ jika ubah port/proses build |
 | `.github/workflows/ci.yml` | CI 3 job: backend, frontend, single-binary Windows | ✅ |
 | `go.mod` / `go.sum` | Dependensi Go (chi, jwt, mssqldb, crypto, godotenv) | via `go get`, jangan manual |
-| `frontend/package.json` | Dependensi React + script `dev/build/lint/preview` | via `npm install <pkg>` |
+| `frontend/package.json` | Dependensi React + Tailwind v4 + script `dev/build/lint/preview` | via `npm install <pkg>` (devDeps: `@tailwindcss/vite`, `tailwindcss`) |
 
 ---
 
@@ -452,6 +583,8 @@ Checklist sebelum live: `JWT_SECRET` acak ≥32 char & beda dari dev,
 | `missing required env: ...` saat start | `.env` belum dibuat/diisi → `copy .env.example .env`, isi 6 variabel wajib |
 | `ping database: ...` | SQL Server mati / kredensial salah / firewall → cek service SQL, login via SSMS, port 1433 |
 | `WARN frontend/dist missing` (dev) | Normal — build frontend hanya untuk prod → `task build-frontend` jika ingin hilangkan |
+| Kelas Tailwind tidak berefek di browser | Pastikan `npm run dev` jalan dari folder `frontend` dan file sudah disimpan (Tailwind v4 mendeteksi class otomatis, tanpa restart). Coba hard refresh `Ctrl+Shift+R` |
+| Toast/modal tidak muncul | Pastikan halaman dibungkus `<ToastProvider>` (sudah di `App.jsx`) dan panggil `useToast()` di dalam provider |
 | `localhost:1067` 404 di browser | Buka `http://localhost:1067/` (bukan `/api`); hard refresh `Ctrl+Shift+R` |
 | `Missing authorization header` / 401 | Endpoint privat butuh `Authorization: Bearer <access_token>` → login dulu; jika expired, client auto-refresh |
 | `Too many requests` (429) | Kena rate-limit → tunggu sesuai header `Retry-After`, jangan spam retry |

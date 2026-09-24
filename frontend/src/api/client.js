@@ -61,7 +61,23 @@ async function tryRefresh() {
   }
 }
 
+function parseJwt(token) {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(atob(payload))
+  } catch {
+    return null
+  }
+}
+
 export const api = {
+  // Profil user yang sedang login, dibaca dari klaim JWT (tanpa request).
+  currentUser() {
+    if (!store.access) return null
+    const claims = parseJwt(store.access)
+    if (!claims || !claims.user_id) return null
+    return { id: claims.user_id, username: claims.username || '' }
+  },
   async register(username, email, password) {
     return request('/api/users', { method: 'POST', body: { username, email, password } })
   },
@@ -82,6 +98,19 @@ export const api = {
   async listUsers(limit = 50, offset = 0) {
     const data = await request(`/api/users?limit=${limit}&offset=${offset}`, { auth: true })
     return Array.isArray(data) ? data : []
+  },
+  async getUser(id) {
+    return request(`/api/users/${id}`, { auth: true })
+  },
+  // Patch parsial: kirim hanya field yang berubah { username?, email?, password? }.
+  async updateUser(id, patch) {
+    return request(`/api/users/${id}`, { method: 'PUT', body: patch, auth: true })
+  },
+  async deleteUser(id) {
+    return request(`/api/users/${id}`, { method: 'DELETE', auth: true })
+  },
+  async logoutAll(id) {
+    return request(`/api/users/${id}/logout-all`, { method: 'POST', auth: true })
   },
   async health() {
     return request('/healthz')

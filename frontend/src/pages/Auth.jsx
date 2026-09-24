@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { api } from '../api/client.js'
+import { Alert, Button, Card, CardTitle, PasswordInput, TextField, useToast } from '../components'
 
 export function LoginForm({ onDone }) {
+  const toast = useToast()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -13,6 +15,7 @@ export function LoginForm({ onDone }) {
     setLoading(true)
     try {
       await api.login(username.trim(), password)
+      toast.success('Selamat datang kembali!')
       onDone()
     } catch (err) {
       setError(err.message)
@@ -22,38 +25,53 @@ export function LoginForm({ onDone }) {
   }
 
   return (
-    <form className="card" onSubmit={submit}>
-      <h2>Masuk</h2>
-      <label>
-        Username
-        <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
-      </label>
-      <label>
-        Password
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
-      </label>
-      {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={loading}>{loading ? '...' : 'Login'}</button>
-    </form>
+    <Card className="mx-auto w-full max-w-md">
+      <CardTitle description="Masuk untuk mengelola akun pengguna.">Masuk</CardTitle>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        {error && (
+          <Alert tone="error" title="Login gagal" closable onClose={() => setError('')}>
+            {error}
+          </Alert>
+        )}
+        <TextField
+          label="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+          placeholder="nama pengguna"
+          required
+        />
+        <PasswordInput
+          label="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          placeholder="••••••••"
+          required
+        />
+        <Button type="submit" loading={loading} fullWidth>
+          {loading ? 'Memeriksa…' : 'Login'}
+        </Button>
+      </form>
+    </Card>
   )
 }
 
 export function RegisterForm({ onDone }) {
+  const toast = useToast()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [ok, setOk] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function submit(e) {
     e.preventDefault()
     setError('')
-    setOk('')
     setLoading(true)
     try {
       await api.register(username.trim(), email.trim().toLowerCase(), password)
-      setOk('Registrasi berhasil, silakan login.')
+      toast.success('Registrasi berhasil. Silakan login.', { title: 'Akun dibuat' })
       onDone?.()
     } catch (err) {
       setError(err.message)
@@ -63,54 +81,44 @@ export function RegisterForm({ onDone }) {
   }
 
   return (
-    <form className="card" onSubmit={submit}>
-      <h2>Daftar</h2>
-      <label>
-        Username (min 3)
-        <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
-      </label>
-      <label>
-        Email
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
-      </label>
-      <label>
-        Password (min 8, max 72)
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
-      </label>
-      {error && <p className="error">{error}</p>}
-      {ok && <p className="ok">{ok}</p>}
-      <button type="submit" disabled={loading}>{loading ? '...' : 'Register'}</button>
-    </form>
-  )
-}
-
-export function UsersList() {
-  const [users, setUsers] = useState([])
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  async function load() {
-    setError('')
-    setLoading(true)
-    try {
-      setUsers(await api.listUsers())
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="card">
-      <h2>Users</h2>
-      <button type="button" onClick={load} disabled={loading}>{loading ? '...' : 'Muat daftar'}</button>
-      {error && <p className="error">{error}</p>}
-      <ul className="users">
-        {users.map((u) => (
-          <li key={u.id}>#{u.id} {u.username} — {u.email}</li>
-        ))}
-      </ul>
-    </div>
+    <Card className="mx-auto w-full max-w-md">
+      <CardTitle description="Buat akun baru untuk mengakses dashboard.">Daftar Akun</CardTitle>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        {error && (
+          <Alert tone="error" title="Registrasi gagal" closable onClose={() => setError('')}>
+            {error}
+          </Alert>
+        )}
+        <TextField
+          label="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+          placeholder="min. 3 karakter"
+          required
+        />
+        <TextField
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
+          placeholder="nama@email.com"
+          required
+        />
+        <PasswordInput
+          label="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="new-password"
+          placeholder="min. 8 karakter"
+          hint="Gunakan kombinasi huruf, angka, dan simbol agar lebih aman."
+          required
+        />
+        <Button type="submit" loading={loading} fullWidth>
+          {loading ? 'Mendaftar…' : 'Register'}
+        </Button>
+      </form>
+    </Card>
   )
 }
