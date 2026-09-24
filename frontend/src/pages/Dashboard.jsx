@@ -10,6 +10,7 @@ import {
   Icon,
   PageLoader,
   PasswordInput,
+  useSmoothLoading,
   useToast,
 } from '../components'
 
@@ -26,6 +27,7 @@ export default function Dashboard({ onNavigate }) {
   const [summary, setSummary] = useState(null)
   const [backendOk, setBackendOk] = useState(false)
   const [loading, setLoading] = useState(true)
+  const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
   const [newPass, setNewPass] = useState('')
   const [confirmPass, setConfirmPass] = useState('')
@@ -93,7 +95,9 @@ export default function Dashboard({ onNavigate }) {
     }
   }
 
-  if (loading) return <PageLoader label="Memuat dashboard…" />
+  // Muat pertama: fullscreen loader. Refresh berikut: konten tetap tampil
+  // (tidak berkedip) lalu data diperbarui — sama halusnya dengan halaman lain.
+  if (showLoading && !profile) return <PageLoader label="Memuat dashboard…" />
 
   return (
     <div className="flex flex-col gap-4">
@@ -206,25 +210,6 @@ export default function Dashboard({ onNavigate }) {
         </Card>
       )}
 
-      <Card>
-        <CardTitle description="Area ini disiapkan untuk modul inti begitu arah aplikasi ditentukan (mis. tabel M* untuk menu/halaman).">
-          Modul aplikasi — segera hadir
-        </CardTitle>
-        <div className="grid gap-2.5 sm:grid-cols-3">
-          {['Modul 1', 'Modul 2', 'Modul 3'].map((name) => (
-            <div
-              key={name}
-              className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center dark:border-zinc-700"
-            >
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 dark:bg-zinc-800">
-                <Icon name="plus" className="h-5 w-5" />
-              </span>
-              <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">{name}</p>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500">Slot modul — belum ditentukan</p>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   )
 }
