@@ -32,6 +32,7 @@ var ErrUsernameRequired = ErrInputRequired
 
 const (
 	MaxRefreshTokensPerUser = 5
+	codeGenRetries          = 5
 )
 
 // Re-export TTLs so callers have one source of truth.
@@ -41,34 +42,38 @@ const (
 )
 
 // UserServiceInterface allows handlers to depend on abstraction (mockable).
+// Identity is the public user CODE (CPUSER.CODE), never the numeric ID.
 type UserServiceInterface interface {
 	ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error)
-	GetUserByID(ctx context.Context, id int) (*models.User, error)
-	CreateUser(ctx context.Context, username, email, password string) (int, error)
-	UpdateUser(ctx context.Context, id int, input models.UpdateUserRequest) error
-	DeleteUser(ctx context.Context, id int) error
+	GetUserByCode(ctx context.Context, code string) (*models.User, error)
+	CreateUser(ctx context.Context, username, email, password string) (string, error)
+	UpdateUser(ctx context.Context, code string, input models.UpdateUserRequest) error
+	DeleteUser(ctx context.Context, code string) error
 	Login(ctx context.Context, username, password string) (accessToken, refreshToken string, err error)
 	RefreshAccessToken(ctx context.Context, refreshToken string) (string, string, error)
 	Logout(ctx context.Context, refreshToken string) error
-	LogoutAll(ctx context.Context, userID int) error
+	LogoutAll(ctx context.Context, userCode string) error
+	ListRoles(ctx context.Context) ([]models.Role, error)
 	CleanupExpiredTokens(ctx context.Context) (int64, error)
 }
 
 type UserService struct {
-	users     repositories.UserRepositoryInterface
-	refresh   repositories.RefreshTokenRepositoryInterface
+	users   repositories.UserRepositoryInterface
+	refresh repositories.RefreshTokenRepositoryInterface
+	roles   repositories.RoleRepositoryInterface
 	jwtSecret string
 }
 
 func NewUserService(
 	users repositories.UserRepositoryInterface,
 	refresh repositories.RefreshTokenRepositoryInterface,
+	roles repositories.RoleRepositoryInterface,
 	jwtSecret string,
 ) (*UserService, error) {
 	if err := utils.ValidateSecret(jwtSecret); err != nil {
 		return nil, fmt.Errorf("invalid JWT secret: %w", err)
 	}
-	return &UserService{users: users, refresh: refresh, jwtSecret: jwtSecret}, nil
+	return &UserService{users: users, refresh: refresh, roles: roles, jwtSecret: jwtSecret}, nil
 }
 
 func (s *UserService) validateUserInput(username, email, password string) error {
@@ -99,8 +104,10 @@ func (s *UserService) mapDBError(err error) error {
 	msg := err.Error()
 	// MSSQL unique violations: 2627 / 2601 (robust against constraint renames),
 	// plus legacy constraint-name fallback used by existing tests/mocks.
-	isUsernameViolation := strings.Contains(msg, "UQ_users_username")
-	isEmailViolation := strings.Contains(msg, "UQ_users_email")
+	isUsernameViolation := strings.Contains(msg, "UQ_CPUSER_USERNAME") ||
+		strings.Contains(msg, "UQ_users_username")
+	isEmailViolation := strings.Contains(msg, "UQ_CPUSER_EMAIL") ||
+		strings.Contains(msg, "UQ_users_email")
 	isUniqueViolation := strings.Contains(msg, "2627") || strings.Contains(msg, "2601")
 	switch {
 	case isEmailViolation:
@@ -117,6 +124,23 @@ func (s *UserService) mapDBError(err error) error {
 	}
 }
 
+// uniqueUserCode generates a USR-XXXXXXXX code not yet taken.
+func (s *UserService) uniqueUserCode(ctx context.Context) (string, error) {
+	for i := 0; i < codeGenRetries; i++ {
+		code, err := utils.GenerateUserCode()
+		if err != nil {
+			return "", err
+		}
+		if _, err := s.users.GetByCode(ctx, code); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return code, nil
+			}
+			return "", fmt.Errorf("check code: %w", err)
+		}
+	}
+	return "", fmt.Errorf("could not generate unique user code after %d tries", codeGenRetries)
+}
+
 func (s *UserService) ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error) {
 	users, err := s.users.List(ctx, limit, offset)
 	if err != nil {
@@ -129,8 +153,8 @@ func (s *UserService) ListUsers(ctx context.Context, limit, offset int) ([]model
 	return out, nil
 }
 
-func (s *UserService) GetUserByID(ctx context.Context, id int) (*models.User, error) {
-	user, err := s.users.GetByID(ctx, id)
+func (s *UserService) GetUserByCode(ctx context.Context, code string) (*models.User, error) {
+	user, err := s.users.GetByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -140,36 +164,46 @@ func (s *UserService) GetUserByID(ctx context.Context, id int) (*models.User, er
 	return user, nil
 }
 
-func (s *UserService) CreateUser(ctx context.Context, username, email, password string) (int, error) {
+func (s *UserService) CreateUser(ctx context.Context, username, email, password string) (string, error) {
 	username = utils.NormalizeUsername(username)
 	email = utils.NormalizeEmail(email)
 	if err := s.validateUserInput(username, email, password); err != nil {
-		return 0, err
+		return "", err
 	}
 	// Pre-check for friendlier errors (DB constraint remains source of truth).
 	if _, err := s.users.GetByUsername(ctx, username); err == nil {
-		return 0, ErrUsernameTaken
+		return "", ErrUsernameTaken
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("check username: %w", err)
+		return "", fmt.Errorf("check username: %w", err)
 	}
 	if _, err := s.users.GetByEmail(ctx, email); err == nil {
-		return 0, ErrEmailTaken
+		return "", ErrEmailTaken
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("check email: %w", err)
+		return "", fmt.Errorf("check email: %w", err)
 	}
 	hashed, err := utils.HashPassword(password)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
-	id, err := s.users.Create(ctx, &models.User{Username: username, Email: email, Password: hashed})
+	code, err := s.uniqueUserCode(ctx)
 	if err != nil {
-		return 0, s.mapDBError(err)
+		return "", err
 	}
-	return id, nil
+	user := &models.User{
+		Code:     code,
+		Username: username,
+		Email:    email,
+		Password: hashed,
+		RoleCode: models.DefaultRoleCode,
+	}
+	if err := s.users.Create(ctx, user); err != nil {
+		return "", s.mapDBError(err)
+	}
+	return code, nil
 }
 
-func (s *UserService) UpdateUser(ctx context.Context, id int, input models.UpdateUserRequest) error {
-	existing, err := s.users.GetByID(ctx, id)
+func (s *UserService) UpdateUser(ctx context.Context, code string, input models.UpdateUserRequest) error {
+	existing, err := s.users.GetByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrUserNotFound
@@ -208,7 +242,7 @@ func (s *UserService) UpdateUser(ctx context.Context, id int, input models.Updat
 	if !utils.IsValidEmail(email) {
 		return ErrInvalidEmail
 	}
-	updated := &models.User{ID: id, Username: username, Email: email, Password: passwordHash}
+	updated := &models.User{Code: code, Username: username, Email: email, Password: passwordHash}
 	if err := s.users.Update(ctx, updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrUserNotFound
@@ -218,25 +252,25 @@ func (s *UserService) UpdateUser(ctx context.Context, id int, input models.Updat
 	return nil
 }
 
-func (s *UserService) DeleteUser(ctx context.Context, id int) error {
-	if err := s.users.Delete(ctx, id); err != nil {
+func (s *UserService) DeleteUser(ctx context.Context, code string) error {
+	if err := s.users.Delete(ctx, code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrUserNotFound
 		}
 		return fmt.Errorf("delete user: %w", err)
 	}
-	// Best-effort session cleanup.
-	_ = s.refresh.DeleteByUserID(ctx, id)
+	// Best-effort session cleanup (CASCADE in DB is the backstop).
+	_ = s.refresh.DeleteByUserCode(ctx, code)
 	return nil
 }
 
-func (s *UserService) evictIfNeeded(ctx context.Context, userID int) error {
-	count, err := s.refresh.CountByUserID(ctx, userID)
+func (s *UserService) evictIfNeeded(ctx context.Context, userCode string) error {
+	count, err := s.refresh.CountByUserCode(ctx, userCode)
 	if err != nil {
 		return fmt.Errorf("count refresh tokens: %w", err)
 	}
 	for count >= MaxRefreshTokensPerUser {
-		if err := s.refresh.DeleteOldestByUserID(ctx, userID); err != nil {
+		if err := s.refresh.DeleteOldestByUserCode(ctx, userCode); err != nil {
 			return fmt.Errorf("evict oldest token: %w", err)
 		}
 		count--
@@ -259,7 +293,7 @@ func (s *UserService) Login(ctx context.Context, username, password string) (str
 	if !utils.CheckPasswordHash(password, user.Password) {
 		return "", "", ErrInvalidLogin
 	}
-	access, err := utils.GenerateAccessToken(s.jwtSecret, user.ID, user.Username)
+	access, err := utils.GenerateAccessToken(s.jwtSecret, user.Code, user.Username, user.RoleCode)
 	if err != nil {
 		return "", "", err
 	}
@@ -267,11 +301,11 @@ func (s *UserService) Login(ctx context.Context, username, password string) (str
 	if err != nil {
 		return "", "", err
 	}
-	if err := s.evictIfNeeded(ctx, user.ID); err != nil {
+	if err := s.evictIfNeeded(ctx, user.Code); err != nil {
 		return "", "", err
 	}
 	rt := models.RefreshToken{
-		UserID:    user.ID,
+		UserCode:  user.Code,
 		Token:     utils.HashRefreshToken(refresh),
 		ExpiresAt: time.Now().Add(RefreshTokenTTL),
 	}
@@ -297,7 +331,7 @@ func (s *UserService) RefreshAccessToken(ctx context.Context, refreshToken strin
 		_, _ = s.refresh.DeleteByTokenHash(ctx, hash)
 		return "", "", ErrInvalidRefresh
 	}
-	user, err := s.users.GetByID(ctx, rt.UserID)
+	user, err := s.users.GetByCode(ctx, rt.UserCode)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			_, _ = s.refresh.DeleteByTokenHash(ctx, hash)
@@ -305,7 +339,7 @@ func (s *UserService) RefreshAccessToken(ctx context.Context, refreshToken strin
 		}
 		return "", "", fmt.Errorf("refresh user lookup: %w", err)
 	}
-	newAccess, err := utils.GenerateAccessToken(s.jwtSecret, user.ID, user.Username)
+	newAccess, err := utils.GenerateAccessToken(s.jwtSecret, user.Code, user.Username, user.RoleCode)
 	if err != nil {
 		return "", "", err
 	}
@@ -319,7 +353,7 @@ func (s *UserService) RefreshAccessToken(ctx context.Context, refreshToken strin
 		return "", "", fmt.Errorf("invalidate old token: %w", err)
 	}
 	newRT := models.RefreshToken{
-		UserID:    user.ID,
+		UserCode:  user.Code,
 		Token:     utils.HashRefreshToken(newRefresh),
 		ExpiresAt: time.Now().Add(RefreshTokenTTL),
 	}
@@ -343,8 +377,16 @@ func (s *UserService) Logout(ctx context.Context, refreshToken string) error {
 	return nil
 }
 
-func (s *UserService) LogoutAll(ctx context.Context, userID int) error {
-	return s.refresh.DeleteByUserID(ctx, userID)
+func (s *UserService) LogoutAll(ctx context.Context, userCode string) error {
+	return s.refresh.DeleteByUserCode(ctx, userCode)
+}
+
+func (s *UserService) ListRoles(ctx context.Context) ([]models.Role, error) {
+	roles, err := s.roles.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list roles: %w", err)
+	}
+	return roles, nil
 }
 
 func (s *UserService) CleanupExpiredTokens(ctx context.Context) (int64, error) {
