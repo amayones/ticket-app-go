@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api } from '../api/client.js'
+import { createRole, deleteRole, getRole, listPermissions, listRoles, setRolePermissions } from './api.js'
+
+export const meta = { label: 'Role & Permission', icon: 'shield', order: 2 }
 import {
   Alert,
   Badge,
@@ -14,7 +16,7 @@ import {
   TextField,
   useSmoothLoading,
   useToast,
-} from '../components'
+} from '../../../components'
 
 function groupPermissions(perms) {
   const groups = {}
@@ -46,7 +48,7 @@ export default function Roles() {
     setLoading(true)
     setError('')
     try {
-      const [r, p] = await Promise.all([api.listRoles(), api.listPermissions()])
+      const [r, p] = await Promise.all([listRoles(), listPermissions()])
       setRoles(Array.isArray(r) ? r : [])
       setPerms(Array.isArray(p) ? p : [])
       if (!selected && r.length > 0) setSelected(r[0].code)
@@ -63,8 +65,7 @@ export default function Roles() {
 
   useEffect(() => {
     if (!selected) return
-    api
-      .getRole(selected)
+    getRole(selected)
       .then((d) => setChecked(d.permissions || []))
       .catch(() => setChecked([]))
   }, [selected])
@@ -74,7 +75,7 @@ export default function Roles() {
   async function save() {
     setSaving(true)
     try {
-      await api.setRolePermissions(selected, checked)
+      await setRolePermissions(selected, checked)
       toast.success(`Permission role ${selected} diperbarui (${checked.length} item).`)
     } catch (err) {
       toast.error(err.message, { title: 'Gagal menyimpan' })
@@ -105,7 +106,7 @@ export default function Roles() {
     }
     setCreating(true)
     try {
-      await api.createRole(newCode.trim(), newName.trim())
+      await createRole(newCode.trim(), newName.trim())
       toast.success(`Role ${newCode.trim().toUpperCase()} dibuat. Atur permission-nya di matriks.`)
       setNewCode('')
       setNewName('')
@@ -122,7 +123,7 @@ export default function Roles() {
   async function remove() {
     if (!deleting) return
     try {
-      await api.deleteRole(deleting.code)
+      await deleteRole(deleting.code)
       toast.success(`Role ${deleting.code} dihapus.`)
       setDeleting(null)
       setSelected(null)
