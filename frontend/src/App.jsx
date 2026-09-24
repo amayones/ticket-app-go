@@ -3,6 +3,7 @@ import { api } from './api/client.js'
 import { Badge, Button, Icon, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
 import { LoginForm } from './pages/Auth.jsx'
 import Audit from './pages/Audit.jsx'
+import Dashboard from './pages/Dashboard.jsx'
 import Notifications from './pages/Notifications.jsx'
 import Roles from './pages/Roles.jsx'
 import Security from './pages/Security.jsx'
@@ -11,9 +12,10 @@ import Syslog from './pages/Syslog.jsx'
 import UsersList from './pages/Users.jsx'
 
 const NAV = [
-  { key: 'users', label: 'User Account', icon: 'users', admin: false },
+  { key: 'dashboard', label: 'Dashboard', icon: 'home', admin: false },
+  { key: 'users', label: 'User Account', icon: 'users', admin: true },
   { key: 'roles', label: 'Role & Permission', icon: 'shield', admin: true },
-  { key: 'sessions', label: 'Sesi & Auth', icon: 'key', admin: false },
+  { key: 'sessions', label: 'Sesi & Auth', icon: 'key', admin: true },
   { key: 'audit', label: 'Audit Log', icon: 'list', admin: true },
   { key: 'security', label: 'Security Center', icon: 'shield', admin: true },
   { key: 'syslog', label: 'System Log', icon: 'terminal', admin: true },
@@ -30,13 +32,13 @@ function sidebarPref() {
 
 function Shell() {
   const toast = useToast()
-  const [view, setView] = useState(api.isLoggedIn() ? 'users' : 'login')
+  const [view, setView] = useState(api.isLoggedIn() ? 'dashboard' : 'login')
   const [loggedIn, setLoggedIn] = useState(api.isLoggedIn())
   const [collapsed, setCollapsed] = useState(sidebarPref)
   const me = api.currentUser()
   const isAdmin = me?.role === 'ADMIN'
   const visibleNav = NAV.filter((n) => !n.admin || isAdmin)
-  const activeNav = visibleNav.some((n) => n.key === view) ? view : 'users'
+  const activeNav = visibleNav.some((n) => n.key === view) ? view : 'dashboard'
 
   async function logout() {
     await api.logout()
@@ -47,7 +49,7 @@ function Shell() {
 
   function handleAuth() {
     setLoggedIn(true)
-    setView('users')
+    setView('dashboard')
     toast.success('Selamat datang kembali!')
   }
 
@@ -237,9 +239,10 @@ function Shell() {
         <main className="mx-auto w-full max-w-5xl flex-1 px-3 py-4 sm:px-4 sm:py-6">
           {/* key memicu animasi masuk yang halus tiap ganti menu */}
           <div key={activeNav} className="anim-page-in">
-            {activeNav === 'users' && <UsersList onAccountDeleted={handleAccountDeleted} />}
+            {activeNav === 'dashboard' && <Dashboard onNavigate={setView} />}
+            {activeNav === 'users' && isAdmin && <UsersList onAccountDeleted={handleAccountDeleted} />}
             {activeNav === 'roles' && isAdmin && <Roles />}
-            {activeNav === 'sessions' && <Sessions />}
+            {activeNav === 'sessions' && isAdmin && <Sessions />}
             {activeNav === 'audit' && isAdmin && <Audit />}
             {activeNav === 'security' && isAdmin && <Security />}
             {activeNav === 'syslog' && isAdmin && <Syslog />}
