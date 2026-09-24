@@ -30,6 +30,28 @@
   }
 }
 
+/* Transisi halus tiap ganti menu: fade + naik sedikit, tanpa geser layout. */
+@keyframes ui-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade-in sekali saat aplikasi / halaman login pertama tampil (anti kaget). */
+@keyframes ui-boot {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes ui-toast-progress {
   from {
     width: 100%;
@@ -58,6 +80,14 @@
 
 .anim-fade-in {
   animation: ui-fade-in 0.18s ease-out both;
+}
+
+.anim-page-in {
+  animation: ui-page-in 0.24s ease-out both;
+}
+
+.anim-boot {
+  animation: ui-boot 0.3s ease-out both;
 }
 
 .toast-progress {
