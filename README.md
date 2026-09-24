@@ -1,862 +1,517 @@
-# go-core
+# Go Core
 
-Aplikasi web **Go + React dalam satu binary**: backend Go (chi) + frontend React (Vite)
-digabung via `//go:embed`, sehingga deploy production cukup membawa
-**3 file**: `app.exe` + `stop.exe` + `.env`.
+Aplikasi web **Go + React** untuk login, manajemen user, role, permission menu, audit, system log, dan notifikasi.
 
+- Backend: Go + chi
+- Frontend: React + Vite
+- Database utama saat ini: **SQL Server**
+- Development: backend `http://localhost:1067`, frontend `http://localhost:5173`
+- Production: frontend dan API disajikan oleh satu `app.exe`
+
+```text
+Browser :5173 ── Vite proxy ──► app.exe :1067 ──► SQL Server database Go
+Browser :1067 ─────────────────► app.exe :1067 ──► SQL Server database Go
 ```
-Browser ──► app.exe :1067 ──┬──► /               (frontend React, hasil build Vite)
-                             └──► /api/*          (REST API JSON)
-                             └──► /healthz        (health check)
-                                      │
-                                      ▼
-                               SQL Server (database Go)
-```
 
-**Fitur utama:** login user + RBAC, JWT access 15 menit + refresh token rotasi
-7 hari (disimpan sebagai hash SHA-256), audit log, system log, notifikasi,
-rate-limit, database sqlserver/postgres/sqlite, single-binary embed,
-skrip build satu pintu (`Taskfile.yml`), CI + Dockerfile siap pakai.
+## Fitur Utama
+
+- Login tanpa registrasi publik
+- User hanya dibuat oleh admin
+- JWT access 15 menit
+- Refresh token 7 hari dengan rotasi
+- Maksimal 5 sesi per user
+- RBAC sederhana: **satu permission untuk satu menu**
+- Role `ADMIN` hanya dapat memakai menu admin yang diberi aksesnya
+- Role non-ADMIN dapat memakai menu `user/` bila role diberi akses menu tersebut
+- Role & Permission: daftar role di kiri, matriks akses menu di kanan
+- Audit log, system log, dan notifikasi
+- Popup login ulang ketika sesi habis tanpa pindah halaman
+- Build frontend dan backend dalam satu binary
 
 ---
 
-## Daftar Isi
+# 1. Setup dari Nol sampai Aplikasi Jalan
 
-- [Mulai dari Nol — Fresh Clone sampai Jalan](#mulai-dari-nol--fresh-clone-sampai-jalan)
-- [Resep: Role Baru & Menu Baru](#resep-role-baru--menu-baru)
-0. [Panduan Memakai Aplikasi — Klik per Klik](#0-panduan-memakai-aplikasi--klik-per-klik)
-1. [Mulai Cepat — Langkah demi Langkah](#1-mulai-cepat--langkah-demi-langkah)
-2. [Memahami Isi Proyek (Tur Folder)](#2-memahami-isi-proyek-tur-folder)
-3. [Cara Kerja Sistem (Alur Penting)](#3-cara-kerja-sistem-alur-penting)
-4. [Referensi API](#4-referensi-api)
-5. [Referensi Perintah & Konfigurasi](#5-referensi-perintah--konfigurasi)
-6. [Deploy Production](#6-deploy-production)
-7. [Troubleshooting & FAQ](#7-troubleshooting--faq)
+Ikuti bagian ini secara berurutan.
 
----
+## 1.1. Prepare Komputer
 
-## Mulai dari Nol — Fresh Clone sampai Jalan
+Prasyarat:
 
-Ikuti 1–7 berurutan. Hasil akhir: database sama persis seperti database dev
-(9 tabel + seed), aplikasi jalan, bisa login `admin`/`admin`.
-
-### 1. Prasyarat
-
-| Kebutuhan | Versi | Cara cek |
-|-----------|-------|----------|
+| Kebutuhan | Versi | Cek |
+|---|---:|---|
 | Go | 1.27+ | `go version` |
 | Node.js | 20+ | `node --version` |
-| SQL Server | 2019+ (atau pilih sqlite/postgres, lihat langkah 4) | `sqlcmd -S localhost,1433 -U <user> -P <pass> -Q "SELECT 1"` |
-| Git | bebas | `git --version` |
-
-### 2. Clone
-
-```bash
-git clone <url-repo>.git
-cd go-core
-```
-
-### 3. Buat `.env`
-
-```bash
-copy .env.example .env   # Windows
-# atau: cp .env.example .env
-notepad .env
-```
-
-Isi wajib: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`,
-`DB_PASSWORD`, `JWT_SECRET` (min 32 char acak: `openssl rand -hex 32`).
-`DB_CONNECTION` default `sqlserver` — ganti ke `postgres`/`sqlite` bila
-perlu (lihat tabel env di Bagian 5).
-
-### 4. Siapkan database (pilih SATU engine)
-
-**A. SQL Server** — buat DB kosong lalu migrasi + seed:
-
-```bash
-sqlcmd -S localhost,1433 -U <user> -P <pass> -Q "CREATE DATABASE Go"
-sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate.sql
-sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate2_rbac.sql
-sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/seed-admin.sql
-# atau sekaligus: task migrate (2 file migrasi), lalu seed manual 1 file
-```
-
-**B. SQLite** (tanpa server): `sqlite3 ./data/go-core.db < scripts/schema.sqlite.sql`
-lalu set `DB_CONNECTION=sqlite` + `DB_DATABASE=./data/go-core.db`.
-
-**C. PostgreSQL**: buat DB kosong → `psql -h … -U … -d … -f scripts/schema.postgres.sql`
-→ set `DB_CONNECTION=postgres` (+ host/port/database/username/password).
-
-### 5. Samakan isi dengan database dev (checklist)
-
-```bash
-sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -Q "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME"
-```
-
-Harus tepat **9 tabel**: `CPAUDITLOG`, `CPNOTIFLOG`, `CPNOTIFTEMPLATE`,
-`CPPERMISSION`, `CPREFRESHTOKEN`, `CPROLE`, `CPROLEPERMISSION`, `CPSYSLOG`,
-`CPUSER` (tanpa sisa `users`/`refresh_tokens` lowercase). Seed wajib:
-`CPROLE` = `ADMIN`+`USER` (2), `CPPERMISSION` = 8, `CPROLEPERMISSION` = 9
-(ADMIN 8, USER 1), `CPNOTIFTEMPLATE` = 3 (`NTPL-WELCOME/RESET/ALERT`),
-`CPUSER` = 2 (`admin`/ADMIN, `user`/USER).
-
-### 6. Jalankan
-
-```bash
-./scripts/start.sh     # 1 terminal: backend :1067 + frontend :5173
-# berhenti: Ctrl+C
-```
-
-### 7. Buka & login
-
-Buka `http://localhost:5173` → login `admin` / `admin` (atau `user` /
-`user` untuk role USER). **Langsung ganti kedua password** via Dashboard
-> Keamanan akun. Lanjut ke Bagian 0 untuk tur tiap menu.
-
----
-
-## Resep: Role Baru & Menu Baru
-
-> Panduan langkah-demi-langkah + template siap-copy ada di
-> **`tutorial/README.md`** (`tutorial/templates/`: mainpage `index.jsx`,
-> `api.js` frontend, `new-role.sql`). Ringkasannya di bawah.
-
-### Role baru (mis. `EDITOR`)
-
-Role baru **tidak membutuhkan folder menu khusus**. Menu `user/` hanya
-ditampilkan jika role tersebut memiliki permission `MENU_<NAMA_MENU>`.
-Jadi role bisa memakai menu yang sama, tetapi hak akses tiap role
-diatur satu checkbox per menu di matriks RBAC.
-
-1. Buat role: menu Role & Permission → **Role baru** (kode huruf besar).
-2. Di matriks permission, centang menu yang boleh dibuka role tersebut,
-   lalu **Simpan**. Menu tanpa centang tidak tampil di sidebar.
-3. Pindahkan user: User Account → pensil → dropdown Role. Atau via SQL
-   `UPDATE CPUSER SET ROLE_CODE='EDITOR' WHERE CODE='…'`.
-4. User tersebut **login ulang** agar ROLE dan permission terbaru dimuat.
-5. Cek: menu `user/` yang diberi akses tampil; menu `admin/` tetap tidak
-   tampil untuk role non-ADMIN.
-
-### Menu baru (langsung tampil di sidebar)
-
-**Frontend** — tambah 1 folder (nama folder = key menu, huruf kecil).
-Hanya 2 tipe:
-
-| Folder | Dilihat oleh |
-|--------|--------------|
-| `frontend/src/menus/admin/<menu>/` | role `ADMIN` saja |
-| `frontend/src/menus/user/<menu>/` | role yang memiliki permission menunya |
-
-```
-frontend/src/menus/user/laporan/
-├── index.jsx   # WAJIB: mainpage, `export default function`, + opsional:
-│               # export const meta = { label: 'Judul', icon: 'bell', order: 8 }
-├── api.js      # fungsi menu ini (pakai apiRequest dari api/client.js)
-└── components/ # pecahan halaman (opsional)
-```
-
-Contoh: `menus/admin/laporan/index.jsx` hanya tampil untuk ADMIN;
-`menus/user/laporan/` tampil hanya untuk role yang diberi permission
-`MENU_LAPORAN`. **Satu permission menu memberi akses ke seluruh fungsi
-di menu tersebut** (tambah, ubah, hapus, kirim, dan lainnya); tidak ada
-permission per fungsi. Permission yang sama dipakai sebagai proteksi
-endpoint backend, sehingga request langsung tanpa akses mendapat `403`.
-Detail langkah-demi-langkah + checkpoint ada di `tutorial/README.md`
-(Kasus A untuk admin, Kasus B untuk semua role). Daftar ikon valid:
-lihat `components/icons.jsx` (`PATHS`).
-
-**Backend** — tambah 1 folder + 1 baris registrasi:
-
-```
-features/<menu>/
-├── <menu>_repository.go  # type Repository + NewRepository(db, dialect);
-│                         # SQL SELALU di variabel `query`, di-run via
-│                         # r.dialect.Bind(query), hasilnya dipetakan ke struct
-├── <menu>_service.go     # type Service + NewService(...) + ServiceInterface
-├── <menu>_handler.go     # type Handler + NewHandler(...) + method per endpoint
-└── (tambah *_test.go bila ada logika yang perlu diuji)
-```
-
-Lalu di `routes/routes.go`: tambah 1 field di `routes.Deps` + 1 blok route
-(contoh blok `/admin` yang sudah ada), dan rakit di `main.go` mengikuti
-pola `// Wiring per menu`. Konvensi nama (konsisten semua menu): repo
-`List/GetByX/Create/Update/Delete/Count`, service sama + kata kerja domain
-(`Login`, `Send`, `Prune`), handler bernama endpointnya (`GetUsers`,
-`SendNotification`), error service via `web.ServiceError`.
-
----
-
-## 0. Panduan Memakai Aplikasi — Klik per Klik
-
-Bagian ini untuk yang **baru pertama kali membuka aplikasi**: dari browser kosong
-sampai bisa login, daftar, dan mengelola user. Baca bagian ini saja sampai bisa.
-
-### 0.1 Buka aplikasinya di browser
-
-Pastikan backend + frontend sudah jalan (cara menjalankannya ada di
-[Bagian 1](#1-mulai-cepat--langkah-demi-langkah)). Lalu buka alamat berikut:
-
-| Mode | Alamat yang dibuka | Keterangan |
-|------|--------------------|------------|
-| Development | `http://localhost:5173` | Frontend Vite (HMR, otomatis reload tiap simpan file) |
-| Production | `http://localhost:1067/` | Satu binary `app.exe` menyajikan frontend + API sekaligus |
-
-> Port `1067` bisa berbeda bila `APP_PORT` di `.env` diubah. Vite otomatis
-> mengikuti port tersebut untuk proxy `/api`, jadi tidak perlu setting manual.
-
-Saat halaman terbuka Anda melihat **kartu Login di tengah layar** (tanpa navbar —
-halaman ini fokus untuk login saja).
-
-> **Tidak ada registrasi publik.** Akun hanya bisa dibuat oleh **admin** lewat
-> menu User Account → **Tambah User**. Akun bawaan (2 saja):
-> `admin` / `admin` (role ADMIN) dan `user` / `user` (role USER).
-> Ganti password keduanya setelah login pertama via Edit profil → Password baru.
-
-### 0.2 Masuk ke aplikasi (Login)
-
-1. Isi **Username** dan **Password** (minta ke admin bila belum punya akun).
-   Klik **ikon mata** di kanan kolom password untuk mengintip ketikan.
-2. Klik **Login** (tombol menampilkan animasi loading saat diproses).
-3. **Berhasil** → toast hijau "Selamat datang kembali!" dan masuk ke
-   **Dashboard** dalam aplikasi **sidebar** (layar lebar) atau navigasi
-   atas (layar HP). Role USER hanya melihat Dashboard; ADMIN melihat
-   semua menu (lihat 0.6).
-4. **Gagal** (salah password) → **kotak merah** "Login gagal" muncul di form
-   dan bisa ditutup dengan tombol **×**.
-
-### 0.3b Dashboard (halaman pertama setelah login)
-
-- **Kartu profil**: avatar, `@username`, kode, badge role.
-- **Keamanan akun**: form ganti password sendiri (isi 2x untuk konfirmasi).
-- **Admin** juga melihat: ringkasan sistem (pengguna, sesi, role, error)
-  + jalan pintas ke menu, di atas kartu yang sama.
-
-### 0.4 Halaman Daftar Pengguna (Users, khusus ADMIN)
-
-Halaman ini menampilkan semua akun dalam bentuk **kartu modern**:
-
-- Setiap baris punya **avatar lingkaran** (inisial username), username
-  dengan awalan `@`, kode, badge role, dan email di bawahnya.
-- Baris milik **akun Anda sendiri** ditandai lencana ungu **"Anda"** dan punya
-  3 tombol aksi di kanan:
-  | Tombol | Fungsi |
-  |--------|--------|
-  | ✏️ Pensil | **Edit profil** — membuka dialog: ubah username/email, atau isi password baru (kosongkan bila tidak diganti). Klik **Simpan perubahan**. |
-  | 🚪 Pintu | **Keluarkan semua sesi** — minta konfirmasi, lalu semua perangkat yang login sebagai Anda dikeluarkan (harus login ulang). |
-  | 🗑️ Sampah | **Hapus akun** — dialog konfirmasi merah. Bila menghapus **akun sendiri**, Anda otomatis keluar dan kembali ke halaman Login. |
-- **Pagination** — data tampil 10 per halaman. Pakai tombol **Sebelumnya /
-  Berikutnya** di bawah daftar. Teks "Menampilkan 1–10" menunjukkan posisi.
-- **Muat ulang** — tombol di kanan judul untuk memuat ulang data (ada animasi
-  *skeleton* saat memuat dan tampilan khusus bila data kosong).
-- Semua aksi penting menampilkan **toast**: hijau bila sukses, merah bila gagal
-  (toast hilang sendiri setelah ±4 detik, atau klik **×** untuk menutup manual).
-
-### 0.5 Keluar dari aplikasi (Logout)
-
-Klik tombol **Logout** di header → sesi berakhir, muncul toast "Anda telah
-keluar", dan kembali ke halaman Login.
-
-### 0.6 Menu-menu admin (setelah login)
-
-Setelah login Anda masuk ke aplikasi **sidebar** (layar lebar) atau navigasi
-atas (layar HP). Menu yang tampil tergantung role:
-
-| Menu | Untuk | Isi & cara pakai |
-|------|-------|------------------|
-| **Dashboard** | semua | Halaman pertama (lihat 0.3b). USER **hanya** melihat ini. |
-| **User Account** | ADMIN | Kartu user + avatar + badge role (lihat 0.4). Tombol **Tambah User** (username, email, password awal + role) dan dropdown Role di dialog Edit. Admin bisa edit/cabut-sesi/hapus akun lain. |
-| **Role & Permission** | ADMIN | Daftar role tampil di sebelah kiri; matriks permission per menu tampil di sebelah kanan. Pilih role, centang menu yang boleh diakses, lalu **Simpan permission**. Role `ADMIN`/`USER` bawaan tidak bisa dihapus; role yang masih dipakai user tidak bisa dihapus. |
-| **Sesi & Auth** | ADMIN | Tab **Sesi saya**: daftar perangkat login + tombol sampah untuk mencabut satu sesi + tombol cabut semua. Tab **Semua sesi**: semua user + pagination. |
-| **Audit Log** | ADMIN | Tabel siapa–apa–kapan–IP. Filter: aksi (LOGIN, DELETE_USER, …), entitas, kode pelaku + tombol Filter/Reset + pagination. |
-| **Security Center** | ADMIN | 6 kartu ringkasan (user, role, sesi aktif, audit 24 jam, error 24 jam, status), aktivitas terkini, dan daftar kebijakan keamanan aktif. |
-| **System Log** | ADMIN | Filter level SEMUA/ERROR/WARN/INFO + tabel + tombol **Bersihkan lama** (hapus log > N hari, tercatat di audit). |
-| **Notifikasi** | ADMIN | Tab **Template**: buat/edit/nonaktifkan/hapus template (channel EMAIL/PUSH/INAPP, variabel `{{nama}}` `{{kode}}` `{{role}}` `{{detail}}`). Tombol **Kirim/Test**: pilih template + penerima + isi variabel → tercatat di tab **Riwayat kirim**. |
-
-### 0.7 Hal-hal modern yang bisa dicoba
-
-- **Toast** bisa ditutup manual (tombol ×) atau biarkan hilang otomatis
-  (ada garis progres di bawahnya).
-- **Dialog** (edit/konfirmasi) bisa ditutup dengan tombol ×, klik area gelap di
-  luar dialog, atau tombol **Esc** di keyboard.
-- **Tema terang sebagai default.** Ganti ke gelap via tombol **bulan/matahari**
-  di sidebar (bawah, samping Logout) atau topbar HP — pilihan tersimpan di
-  browser dan tetap dipakai saat dibuka lagi.
-- **Sidebar bisa dilipat** via tombol chevron di atas sidebar (pilihan
-  tersimpan); konten halaman otomatis melebar/menyempit mengikuti.
-- Tampilan responsif: buka di HP, kartu dan tombol menyesuaikan layar kecil.
-
----
-
-## 1. Mulai Cepat — Langkah demi Langkah
-
-Ikuti langkah 1–6 berurutan. Estimasi: ±15 menit untuk pemula.
-
-### Langkah 0 — Siapkan prasyarat
-
-| Kebutuhan | Versi minimal | Cara cek |
-|-----------|---------------|----------|
-| Go | 1.27 | `go version` |
-| Node.js | 20 (lihat `.nvmrc`) | `node --version` |
 | npm | 9+ | `npm --version` |
-| SQL Server | 2019+ / Express juga bisa | SSMS / `sqlcmd` konek |
-| Git | bebas | `git --version` |
-| `task` (opsional) | 3.x | `task --version` — kalau belum ada, semua perintah `task x` bisa diganti `bash ./scripts/x.sh` |
+| SQL Server | 2019+ | `sqlcmd -?` |
+| Task CLI | opsional | `task --version` |
 
-> SQL Server harus **sudah berjalan** sebelum backend dijalankan
-> (cek via `services.msc` → `SQL Server (MSSQLSERVER)` → Running).
+Clone repository:
 
-### Langkah 1 — Clone dan masuk folder
-
-```powershell
+```bash
 git clone <url-repo>.git
 cd go-core
 ```
 
-### Langkah 2 — Buat file `.env`
+## 1.2. Install Dependency Frontend
 
-```powershell
+```bash
+task install
+```
+
+Tanpa Task CLI:
+
+```bash
+cd frontend
+npm ci
+cd ..
+```
+
+## 1.3. Membuat File `.env`
+
+Windows CMD:
+
+```cmd
 copy .env.example .env
 notepad .env
 ```
 
-Isi yang **wajib diisi** (sisanya boleh default):
-
-```ini
-DB_USERNAME=...        # user SQL Server kamu
-DB_PASSWORD=...        # password SQL Server kamu
-JWT_SECRET=...         # minimal 32 karakter acak (lihat bawah)
-```
-
-Buat `JWT_SECRET` acak (pilih salah satu):
+PowerShell:
 
 ```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+Isi minimal variabel ini:
+
+```env
+APP_PORT=1067
+DB_CONNECTION=sqlserver
+DB_HOST=localhost
+DB_PORT=1433
+DB_DATABASE=Go
+DB_USERNAME=may
+DB_PASSWORD=password-database-anda
+JWT_SECRET=ganti-dengan-string-acak-minimal-32-karakter
+```
+
+Buat `JWT_SECRET` acak:
+
+```bash
 openssl rand -hex 32
 ```
 
-Daftar lengkap variabel ada di [tabel konfigurasi](#51-variabel-environment).
+Jangan commit `.env`. File ini hanya untuk konfigurasi lokal.
 
-### Langkah 3 — Buat database + tabel (sekali saja)
+## 1.4. Membuat Database SQL Server
 
-Buka SSMS / `sqlcmd`, jalankan:
+Buka SQL Server Management Studio atau gunakan `sqlcmd`.
 
-Skema memakai tabel **huruf besar prefix `CP`** (core app) dengan relasi via
-**CODE** (kolom `ID` tetap ada sebagai IDENTITY tapi tidak dipakai relasi/API):
+### Membuat database kosong
 
 ```sql
-CREATE DATABASE Go;
+IF DB_ID(N'Go') IS NULL
+BEGIN
+  CREATE DATABASE [Go];
+END
 GO
-USE Go;
-GO
-CREATE TABLE CPROLE (
-  ID INT IDENTITY(1,1) PRIMARY KEY,
-  CODE NVARCHAR(20) NOT NULL UNIQUE,   -- 'ADMIN', 'USER'
-  NAME NVARCHAR(100) NOT NULL,
-  CREATED_AT DATETIME NOT NULL DEFAULT GETDATE(),
-  UPDATED_AT DATETIME NOT NULL DEFAULT GETDATE()
-);
-INSERT INTO CPROLE (CODE, NAME) VALUES ('ADMIN', 'Administrator'), ('USER', 'Pengguna');
-CREATE TABLE CPUSER (
-  ID INT IDENTITY(1,1) PRIMARY KEY,
-  CODE NVARCHAR(20) NOT NULL UNIQUE,   -- 'USR-XXXXXXXX', identitas publik
-  USERNAME NVARCHAR(50) NOT NULL UNIQUE,
-  EMAIL NVARCHAR(255) NOT NULL UNIQUE,
-  PASSWORD NVARCHAR(255) NOT NULL,
-  ROLE_CODE NVARCHAR(20) NOT NULL DEFAULT 'USER' FOREIGN KEY REFERENCES CPROLE(CODE),
-  CREATED_AT DATETIME NOT NULL DEFAULT GETDATE(),
-  UPDATED_AT DATETIME NOT NULL DEFAULT GETDATE()
-);
-CREATE TABLE CPREFRESHTOKEN (
-  ID INT IDENTITY(1,1) PRIMARY KEY,
-  USER_CODE NVARCHAR(20) NOT NULL FOREIGN KEY REFERENCES CPUSER(CODE) ON DELETE CASCADE,
-  TOKEN NVARCHAR(512) NOT NULL UNIQUE, -- berisi SHA-256 hex, BUKAN token asli
-  EXPIRES_AT DATETIME NOT NULL,
-  CREATED_AT DATETIME NOT NULL DEFAULT GETDATE()
-);
 ```
 
-> Punya database lama (`users`/`refresh_tokens`)? Jangan buat manual — jalankan
-> migrasi otomatis yang memindahkan data + membuat kode + menghapus tabel lama:
-> `task migrate` (butuh `sqlcmd`) atau
-> `sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate.sql`.
-> Jadikan user pertama sebagai admin:
-> Menambah admin lain: buat user via menu, lalu
-> `UPDATE CPUSER SET ROLE_CODE='ADMIN' WHERE USERNAME='user';`
-> (lalu user tersebut login ulang agar klaim `role` di JWT terbarui).
->
-> Migrasi lanjutan (`scripts/migrate2_rbac.sql`, otomatis ikut via `task migrate`):
-> tabel `CPPERMISSION` (satu permission per menu) + `CPROLEPERMISSION` (ADMIN=semua,
-> USER=dashboard) + `CPAUDITLOG` + `CPSYSLOG` + `CPNOTIFTEMPLATE` (3 template
-> bawaan) + `CPNOTIFLOG`. Aman diulang (idempotent).
->
-> **Bukan SQL Server?** Ganti engine tanpa ubah kode — semua query ditulis
-> netral (`?` + dialect layer di `repositories/db.go`) dan teruji di
-> SQLite:
-> - **PostgreSQL**: buat DB kosong → `psql -h … -U … -d … -f scripts/schema.postgres.sql`
->   → set `DB_CONNECTION=postgres` (+ host/port/database/username/password).
-> - **SQLite**: `sqlite3 ./data/go-core.db < scripts/schema.sqlite.sql`
->   (atau file dibuat otomatis saat connect) → set `DB_CONNECTION=sqlite`
->   + `DB_DATABASE=./data/go-core.db`. Tanpa server, tanpa instalasi.
+### Menjalankan migrasi aplikasi
 
-### Langkah 4 — Jalankan mode development (1 perintah)
+Dari folder root repository:
 
-```powershell
+```bash
+task migrate
+```
+
+Task ini menjalankan:
+
+1. `scripts/migrate.sql`
+2. `scripts/migrate2_rbac.sql`
+
+Tanpa Task CLI:
+
+```bash
+sqlcmd -S localhost,1433 -U may -P "password-database-anda" -d Go -C -i scripts/migrate.sql
+sqlcmd -S localhost,1433 -U may -P "password-database-anda" -d Go -C -i scripts/migrate2_rbac.sql
+```
+
+Migrasi aman diulang. `migrate2_rbac.sql` juga membersihkan permission lama per-fitur dan membuat permission menu baru.
+
+### Membuat akun awal
+
+```bash
+sqlcmd -S localhost,1433 -U may -P "password-database-anda" -d Go -C -i scripts/seed-admin.sql
+```
+
+Akun development yang dibuat:
+
+| Username | Password | Role | Keterangan |
+|---|---|---|---|
+| `admin` | `admin` | `ADMIN` | Ganti password setelah login |
+| `user` | `user` | `USER` | Ganti password setelah login |
+
+Password di atas hanya untuk development. Jangan digunakan di production.
+
+## 1.5. Verifikasi Database
+
+Pastikan tabel dan data utama sudah benar.
+
+### Checklist tabel
+
+```sql
+SELECT TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = 'BASE TABLE'
+ORDER BY TABLE_NAME;
+```
+
+Harus ada 9 tabel:
+
+```text
+CPAUDITLOG
+CPNOTIFLOG
+CPNOTIFTEMPLATE
+CPPERMISSION
+CPREFRESHTOKEN
+CPROLE
+CPROLEPERMISSION
+CPSYSLOG
+CPUSER
+```
+
+### Verifikasi role
+
+```sql
+SELECT CODE, NAME
+FROM dbo.CPROLE
+ORDER BY CODE;
+```
+
+Hasil minimum:
+
+```text
+ADMIN  Administrator
+USER   Pengguna
+```
+
+### Verifikasi permission menu
+
+```sql
+SELECT CODE, NAME, PERMGROUP
+FROM dbo.CPPERMISSION
+ORDER BY CODE;
+```
+
+Harus menghasilkan 8 permission:
+
+```text
+MENU_AUDIT
+MENU_DASHBOARD
+MENU_NOTIFICATIONS
+MENU_ROLES
+MENU_SECURITY
+MENU_SESSIONS
+MENU_SYSLOG
+MENU_USERS
+```
+
+### Verifikasi akses admin dan user
+
+```sql
+SELECT ROLE_CODE, COUNT(*) AS MENU_COUNT
+FROM dbo.CPROLEPERMISSION
+WHERE PERMISSION_CODE LIKE 'MENU[_]%'
+GROUP BY ROLE_CODE
+ORDER BY ROLE_CODE;
+```
+
+Hasil database development:
+
+```text
+ADMIN  8
+USER   1
+```
+
+User awal hanya mendapat `MENU_DASHBOARD`.
+
+### Verifikasi user
+
+```sql
+SELECT CODE, USERNAME, EMAIL, ROLE_CODE
+FROM dbo.CPUSER
+ORDER BY USERNAME;
+```
+
+### Verifikasi template notifikasi
+
+```sql
+SELECT CODE, NAME, CHANNEL
+FROM dbo.CPNOTIFTEMPLATE
+ORDER BY CODE;
+```
+
+## 1.6. Menjalankan Development
+
+Jalankan backend dan frontend sekaligus:
+
+```bash
 task start
-# -> backend:  http://localhost:1067 (API + health /healthz)
-# -> frontend: http://localhost:5173 (HMR, otomatis proxy /api ke :1067)
-# -> Ctrl+C mematikan keduanya sekaligus
 ```
 
-Tanpa CLI task: `bash ./scripts/start.sh` (atau langsung `./scripts/start.sh`).
-Masih ingin 2 terminal terpisah? Manual: terminal 1 `go run .`, terminal 2
-`npm --prefix frontend run dev`.
+Tanpa Task CLI:
 
-> Catatan: log `WARN frontend/dist missing` saat `go run .` itu **normal** di mode
-> dev (frontend belum di-build). API tetap jalan.
-
-### Langkah 5 — Verifikasi instalasi
-
-```powershell
-# 1. health check
-curl http://localhost:1067/healthz
-# -> {"status":"ok"}
-
-# 2. login sebagai admin, lalu buat user pertama (tanpa registrasi publik)
-#    login dulu untuk dapat <token>, lalu:
-curl -X POST http://localhost:1067/api/users -H "Authorization: Bearer <token>" `
-  -H "Content-Type: application/json" `
-  -d '{"username":"pegawai1","email":"pegawai1@example.com","password":"password123"}'
-# -> {"code":"USR-XXXXXX","message":"User created successfully"}
-
-# 3. login
-curl -X POST http://localhost:1067/api/login `
-  -H "Content-Type: application/json" `
-  -d '{"username":"admin","password":"admin"}'
-# -> {"access_token":"...","refresh_token":"...","message":"Login successful"}
-
-# 4. akses endpoint privat (ganti <token>)
-curl http://localhost:1067/api/users -H "Authorization: Bearer <token>"
+```bash
+bash ./scripts/start.sh
 ```
 
-Lalu buka `http://localhost:5173` → halaman Login/Users harus bisa dipakai
-end-to-end (login admin → tambah user → muat daftar user → logout).
+Buka:
 
-### Langkah 6 — Build production (single binary)
-
-```powershell
-task build            # atau: bash ./scripts/build.sh
-.\app.exe             # jalan di foreground, buka http://localhost:1067/
+```text
+http://localhost:5173
 ```
 
-Mode background (Windows) + cara berhenti:
+Login:
 
-```powershell
-.\app.exe --hide      # console hilang, PID di %TEMP%\go-core.pid
-.\stop.exe            # berhenti graceful
+```text
+admin / admin
 ```
 
-Selamat — aplikasi sudah jalan. Bagian 2 menjelaskan **apa isi setiap folder**,
-bagian 3 menjelaskan **cara kerjanya**.
+Setelah login:
 
----
+1. Dashboard harus tampil.
+2. Buka **Role & Permission**.
+3. Role `ADMIN` dan `USER` harus terlihat.
+4. Matriks harus menampilkan 8 menu, bukan permission per fungsi.
+5. Centang menu untuk role yang membutuhkan.
+6. Klik **Simpan permission**.
+7. User dengan role tersebut harus logout/login ulang agar permission terbaru dimuat.
 
-## 2. Memahami Isi Proyek (Tur Folder)
+## 1.7. Menjalankan Production
 
-Struktur root (hasil `ls`):
+Build frontend dan backend:
 
-```
-go-core/
-├── main.go                 # titik masuk: rakit config→db→service→route→server
-├── hide_windows.go         # sembunyikan console (--hide) khusus Windows
-├── hide_other.go           # versi no-op untuk Linux/macOS
-│
-├── config/                 # baca & validasi konfigurasi (multi driver)
-├── models/                 # entity DB + DTO API (kontrak bersama)
-├── repositories/           # kernel DB: dialect, timeout (tanpa query bisnis)
-├── services/               # errors.go: error bermakna bersama (errors.Is)
-├── features/<menu>/        # 1 menu = 1 folder: <menu>_repository.go +
-│                           # <menu>_service.go + <menu>_handler.go
-│                           # (users, roles, sessions, audit, security,
-│                           #  syslog, notifications)
-├── middleware/             # auth JWT + rate-limit + RBAC
-├── routes/                 # middleware global + registrasi tiap menu
-├── internal/pidfile/       # helper PID file (dipakai app & stop)
-├── internal/web/           # helper HTTP bersama (JSON, paginasi, error map)
-├── cmd/stop/               # program kecil penghenti app background
-│
-├── frontend/               # aplikasi React (Vite)
-├── scripts/                # *.sh universal (build/start/dev/watch/run/stop/clean) + migrate.sql (skema CP*)
-├── Taskfile.yml            # satu pintu semua perintah (task build/test/...)
-│
-├── Dockerfile              # image production multi-stage
-├── .github/workflows/ci.yml# CI: vet+test Go, lint+build frontend
-├── .env.example            # template konfigurasi (commit)
-├── .env                    # konfigurasi asli (JANGAN commit, di-ignore)
-├── .nvmrc                  # pin Node 20
-└── app.exe + stop.exe      # hasil build (di-ignore, dibuat ulang via task build)
-```
-
-### 2.1 Lapisan backend — alur satu request
-
-Setiap request API mengalir **dari luar ke dalam** seperti ini:
-
-```
-routes/  →  middleware/  →  features/<menu>/  →  models/ + SQL Server/Postgres/SQLite
-(daftar     (cek JWT,       <menu>_handler.go     (entity + DTO,
- endpoint    rate-limit,     (terima JSON,         dialect query
- + RBAC)      tulis JSON)     parameterized)
-               ↓
-         <menu>_service.go
-         (aturan bisnis:
-          validasi, hash,
-          JWT, RBAC, rotasi)
-               ↓
-         <menu>_repository.go
-         (query SQL mentah di
-          variabel `query`,
-          di-run, dipetakan
-          ke response)
-```
-
-Peran tiap folder:
-
-| Folder | Isi file | Tugasnya dalam bahasa sederhana |
-|--------|----------|----------------------------------|
-| `config/` | `env.go`, `database.go` | Baca `.env` **sekali** saat start (`Load()` → struct `Config`), validasi (JWT ≥32 char, port numerik), buka koneksi DB dengan timeout. Tidak pernah `log.Fatal` — selalu kembalikan `error`. |
-| `models/` | `user.go`, `refresh_token.go`, `role.go`, `permission.go`, `audit.go`, `syslog.go`, `notification.go`, `session.go`, `dto.go` | Kontrak DB bersama semua menu. `ID` selalu disembunyikan dari JSON. |
-| `repositories/` | `db.go` (+ `db_test.go`) | Kernel DB: `Dialect` (mssql/postgres/sqlite), `Bind` (`?`→`@pN`/`$N`), `Table`, `Now`, timeout, `NullStr`. Tanpa query bisnis. |
-| `services/` | `errors.go` | Error bermakna bersama (`ErrUserNotFound`, …) agar `errors.Is` lintas menu tetap cocok. |
-| `features/<menu>/` | `<menu>_repository.go`, `<menu>_service.go`, `<menu>_handler.go` (+ `*_test.go`) | Satu menu = satu folder. Repo: SQL mentah di variabel `query` → `Bind` → run → petakan ke struct. Service: `Repository`/`Service`/`Handler` + `New…` + interface (validasi, hash, JWT, RBAC, rotasi, 5 sesi/user). Handler: parse JSON (`internal/web`), panggil service, tulis JSON, audit best-effort. Depend antar-menu hanya via interface lokal (tanpa import silang). |
-| `middleware/` | `auth.go`, `ratelimit.go`, `rbac.go` | `NewAuth` (Bearer, HS256, iss/aud/exp); `RateLimiter` tanpa goroutine (purge oportunistik); `RequirePermission(...)` → 403 `forbidden: missing X` (ADMIN selalu lolos). |
-| `internal/web/` | `web.go` | Helper HTTP bersama: `WriteJSON`, `WriteError`, `DecodeJSON` (tolak field asing, cap 1 MB), `Paginate`, `PathCode`, `ServiceError` (peta error→status tunggal). |
-| `routes/` | `routes.go` | Middleware global + `Deps` (1 handler per menu) + blok route per menu. Tambah menu = tambah field + blok. |
-| `internal/pidfile/` | `pidfile.go` | Satu-satunya penentu lokasi PID file (`%TEMP%\go-core.pid` + fallback nama lama) agar app dan stop.exe **tidak pernah beda path**. |
-| `cmd/stop/` | `main.go`, `signal_*.go` | `stop.exe`: kirim SIGINT (graceful, tunggu 8 dtk) → baru force-kill **PID itu saja**; sengaja **tidak** kill by-name agar tak salah bunuh proses lain. Windows + Unix. |
-| `main.go` | — | Lem: load config → tulis PID → konek DB → rakit service → pasang route → tempel frontend embed → jalan + graceful shutdown. Tiap jam bersihkan refresh token kedaluwarsa. |
-
-### 2.2 Frontend (`frontend/`)
-
-```
-frontend/
-├── index.html              # judul "Go Core", muat /src/main.jsx
-├── vite.config.js          # plugin React + Tailwind; baca APP_PORT dari root
-│                           # .env → proxy /api otomatis sinkron
-├── .env.example            # contoh VITE_API_URL (dev)
-├── public/favicon.svg      # ikon (disajikan apa adanya)
-├── src/
-│   ├── main.jsx            # entry React (StrictMode) + import index.css & ui.css
-│   ├── App.jsx             # shell: dibungkus ToastProvider; login fokus tanpa
-│   │                       # navbar; sidebar + topbar HP + toggle tema
-│   ├── index.css           # token CSS + `@import "tailwindcss"`
-│   ├── api/client.js       # inti: request + auth (login/logout) + token
-│   │                       # localStorage + auto-refresh 1x saat 401 +
-│   │                       # currentUser()/health(). Fungsi tiap menu ada di
-│   │                       # menus/<role>/<menu>/api.js (pakai apiRequest)
-│   ├── menus/              # 1 menu = 1 folder (auto-scan registry.js):
-│   │   ├── registry.js     # glob menus/admin/*/ + menus/user/*/index.jsx → sidebar
-│   │   │                   # ADMIN melihat semuanya; role lain hanya menu user/
-│   │   ├── user/dashboard/ # SEMUA role: profil, ganti password,
-│   │   │   │               # ringkasan + pintasan (khusus admin)
-│   │   │   └── index.jsx   # mainpage + export const meta {label,icon,order}
-│   │   └── admin/<menu>/   # ADMIN saja: users (+components/EditUserModal.jsx),
-│   │                       # roles, sessions, audit, security, syslog,
-│   │                       # notifications — tiap folder: index.jsx + api.js
-│   ├── components/         # UI KIT modern (lihat 2.5): Toast, Alert, Modal,
-│   │   │                   # ConfirmDialog, Button, TextField/PasswordInput,
-│   │   │                   # Spinner/Skeleton, EmptyState, Badge, Pagination,
-│   │   │                   # Avatar, Card, Icon + index.js (barrel export)
-│   │   ├── ui.css          # keyframes: toast slide-in, modal pop, fade,
-│   │   │                   # progress bar, skeleton shimmer
-│   │   ├── theme.js        # tema terang default + simpan pilihan (localStorage)
-│   │   ├── ThemeToggle.jsx # tombol bulan/matahari
-│   │   └── index.js        # `import { Button, Modal } from '../components'`
-│   └── pages/
-│       └── Auth.jsx        # LoginForm (tanpa registrasi; fokus login)
-│                           # dipakai di halaman login + popup sesi-habis
-└── dist/                   # HASIL build (di-ignore, jangan edit manual)
-    └── .gitignore          # placeholder agar go:embed tetap compile di fresh clone
-```
-
-Alur data frontend: `menus/admin|user/<menu>/index.jsx` → `api.js` menu itu →
-`apiRequest` (`api/client.js`) → `fetch(${VITE_API_URL}/api/...)`.
-`App.jsx` membangun sidebar otomatis dari `menus/registry.js` (filter role).
-Saat dev (`npm run dev`), `VITE_API_URL` kosong → request relatif `/api/...` →
-diproxy Vite ke backend. Saat production (di-embed), frontend disajikan dari
-binary yang sama → request relatif otomatis benar.
-
-### 2.5 UI Kit Frontend — komponen modern (Tailwind + custom)
-
-Styling memakai **Tailwind CSS v4** (via plugin `@tailwindcss/vite`, nol file
-konfig — cukup `@import "tailwindcss"` di `index.css`) dipadu komponen custom
-di `src/components/`. Prinsip "modern" yang dipakai: varian warna semantik
-(success/error/warning/info/brand), ikon SVG inline sendiri (tanpa emoji,
-tanpa library ikon), animasi halus (`ui.css`), bisa di-close (tombol ×, klik
-backdrop, tombol Esc), responsif, dark-mode otomatis (`dark:` mengikuti
-`prefers-color-scheme`), dan aksesibel (`role="alert/dialog/status"`,
-`aria-label`).
-
-| Komponen | File | Cara pakai singkat |
-|----------|------|--------------------|
-| Toast (notifikasi global) | `Toast.jsx` + `useToast.js` | Bungkus app dengan `<ToastProvider>`, lalu `const t = useToast(); t.success('…')` / `t.error('…', { title })`. Auto-hilang 4 dtk (error 6 dtk), ada progres bar + tombol ×. |
-| Alert (banner inline) | `Alert.jsx` | `<Alert tone="error" title="…" closable>pesan</Alert>` — untuk error form. |
-| Modal (dialog) | `Modal.jsx` | `<Modal open title onClose footer size="sm\|md\|lg">` — portal ke body, kunci scroll, tutup via Esc/backdrop/×. |
-| ConfirmDialog | `ConfirmDialog.jsx` | `<ConfirmDialog open danger loading onConfirm onCancel message>` — untuk hapus & logout-all. |
-| Button | `Button.jsx` | `<Button variant="primary\|secondary\|danger\|ghost" size="sm\|md\|lg" loading fullWidth>` |
-| TextField / PasswordInput | `TextField.jsx` | `<TextField label error hint>`; password punya toggle intip (ikon mata). |
-| Spinner / PageLoader / Skeleton | `Spinner.jsx` | `<SkeletonRows rows={4}/>` untuk loading daftar. |
-| EmptyState | `EmptyState.jsx` | `<EmptyState title description action={<Button…/>}>` saat data kosong. |
-| Badge | `Badge.jsx` | `<Badge tone="brand">Anda</Badge>` |
-| Pagination | `Pagination.jsx` | `<Pagination offset limit count hasMore onPage>` — offset-based, cocok dengan `limit/offset` backend. |
-| Avatar | `Avatar.jsx` | `<Avatar name size="sm\|md\|lg"/>` — inisial + gradien stabil per nama. |
-| Card / CardTitle | `Card.jsx` | Pembungkus section konten yang konsisten. |
-| Icon | `icons.jsx` | `<Icon name="check\|x\|info\|warning\|eye\|pencil\|trash\|logout\|sun\|moon\|…"/>` |
-| ThemeToggle | `ThemeToggle.jsx` + `theme.js` | `<ThemeToggle/>` — terang default, dark via class `.dark`, tersimpan di browser |
-
-Contoh menambah komponen baru yang konsisten: buat `Baru.jsx` + pakai kelas
-Tailwind + varian `dark:` + ikon dari `icons.jsx`, lalu daftarkan di
-`components/index.js` agar bisa diimpor lewat barrel.
-
-### 2.3 Build & skrip (`Taskfile.yml`, `scripts/`)
-
-```
-Taskfile.yml  →  task build | test | watch | dev | clean | run | tray | stop | ...
-     │                │
-     │                └── memanggil ./scripts/*.sh (logika asli hanya di sini)
-      │
-      └── butuh CLI `task`? Kalau belum install, langsung: bash ./scripts/build.sh
-```
-
-| File | Perintah | Isi kerjanya |
-|------|----------|--------------|
-| `scripts/build.sh` (+ `build-frontend.sh`/`build-backend.sh`) | `task build` | `npm ci` → `vite build` → buat ulang `dist/.gitignore` → `go vet` → `go build -trimpath -ldflags "-s -w"` → `app`/`stop` (`.exe` di Windows) |
-| `scripts/start.sh` | `task start` | **1 terminal**: backend background + Vite foreground + health-check, Ctrl+C matikan keduanya |
-| `scripts/dev.sh` | `task dev` | Alias `start.sh` (1 terminal: Vite HMR + `go run .`) |
-| `scripts/watch.sh` | `task watch` | Pantau `*.go/js/jsx/css/html` (polling) → rebuild + restart via **PID file** (bukan kill by-name) |
-| `scripts/run.sh` | `task run` / `task tray` | Build + jalan foreground (`--hide` untuk background) |
-| `scripts/stop.sh` | `task stop` | Hentikan app via PID file (tanpa kill by-name) |
-| `scripts/clean.sh` | `task clean` | Hapus binary + output `dist` |
-| `Taskfile.yml` | semua `task *` | Definisi task lintas-fungsi: `install`, `build-frontend`, `build-backend`, `test` (`go vet` + `go test -race`), `lint-frontend`, `clean` (aman Windows) |
-
-### 2.4 File konfigurasi & operasional
-
-| File | Untuk apa | Boleh diedit? |
-|------|-----------|---------------|
-| `.env` | Konfigurasi asli (DB, JWT, port). Di-ignore git | ✅ wajib (tidak ikut commit) |
-| `.env.example` | Template `.env` + dokumentasi default | ✅ jika tambah variabel baru |
-| `frontend/.env.example` | Contoh `VITE_API_URL` untuk dev terpisah | ✅ |
-| `.nvmrc` | Pin Node 20 (`nvm use`) | ❌ kecuali upgrade Node |
-| `Dockerfile` | Build image: node→build frontend, go→binary, distroless→jalan | ✅ jika ubah port/proses build |
-| `.github/workflows/ci.yml` | CI 3 job: backend, frontend, single-binary Windows | ✅ |
-| `go.mod` / `go.sum` | Dependensi Go (chi, jwt, mssqldb, crypto, godotenv) | via `go get`, jangan manual |
-| `frontend/package.json` | Dependensi React + Tailwind v4 + script `dev/build/lint/preview` | via `npm install <pkg>` (devDeps: `@tailwindcss/vite`, `tailwindcss`) |
-
----
-
-## 3. Cara Kerja Sistem (Alur Penting)
-
-### 3.1 Alur login → akses → refresh (auth)
-
-```
-REGISTER
-  UI ──POST /api/users {username,email,password}──► bcrypt hash ──► INSERT users
-
-LOGIN
-  UI ──POST /api/login {username,password}──► cek bcrypt ──► access JWT (15 mnt)
-                                                              + refresh acak (256-bit)
-                                                              + simpan SHA256(refresh) di DB
-  UI simpan keduanya di localStorage.
-
-AKSES PRIVAT
-  UI ──GET /api/users/me + Header "Authorization: Bearer <access>"──► middleware cek JWT
-      ──► user + permission role; frontend hanya menampilkan menu yang diizinkan
-  UI ──GET /api/users + Header "Authorization: Bearer <access>"──► middleware cek JWT
-      ──► 200 JSON / 401 {"error":...} / 403 bila menu tidak diizinkan
-
-TOKEN KEDALUWARSA (otomatis di client.js)
-  401 ──► POST /api/refresh {refresh_token} ──► hapus token lama + terbitkan pasangan
-  baru ──► ulangi request awal. Gagal refresh → token dibuang + event
-  `go-core:session-expired` → popup "Sesi berakhir — login lagi" tampil
-  di atas halaman terakhir (tanpa pindah halaman); login sukses → lanjut
-  di tempat, halaman dimuat ulang otomatis.
-```
-
-Aturan keamanan: 1 user maksimal **5 sesi** (login ke-6 menghapus sesi tertua);
-`PUT/DELETE /users/{code}` dan `logout-all` hanya oleh **pemilik code** (403 jika bukan);
-logout token yang tidak dikenal → `401 invalid or expired refresh token`.
-
-### 3.2 Contoh request/response
-
-```powershell
-# Header auth untuk endpoint privat:
-$h = @{ Authorization = "Bearer <access_token>" }
-
-# List paginated (default limit 50, maks 200):
-curl "http://localhost:1067/api/users?limit=10&offset=0" -H "Authorization: Bearer <token>"
-
-# Update partial — kirim HANYA field yang berubah (tanpa password = password tetap).
-# Ganti USR-000002 dengan code milik Anda (lihat dari respons register / daftar users):
-curl -X PUT http://localhost:1067/api/users/USR-000002 -H "Authorization: Bearer <token>" `
-  -H "Content-Type: application/json" -d '{"username":"pegawai2"}'
-
-# Cabut semua sesi user tersebut:
-curl -X POST http://localhost:1067/api/users/USR-000002/logout-all -H "Authorization: Bearer <token>"
-
-# Lihat master role:
-curl http://localhost:1067/api/roles -H "Authorization: Bearer <token>"
-```
-
-### 3.3 Cara kerja single binary (embed)
-
-1. `task build` → `vite build` menghasilkan `frontend/dist/` (index.html + assets).
-2. `go build` membaca `main.go: //go:embed all:frontend/dist` → frontend **masuk ke dalam** `app.exe` (~10 MB).
-3. Saat jalan, request `/` + file statis dilayani dari embed (index.html di-cache di memori);
-   request `/api/*` + `/healthz` yang tak dikenal → JSON `{"error":"Not found"}` (bukan HTML),
-   sehingga refresh halaman SPA tidak 404.
-4. Fresh clone tanpa `dist/`: embed tetap compile berkat placeholder
-   `frontend/dist/.gitignore` → app jalan **mode API-only** + log peringatan.
-
----
-
-## 4. Referensi API
-
-Base URL dev: `http://localhost:5173` (frontend) / `http://localhost:1067` (langsung).
-Base URL prod: `http://localhost:1067/` (keduanya satu origin).
-
-| Method | Path | Auth | Rate-limit | Body | Sukses |
-|--------|------|------|------------|------|--------|
-| GET | `/healthz` | — | — | — | `{"status":"ok"}` |
-| POST | `/api/users` | Bearer + `MENU_USERS` | — | `{username, email, password, role_code?}` (tanpa registrasi publik; role default `USER`) | `201 {"code","message"}` (`code` = `USR-XXXXXXXX`) |
-| POST | `/api/login` | — | 5/mnt | `{username, password}` | `200 {access_token, refresh_token}` (JWT berisi `user_code` + `role`) |
-| POST | `/api/refresh` | — | 30/mnt | `{refresh_token}` | `200 {access_token, refresh_token}` (lama hangus) |
-| POST | `/api/logout` | — | 30/mnt | `{refresh_token}` | `200 {message}` |
-| GET | `/api/roles` | Bearer | — | — | `200 [{code,name,...}]` (master `CPROLE`) |
-| GET | `/api/users/me` | Bearer | — | — | `200 {code,username,email,role,role_code,permissions[]}` |
-| GET | `/api/users?limit=&offset=` | Bearer + `MENU_USERS` | — | — | `200 [...]` (array item `{code,username,email,role_code,...}`, `[]` jika kosong) |
-| GET | `/api/users/{code}` | Bearer | — | — | `200 {code,username,email,role_code,...}` |
-| PUT | `/api/users/{code}` | Bearer + owner/`MENU_USERS` | — | partial `{username?, email?, password?}` | `200 {message}` |
-| DELETE | `/api/users/{code}` | Bearer + owner/`MENU_USERS` | — | — | `200 {message}` (+ sesi dibersihkan via CASCADE) |
-| POST | `/api/users/{code}/logout-all` | Bearer + owner/`MENU_USERS` | — | — | `200 {message}` |
-| PUT | `/api/users/{code}/role` | Bearer + `MENU_USERS` | — | `{role_code}` | `200 {message}` |
-| POST | `/api/admin/roles` | Bearer + `MENU_ROLES` | — | `{code, name}` | `201 role` |
-| GET | `/api/admin/roles/{code}` | Bearer + `MENU_ROLES` | — | — | `200 {role, permissions[]}` (matriks) |
-| DELETE | `/api/admin/roles/{code}` | Bearer + `MENU_ROLES` | — | — | `200` (gagal bila role dipakai user) |
-| GET | `/api/admin/permissions` | Bearer + `MENU_ROLES` | — | — | `200 [...]` (permission per menu) |
-| PUT | `/api/admin/roles/{code}/permissions` | Bearer + `MENU_ROLES` | — | `{permissions:[...]}` | `200` (replace atomik) |
-| GET | `/api/admin/sessions` | Bearer | — | — | sesi login milik sendiri |
-| GET | `/api/admin/sessions/all?limit=&offset=` | Bearer + `MENU_SESSIONS` | — | — | semua sesi aktif |
-| DELETE | `/api/admin/sessions/{id}` | Bearer (pemilik/`MENU_SESSIONS`) | — | — | `200` |
-| GET | `/api/admin/audit?action=&entity=&actor=` | Bearer + `MENU_AUDIT` | — | — | jejak aksi + IP |
-| GET | `/api/admin/security/summary` | Bearer + `MENU_SECURITY` | — | — | 6 angka ringkasan |
-| GET | `/api/admin/syslogs?level=` | Bearer + `MENU_SYSLOG` | — | — | `ERROR/WARN/INFO` |
-| DELETE | `/api/admin/syslogs?days=` | Bearer + `MENU_SYSLOG` | — | — | `{deleted}` |
-| GET | `/api/admin/notifications/templates` | Bearer + `MENU_NOTIFICATIONS` | — | — | template + `{{var}}` |
-| POST/PUT/DELETE | `/api/admin/notifications/templates…` | Bearer + `MENU_NOTIFICATIONS` | — | `{name,channel,subject,body,is_active}` | CRUD template |
-| POST | `/api/admin/notifications/send` | Bearer + `MENU_NOTIFICATIONS` | — | `{template_code,recipient,variables}` | `201` + tercatat di log |
-| GET | `/api/admin/notifications/logs` | Bearer + `MENU_NOTIFICATIONS` | — | — | riwayat kirim |
-
-Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
-(maks 254, disimpan lowercase), password 8–72 byte. Semua error: JSON
-`{"error": "..."}` dengan status `400/401/403/404/409/429/500` yang sesuai.
-
----
-
-## 5. Referensi Perintah & Konfigurasi
-
-### 5.1 Semua perintah (`task` = `Taskfile.yml`)
-
-| Perintah | Artinya | Kapan dipakai |
-|----------|---------|---------------|
-| `task dev` | Sama dengan `task start` (1 terminal) | Kerja harian |
-| `task start` | Backend + Vite HMR dalam **1 terminal** (Ctrl+C mematikan keduanya) | Kerja harian tercepat |
-| `task build` | Build penuh → `app.exe` + `stop.exe` | Rilis / test prod lokal |
-| `task build-frontend` / `task build-backend` | Build salah satu sisi | Hemat waktu |
-| `task run` | Build + jalan foreground | Coba prod cepat |
-| `task tray` | Build + jalan background (`--hide`) | Pakai harian di Windows |
-| `task stop` | Hentikan app background | — |
-| `task watch` | Auto-rebuild tiap ada file berubah | Demo / iterasi prod-like |
-| `task migrate` | Terapkan `scripts/migrate.sql` + `migrate2_rbac.sql` berurutan | Setelah pull / untuk DB lama (CP* + RBAC + audit + notif seed) |
-| `task test` | `go vet` + `go test -race ./...` | Sebelum commit |
-| `task lint-frontend` | `oxlint` | Sebelum commit |
-| `task install` | `npm ci` di frontend | Sinkron dep frontend |
-| `task clean` | Hapus `app.exe`, `stop.exe`, output `dist` | Mulai bersih |
-
-> Belum install CLI `task`? Ganti `task build` → `bash ./scripts/build.sh`
-> (dan seterusnya). Go + Node tetap wajib.
-
-### 5.1 Variabel environment
-
-| Variabel | Wajib | Default | Keterangan |
-|----------|-------|---------|------------|
-| `APP_NAME` / `APP_ENV` | tidak | `GoBackend` / `development` | Label saja |
-| `APP_PORT` | tidak | `1067` | Port HTTP; Vite proxy ikut otomatis |
-| `DB_CONNECTION` | tidak | `sqlserver` | Jenis DB: `sqlserver` / `postgres` / `sqlite` (alias `mssql`, `postgresql`, `sqlite3` diterima) |
-| `DB_HOST` / `DB_PORT` / `DB_DATABASE` | ya* | — | Contoh: `localhost` / `1433` / `Go`. *sqlite: cukup `DB_DATABASE` sebagai path file (mis. `./data/go-core.db`), sisanya diabaikan |
-| `DB_USERNAME` / `DB_PASSWORD` | ya | — | Kredensial SQL Server |
-| `DB_MAX_OPEN_CONNS` / `DB_MAX_IDLE_CONNS` | tidak | `25` / `10` | Tuning pool koneksi |
-| `JWT_SECRET` | ya | — | **≥32 karakter acak** (`openssl rand -hex 32`) |
-| `VITE_API_URL` (frontend) | tidak | kosong (relatif) | Isi `http://localhost:1067` hanya jika frontend & backend beda origin |
-
-### 5.2 Testing
-
-```powershell
-task test                                # vet + seluruh test Go (race detector)
-go test ./features/users/ -run TestLogin -v   # satu grup test
-go test -race ./...                      # eksplisit
-npm --prefix frontend run lint           # lint React
-```
-
-Test per menu di `features/<menu>/*_test.go` tanpa DB: `features/users/`
-(table-driven validasi, duplikat, cap 5 sesi, rotasi, expired, logout,
-mock thread-safe), `features/roles/` (RBAC + lifecycle role),
-`repositories/` (dialect bind), `routes/` (wiring + matriks 403).
-
----
-
-## 6. Deploy Production
-
-**Opsi A — Windows (file copy):**
-
-```powershell
+```bash
 task build
-# copy ke server: app.exe + stop.exe + .env
-.\app.exe --hide
-.\stop.exe   # untuk berhenti
 ```
 
-**Opsi B — Docker (Linux):**
+Jalankan:
 
-```powershell
-docker build -t go-core .
-docker run -p 1067:1067 --env-file .env go-core
-# Catatan: butuh SQL Server yang reachable dari container (bukan localhost container)
+```bash
+./app.exe
 ```
 
-Checklist sebelum live: `JWT_SECRET` acak ≥32 char & beda dari dev,
-`DB_PASSWORD` kuat, `.env` tidak ikut repo (`git status` bersih),
-`task test` hijau, `task build` dari clone bersih berhasil.
+Buka:
+
+```text
+http://localhost:1067/
+```
+
+Mode background Windows:
+
+```bash
+./app.exe --hide
+./stop.exe
+```
+
+## 1.8. Health Check
+
+```bash
+curl http://localhost:1067/healthz
+```
+
+Hasil yang benar:
+
+```json
+{"status":"ok"}
+```
+
+Jika memakai development, frontend berjalan di port `5173`, tetapi API tetap diproxy ke backend `1067`.
 
 ---
 
-## 7. Troubleshooting & FAQ
+# 2. Cara Kerja Permission Menu
 
-| Gejala | Penyebab umum → solusi |
-|--------|------------------------|
-| `missing required env: ...` saat start | `.env` belum dibuat/diisi → `copy .env.example .env`, isi 6 variabel wajib |
-| `ping database: ...` | SQL Server mati / kredensial salah / firewall → cek service SQL, login via SSMS, port 1433 |
-| `WARN frontend/dist missing` (dev) | Normal — build frontend hanya untuk prod → `task build-frontend` jika ingin hilangkan |
-| Kelas Tailwind tidak berefek di browser | Pastikan `npm run dev` jalan dari folder `frontend` dan file sudah disimpan (Tailwind v4 mendeteksi class otomatis, tanpa restart). Coba hard refresh `Ctrl+Shift+R` |
-| Toast/modal tidak muncul | Pastikan halaman dibungkus `<ToastProvider>` (sudah di `App.jsx`) dan panggil `useToast()` di dalam provider |
-| `localhost:1067` 404 di browser | Buka `http://localhost:1067/` (bukan `/api`); hard refresh `Ctrl+Shift+R` |
-| `Missing authorization header` / 401 | Endpoint privat butuh `Authorization: Bearer <access_token>` → login dulu; jika expired, client auto-refresh |
-| Matriks akses menu kosong / dashboard `user not found` | Jalankan `task migrate` agar seed `MENU_*` terbaru ada, restart backend, lalu login ulang; token lama juga bisa perlu logout/login |
-| `Too many requests` (429) | Kena rate-limit → tunggu sesuai header `Retry-After`, jangan spam retry |
-| Port bentrok | Ganti `APP_PORT` di `.env` → restart backend; Vite ikut otomatis |
-| `stop.exe` → "PID file not found" | App tidak jalan via PID (mungkin crash) → cek Task Manager; hapus `%TEMP%\go-core.pid` jika stale |
-| `go:embed ... no matching files` | `frontend/dist/` kosong total → `task build-frontend` (atau `dist/.gitignore` hilang → kembalikan) |
-| Cross-compile Linux gagal (cgo/gcc) | Tambahkan `CGO_ENABLED=0`: `CGO_ENABLED=0 GOOS=linux go build ./...` |
-| Token lama invalid setelah update server | Wajar — JWT kini berisi `user_code` (bukan `user_id`) + tabel jadi `CP*` → semua user wajib login ulang |
+Sistem sekarang tidak memakai permission per fungsi.
 
-**FAQ singkat:**
-- *Data user dari mana?* Database `Go`, tabel `CPUSER` + `CPREFRESHTOKEN` + `CPROLE` dkk (lihat Mulai dari Nol langkah 4).
-- *Ganti React dengan framework lain?* Bisa — yang di-embed hanya isi `frontend/dist/`; backend tidak peduli isinya.
-- *Tambah endpoint baru?* Lihat resep di atas (Resep: Role Baru & Menu Baru): 1 folder `features/<menu>/` + 1 blok route + fungsi di `menus/<role>/<menu>/api.js`.
-- *Frontend & backend beda server?* Isi `VITE_API_URL` di frontend + rebuild; backend tetap sama (tambah CORS bila perlu).
+Contoh:
+
+```text
+MENU_USERS
+```
+
+Satu permission tersebut sudah berarti role boleh memakai **seluruh fungsi**
+di menu User Account: melihat daftar, membuat, mengubah, menghapus, mengganti
+role, dan aksi lain yang berada di menu tersebut.
+
+Tidak ada lagi permission seperti:
+
+```text
+USER_CREATE
+USER_UPDATE
+USER_DELETE
+ROLE_READ
+SESSION_MANAGE
+NOTIF_SEND
+```
+
+## 2.1. Dua Tipe Menu
+
+```text
+frontend/src/menus/admin/<menu>/  -> khusus role ADMIN
+frontend/src/menus/user/<menu>/   -> semua role yang diberi akses menu
+```
+
+Frontend otomatis memindai folder tersebut melalui:
+
+```text
+frontend/src/menus/registry.js
+```
+
+Nama key menu otomatis dipetakan ke permission:
+
+```text
+laporan       -> MENU_LAPORAN
+user-profile  -> MENU_USER_PROFILE
+```
+
+## 2.2. Alur Memberi Akses Menu
+
+1. Admin membuat atau memilih role.
+2. Admin_centang menu yang boleh diakses role tersebut.
+3. Admin klik **Simpan permission**.
+4. Permission tersimpan di `CPROLEPERMISSION`.
+5. Saat login, frontend mengambil permission user dari `GET /api/users/me`.
+6. Sidebar hanya menampilkan menu yang permission-nya dimiliki user.
+7. Backend juga memeriksa permission yang sama pada endpoint menu.
+
+Jadi, untuk menu `user/laporan`:
+
+```text
+Role EDITOR + MENU_LAPORAN  -> menu tampil
+Role EDITOR tanpa akses     -> menu tidak tampil
+ADMIN                       -> melihat menu admin yang diberi akses
+```
+
+Admin dapat langsung memberi akses menu ke role mana pun dari halaman
+**Role & Permission**. Tidak perlu membuat folder menu per role.
+
+## 2.3. Kenapa User Harus Login Ulang?
+
+Permission user diambil saat login. Jika admin baru memberi atau mencabut
+akses menu, user yang sedang login perlu:
+
+1. Logout.
+2. Login ulang.
+
+Setelah login ulang, sidebar dan permission user baru dimuat.
+
+---
+
+# 3. Struktur Proyek Penting
+
+```text
+go-core/
+├── main.go
+├── routes/                 # registrasi endpoint
+├── middleware/              # JWT, role ADMIN, permission menu
+├── models/                  # konstanta permission MENU_* dan DTO
+├── features/               # service, repository, handler backend
+├── frontend/
+│   ├── src/api/client.js   # request, login, session, getMe
+│   ├── src/menus/
+│   │   ├── registry.js     # auto-scan menu
+│   │   ├── admin/          # menu khusus ADMIN
+│   │   └── user/           # menu semua role sesuai permission
+│   ├── src/components/     # UI kit
+│   └── src/pages/          # LoginForm
+├── scripts/                # migrate*.sql dan build script
+├── tutorial/               # tutorial menu baru
+├── Taskfile.yml
+└── README.md
+```
+
+## 3.1. Alur Request
+
+```text
+Frontend menu
+    ↓
+menus/admin|user/<menu>/api.js
+    ↓
+apiRequest dari api/client.js
+    ↓
+Authorization: Bearer <access_token>
+    ↓
+middleware NewAuth
+    ↓
+middleware RequireRole ADMIN (jika menu admin)
+    ↓
+middleware RequirePermission MENU_<MENU>
+    ↓
+handler → service → repository → SQL Server
+```
+
+---
+
+# 4. Menjalankan Test dan Build
+
+Backend:
+
+```bash
+go vet ./...
+go test -race ./...
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run lint
+npm run build
+cd ..
+```
+
+Build production:
+
+```bash
+task build
+```
+
+---
+
+# 5. Troubleshooting
+
+| Gejala | Penyebab dan solusi |
+|---|---|
+| `Matriks akses menu kosong` | Database belum menjalankan `migrate2_rbac.sql` → jalankan `task migrate`, restart backend, lalu refresh browser. |
+| `Tercatat 0 dari 0 permission` | `CPPERMISSION` masih kosong/permission lama belum dimigrasi → jalankan `task migrate`. |
+| Dashboard `user not found` | Restart backend dengan binary terbaru, logout/login ulang, dan pastikan database `Go` berisi user. |
+| Login berhasil tetapi sidebar kosong | Permission role belum diberikan atau user belum login ulang → buka Role & Permission, centang menu, simpan, lalu login ulang. |
+| Menu baru tidak muncul | Folder bukan `menus/user/<menu>/`, `index.jsx` tidak punya `export default`, `meta` belum diisi, atau `MENU_<MENU>` belum di-seed. |
+| Menu baru muncul untuk semua role | Permission menu belum diberikan/di-filter dengan benar; cek `CPROLEPERMISSION` role tersebut. |
+| Permission endpoint 403 | User belum memiliki `MENU_<MENU>` atau request dikirim ke role/menu yang salah. |
+| `WARN frontend/dist missing` | Normal saat development; build frontend dengan `task build-frontend` jika ingin menghapus warning. |
+| `localhost:1067` tidak bisa dibuka | Backend belum jalan → `task start` atau `go run .`. |
+| `go:embed no matching files` | Jalankan `task build-frontend`, pastikan `frontend/dist/.gitignore` ada. |
+
+---
+
+# 6. Tutorial Menambah Menu
+
+Panduan lengkap ada di:
+
+```text
+tutorial/README.md
+```
+
+Tutorial terbaru menjelaskan:
+
+1. Menambah menu `user/` untuk semua role.
+2. Membuat permission `MENU_<MENU>`.
+3. Seed permission ke database.
+4. Mendaftarkan route backend dengan permission menu yang sama.
+5. Mengatur akses dari halaman Role & Permission.
+6. Login ulang dan memastikan menu otomatis muncul di sidebar.
+7. Menghapus akses dan memastikan menu hilang kembali.
