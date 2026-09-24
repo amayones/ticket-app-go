@@ -70,13 +70,14 @@ func SetupRoutesWithConfig(userHandler *handlers.UserHandler, cfg RouteConfig) *
 		r.With(loginLimiter.Middleware).Post("/login", userHandler.Login)
 		r.With(refreshLimiter.Middleware).Post("/refresh", userHandler.RefreshToken)
 		r.With(refreshLimiter.Middleware).Post("/logout", userHandler.Logout)
+		r.With(auth).Get("/roles", userHandler.ListRoles)
 		r.Route("/users", func(r chi.Router) {
 			r.With(auth).Get("/", userHandler.GetUsers)
 			r.With(registerLimiter.Middleware).Post("/", userHandler.CreateUser)
-			r.With(auth).Get("/{id}", userHandler.GetUserByID)
-			r.With(auth).Put("/{id}", userHandler.UpdateUser)
-			r.With(auth).Delete("/{id}", userHandler.DeleteUser)
-			r.With(auth).Post("/{id}/logout-all", userHandler.LogoutAll)
+			r.With(auth).Get("/{code}", userHandler.GetUserByCode)
+			r.With(auth).Put("/{code}", userHandler.UpdateUser)
+			r.With(auth).Delete("/{code}", userHandler.DeleteUser)
+			r.With(auth).Post("/{code}/logout-all", userHandler.LogoutAll)
 		})
 	})
 	return r
