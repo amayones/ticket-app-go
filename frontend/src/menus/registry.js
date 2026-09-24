@@ -3,14 +3,15 @@
 //
 // | Folder | Dilihat oleh |
 // |--------|--------------|
-// | `menus/admin/<menu>/` | role `ADMIN` saja |
-// | `menus/user/<menu>/`  | SEMUA role (ADMIN, USER, custom) |
+// | `menus/admin/<menu>/` | role `ADMIN` saja (difilter oleh permission) |
+// | `menus/user/<menu>/`  | Semua role yang memiliki permission menunya |
 //
-// Batas antar-role selain ADMIN diatur di backend via permission
-// (middleware RequirePermission): frontend tetap menampilkan menu `user/`,
-// backend yang menolak (403) bila role tidak punya permission-nya.
 // Meta opsional di index.jsx: export const meta = { label, icon, order }.
 const modules = import.meta.glob(['./admin/*/index.jsx', './user/*/index.jsx'], { eager: true })
+
+function permissionFor(key) {
+  return `MENU_${key.replaceAll('-', '_').toUpperCase()}`
+}
 
 function titleCase(key) {
   return key
@@ -45,8 +46,16 @@ export function allMenus() {
   return ALL_MENUS
 }
 
-// Menu untuk satu role: ADMIN melihat semuanya, role lain hanya menu `user/`.
-export function menusForRole(role) {
+// Menu untuk satu role + permission:
+// - ADMIN: melihat semua menu.
+// - Role lain: hanya menu yang permission-nya diberikan.
+export function menusForRole(role, permissions = []) {
   if ((role || '').toUpperCase() === 'ADMIN') return ALL_MENUS
-  return ALL_MENUS.filter((m) => m.scope === 'ALL')
+
+  const permSet = new Set(permissions)
+  return ALL_MENUS.filter((m) => {
+    if (m.scope === 'ADMIN') return false
+    const needed = permissionFor(m.key)
+    return permSet.has(needed)
+  })
 }
