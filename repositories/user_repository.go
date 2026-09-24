@@ -26,14 +26,16 @@ type UserRepositoryInterface interface {
 	UpdateRole(ctx context.Context, code, roleCode string) error
 	Delete(ctx context.Context, code string) error
 	Count(ctx context.Context) (int, error)
+	CountByRole(ctx context.Context, roleCode string) (int, error)
 }
 
 type UserRepository struct {
-	db *sql.DB
+	db      *sql.DB
+	dialect Dialect
 }
 
-func NewUserRepository(db *sql.DB) UserRepositoryInterface {
-	return &UserRepository{db: db}
+func NewUserRepository(db *sql.DB, dialect Dialect) UserRepositoryInterface {
+	return &UserRepository{db: db, dialect: dialect}
 }
 
 func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -41,7 +43,11 @@ func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 }
 
 const userColumns = `u.CODE, u.USERNAME, u.EMAIL, u.PASSWORD, u.ROLE_CODE, r.NAME, u.CREATED_AT, u.UPDATED_AT`
-const userJoin = `FROM dbo.CPUSER u JOIN dbo.CPROLE r ON r.CODE = u.ROLE_CODE`
+
+func (r *UserRepository) userFrom() string {
+	return `FROM ` + r.dialect.Table("CPUSER") + ` u JOIN ` +
+		r.dialect.Table("CPROLE") + ` r ON r.CODE = u.ROLE_CODE`
+}
 
 func scanUser(row interface {
 	Scan(dest ...any) error
@@ -71,13 +77,16 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]models.
 	}
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	query := `
-		SELECT ` + userColumns + `
-		` + userJoin + `
-		ORDER BY u.ID DESC
-		OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY
-	`
-	rows, err := r.db.QueryContext(ctx, query, offset, limit)
+	query := `SELECT ` + userColumns + ` ` + r.userFrom() + ` ORDER BY u.ID DESC `
+	var args []any
+	if r.dialect == DialectMSSQL {
+		query += pageMSSQL()
+		args = []any{offset, limit}
+	} else {
+		query += pageStd()
+		args = []any{limit, offset}
+	}
+	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,23 +109,22 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]models.
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	query := `
-		INSERT INTO dbo.CPUSER (CODE, USERNAME, EMAIL, PASSWORD, ROLE_CODE)
-		VALUES (@p1, @p2, @p3, @p4, @p5)
-	`
-	_, err := r.db.ExecContext(ctx, query, user.Code, user.Username, user.Email, user.Password, user.RoleCode)
+	query := `INSERT INTO ` + r.dialect.Table("CPUSER") + `
+		(CODE, USERNAME, EMAIL, PASSWORD, ROLE_CODE)
+		VALUES (?, ?, ?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
+		user.Code, user.Username, user.Email, user.Password, user.RoleCode)
 	return err
 }
 
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	query := `
-		UPDATE dbo.CPUSER
-		SET USERNAME = @p1, EMAIL = @p2, PASSWORD = @p3, UPDATED_AT = GETDATE()
-		WHERE CODE = @p4
-	`
-	res, err := r.db.ExecContext(ctx, query, user.Username, user.Email, user.Password, user.Code)
+	query := `UPDATE ` + r.dialect.Table("CPUSER") + `
+		SET USERNAME = ?, EMAIL = ?, PASSWORD = ?, UPDATED_AT = ` + r.dialect.Now() + `
+		WHERE CODE = ?`
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
+		user.Username, user.Email, user.Password, user.Code)
 	if err != nil {
 		return err
 	}
@@ -133,8 +141,9 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 func (r *UserRepository) UpdateRole(ctx context.Context, code, roleCode string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE dbo.CPUSER SET ROLE_CODE = @p1, UPDATED_AT = GETDATE() WHERE CODE = @p2`, roleCode, code)
+	query := `UPDATE ` + r.dialect.Table("CPUSER") + ` SET ROLE_CODE = ?, UPDATED_AT = ` +
+		r.dialect.Now() + ` WHERE CODE = ?`
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(query), roleCode, code)
 	if err != nil {
 		return err
 	}
@@ -146,74 +155,63 @@ func (r *UserRepository) UpdateRole(ctx context.Context, code, roleCode string) 
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (r *UserRepository) Delete(ctx context.Context, code string) error {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	query := `DELETE FROM ` + r.dialect.Table("CPUSER") + ` WHERE CODE = ?`
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(query), code)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (r *UserRepository) userBy(ctx context.Context, where string, arg any) (*models.User, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	query := `SELECT ` + userColumns + ` ` + r.userFrom() + ` WHERE ` + where
+	var user models.User
+	if err := scanUser(r.db.QueryRowContext(ctx, r.dialect.Bind(query), arg), &user); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *UserRepository) GetByCode(ctx context.Context, code string) (*models.User, error) {
+	return r.userBy(ctx, `u.CODE = ?`, code)
+}
+
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+	return r.userBy(ctx, `u.USERNAME = ?`, username)
+}
+
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
+	return r.userBy(ctx, `u.EMAIL = ?`, email)
 }
 
 func (r *UserRepository) Count(ctx context.Context) (int, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	var n int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dbo.CPUSER`).Scan(&n)
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM `+r.dialect.Table("CPUSER")).Scan(&n)
 	return n, err
 }
 
-func (r *UserRepository) Delete(ctx context.Context, code string) error {
+func (r *UserRepository) CountByRole(ctx context.Context, roleCode string) (int, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx, `DELETE FROM dbo.CPUSER WHERE CODE = @p1`, code)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return sql.ErrNoRows
-	}
-	return nil
-}
-
-func (r *UserRepository) GetByCode(ctx context.Context, code string) (*models.User, error) {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	query := `
-		SELECT ` + userColumns + `
-		` + userJoin + `
-		WHERE u.CODE = @p1
-	`
-	var user models.User
-	if err := scanUser(r.db.QueryRowContext(ctx, query, code), &user); err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	query := `
-		SELECT ` + userColumns + `
-		` + userJoin + `
-		WHERE u.USERNAME = @p1
-	`
-	var user models.User
-	if err := scanUser(r.db.QueryRowContext(ctx, query, username), &user); err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	query := `
-		SELECT ` + userColumns + `
-		` + userJoin + `
-		WHERE u.EMAIL = @p1
-	`
-	var user models.User
-	if err := scanUser(r.db.QueryRowContext(ctx, query, email), &user); err != nil {
-		return nil, err
-	}
-	return &user, nil
+	var n int
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
+		`SELECT COUNT(*) FROM `+r.dialect.Table("CPUSER")+` WHERE ROLE_CODE = ?`), roleCode).Scan(&n)
+	return n, err
 }
