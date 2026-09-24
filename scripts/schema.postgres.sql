@@ -45,25 +45,15 @@ CREATE TABLE IF NOT EXISTS CPPERMISSION (
 );
 
 INSERT INTO CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION) VALUES
-  ('USER_READ', 'Lihat user', 'USER', 'Melihat daftar & detail akun'),
-  ('USER_CREATE', 'Buat user', 'USER', 'Mendaftarkan akun baru'),
-  ('USER_UPDATE', 'Ubah user lain', 'USER', 'Mengubah akun milik user lain (akun sendiri selalu boleh)'),
-  ('USER_DELETE', 'Hapus user lain', 'USER', 'Menghapus akun milik user lain (akun sendiri selalu boleh)'),
-  ('USER_ROLE_ASSIGN', 'Atur role user', 'USER', 'Mengganti role akun'),
-  ('ROLE_READ', 'Lihat role', 'ROLE', 'Melihat daftar role & permission'),
-  ('ROLE_MANAGE', 'Kelola role', 'ROLE', 'Membuat & menghapus role'),
-  ('PERMISSION_ASSIGN', 'Atur permission role', 'ROLE', 'Mencentang permission milik role'),
-  ('SESSION_READ', 'Lihat sesi sendiri', 'SESSION', 'Melihat sesi login milik sendiri'),
-  ('SESSION_REVOKE', 'Cabut sesi sendiri', 'SESSION', 'Mencabut sesi login milik sendiri'),
-  ('SESSION_MANAGE', 'Kelola semua sesi', 'SESSION', 'Melihat & mencabut sesi semua user'),
-  ('AUDIT_READ', 'Lihat audit log', 'AUDIT', 'Melihat jejak aksi user'),
-  ('SECURITY_READ', 'Lihat security center', 'SECURITY', 'Melihat ringkasan keamanan'),
-  ('SYSLOG_READ', 'Lihat system log', 'SYSLOG', 'Melihat log error/sistem'),
-  ('SYSLOG_MANAGE', 'Hapus system log', 'SYSLOG', 'Menghapus log lama'),
-  ('NOTIF_READ', 'Lihat notifikasi', 'NOTIFICATION', 'Melihat template & riwayat notifikasi'),
-  ('NOTIF_MANAGE', 'Kelola template', 'NOTIFICATION', 'Membuat, mengubah, menonaktifkan template'),
-  ('NOTIF_SEND', 'Kirim notifikasi', 'NOTIFICATION', 'Mengirim / test-kirim notifikasi')
-ON CONFLICT (CODE) DO NOTHING;
+  ('MENU_DASHBOARD', 'Akses menu Dashboard', 'MENU', 'Seluruh fungsi dashboard untuk role ini'),
+  ('MENU_USERS', 'Akses menu User Account', 'MENU', 'Seluruh fungsi pengelolaan pengguna'),
+  ('MENU_ROLES', 'Akses menu Role & Permission', 'MENU', 'Seluruh fungsi pengelolaan role'),
+  ('MENU_SESSIONS', 'Akses menu Sesi', 'MENU', 'Seluruh fungsi pengelolaan sesi'),
+  ('MENU_AUDIT', 'Akses menu Audit Log', 'MENU', 'Seluruh fungsi audit log'),
+  ('MENU_SECURITY', 'Akses menu Security Center', 'MENU', 'Seluruh fungsi security center'),
+  ('MENU_SYSLOG', 'Akses menu System Log', 'MENU', 'Seluruh fungsi system log'),
+  ('MENU_NOTIFICATIONS', 'Akses menu Notifikasi', 'MENU', 'Seluruh fungsi notifikasi')
+ON CONFLICT (CODE) DO UPDATE SET NAME=excluded.NAME, PERMGROUP=excluded.PERMGROUP, DESCRIPTION=excluded.DESCRIPTION;
 
 CREATE TABLE IF NOT EXISTS CPROLEPERMISSION (
   ROLE_CODE TEXT NOT NULL REFERENCES CPROLE (CODE) ON DELETE CASCADE,
@@ -76,9 +66,8 @@ INSERT INTO CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
 SELECT 'ADMIN', CODE FROM CPPERMISSION
 ON CONFLICT DO NOTHING;
 
-INSERT INTO CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE) VALUES
-  ('USER', 'USER_READ'), ('USER', 'USER_UPDATE'), ('USER', 'USER_DELETE'),
-  ('USER', 'SESSION_READ'), ('USER', 'SESSION_REVOKE')
+INSERT INTO CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
+VALUES ('USER', 'MENU_DASHBOARD')
 ON CONFLICT DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS CPAUDITLOG (
