@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client.js'
+import { listSyslogs, pruneSyslogs } from './api.js'
+
+export const meta = { label: 'System Log', icon: 'terminal', order: 6 }
 import {
   Alert,
   Badge,
@@ -13,7 +15,7 @@ import {
   SkeletonRows,
   useSmoothLoading,
   useToast,
-} from '../components'
+} from '../../../components'
 
 const PAGE_SIZE = 20
 const LEVELS = ['', 'ERROR', 'WARN', 'INFO']
@@ -47,7 +49,7 @@ export default function Syslog() {
     setLoading(true)
     setError('')
     try {
-      setLogs(await api.listSyslogs({ level, limit: PAGE_SIZE, offset }))
+      setLogs(await listSyslogs({ level, limit: PAGE_SIZE, offset }))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -61,7 +63,7 @@ export default function Syslog() {
 
   async function prune() {
     try {
-      const res = await api.pruneSyslogs(days)
+      const res = await pruneSyslogs(days)
       toast.success(`${res.deleted ?? 0} baris log lebih tua dari ${days} hari dihapus.`)
       setConfirmPrune(false)
       load()
