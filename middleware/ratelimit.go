@@ -12,6 +12,10 @@ import (
 const (
 	// MaxVisitors bounds memory when attackers spoof X-Forwarded-For.
 	MaxVisitors = 10000
+	// purgeEvery requests between opportunistic purges of expired entries.
+	// No background goroutine: cleanup piggybacks on traffic (leak-free,
+	// no Stop needed, safe for tests that build many routers).
+	purgeEvery = 1000
 )
 
 type visitor struct {
@@ -21,66 +25,31 @@ type visitor struct {
 
 // RateLimiter is a fixed-window limiter with anti-spoofing controls.
 type RateLimiter struct {
-	mu          sync.Mutex
-	visitors    map[string]*visitor
-	limit       int
-	window      time.Duration
-	trustProxy  bool
-	stopCleanup chan struct{}
-	stopOnce    sync.Once
+	mu         sync.Mutex
+	visitors   map[string]*visitor
+	limit      int
+	window     time.Duration
+	trustProxy bool
+	calls      uint64
 }
 
-// NewRateLimiter creates a limiter. Set trustProxy=true only behind a
-// trusted reverse proxy that sanitizes X-Forwarded-For; otherwise the
-// client IP comes from RemoteAddr (spoof-proof).
-func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
-	return NewRateLimiterWithOptions(limit, window, false)
-}
-
+// NewRateLimiterWithOptions creates a limiter. Set trustProxy=true only
+// behind a trusted reverse proxy that sanitizes X-Forwarded-For; otherwise
+// the client IP comes from RemoteAddr (spoof-proof).
 func NewRateLimiterWithOptions(limit int, window time.Duration, trustProxy bool) *RateLimiter {
-	rl := &RateLimiter{
-		visitors:    make(map[string]*visitor),
-		limit:       limit,
-		window:      window,
-		trustProxy:  trustProxy,
-		stopCleanup: make(chan struct{}),
+	return &RateLimiter{
+		visitors:   make(map[string]*visitor),
+		limit:      limit,
+		window:     window,
+		trustProxy: trustProxy,
 	}
-	go rl.cleanup()
-	return rl
 }
 
-// Stop terminates the background cleanup goroutine (prevents test leaks).
-func (rl *RateLimiter) Stop() {
-	rl.stopOnce.Do(func() { close(rl.stopCleanup) })
-}
-
-func (rl *RateLimiter) cleanup() {
-	t := time.NewTicker(rl.window)
-	defer t.Stop()
-	for {
-		select {
-		case <-rl.stopCleanup:
-			return
-		case <-t.C:
-			rl.mu.Lock()
-			now := time.Now()
-			for ip, v := range rl.visitors {
-				if now.After(v.reset) {
-					delete(rl.visitors, ip)
-				}
-			}
-			// Hard bound: drop oldest overflow arbitrarily to avoid OOM.
-			if len(rl.visitors) > MaxVisitors {
-				n := 0
-				for ip := range rl.visitors {
-					delete(rl.visitors, ip)
-					n++
-					if n > len(rl.visitors)-MaxVisitors {
-						break
-					}
-				}
-			}
-			rl.mu.Unlock()
+// purgeLocked drops expired entries. Caller must hold mu.
+func (rl *RateLimiter) purgeLocked(now time.Time) {
+	for ip, v := range rl.visitors {
+		if now.After(v.reset) {
+			delete(rl.visitors, ip)
 		}
 	}
 }
@@ -89,14 +58,21 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := rl.clientIP(r)
 		rl.mu.Lock()
-		v, ok := rl.visitors[ip]
 		now := time.Now()
+		rl.calls++
+		if rl.calls%purgeEvery == 0 {
+			rl.purgeLocked(now)
+		}
+		v, ok := rl.visitors[ip]
 		if !ok || now.After(v.reset) {
 			if !ok && len(rl.visitors) >= MaxVisitors {
-				rl.mu.Unlock()
-				w.Header().Set("Retry-After", "60")
-				http.Error(w, "Too many requests", http.StatusTooManyRequests)
-				return
+				rl.purgeLocked(now)
+				if len(rl.visitors) >= MaxVisitors {
+					rl.mu.Unlock()
+					w.Header().Set("Retry-After", "60")
+					http.Error(w, "Too many requests", http.StatusTooManyRequests)
+					return
+				}
 			}
 			rl.visitors[ip] = &visitor{count: 1, reset: now.Add(rl.window)}
 			rl.mu.Unlock()
