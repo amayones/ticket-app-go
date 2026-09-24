@@ -87,6 +87,11 @@ tasks:
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1
 
+  start:
+    desc: Run backend + Vite HMR in ONE terminal (Ctrl+C stops both)
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/start.ps1
+
   migrate:
     desc: Apply scripts/migrate*.sql in order to SQL Server (requires sqlcmd)
     dotenv: ['.env']
