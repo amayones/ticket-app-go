@@ -1,4 +1,4 @@
-package services
+package roles
 
 import (
 	"context"
@@ -8,18 +8,47 @@ import (
 	"strings"
 
 	"golang-backend/models"
-	"golang-backend/utils"
+	"golang-backend/services"
 )
 
 // RBAC: role, permission, dan penugasan role ke user.
-// Method menempel pada *UserService agar wiring tetap satu service inti.
+//
+// Konvensi menu: query SQL selalu di variabel `query`, lalu di-run,
+// lalu hasilnya dipetakan ke response (lihat roles_repository.go).
+type ServiceInterface interface {
+	CheckPermission(ctx context.Context, userCode, permCode string) error
+	ListRoles(ctx context.Context) ([]models.Role, error)
+	ListPermissions(ctx context.Context) ([]models.Permission, error)
+	GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error)
+	CreateRole(ctx context.Context, code, name string) (*models.Role, error)
+	DeleteRole(ctx context.Context, code string) error
+	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
+	UpdateUserRole(ctx context.Context, userCode, roleCode string) error
+	CountRoles(ctx context.Context) (int, error)
+}
+
+// userStore dipenuhi users.Repository (tanpa import antar-fitur).
+type userStore interface {
+	GetByCode(ctx context.Context, code string) (*models.User, error)
+	UpdateRole(ctx context.Context, code, roleCode string) error
+	CountByRole(ctx context.Context, roleCode string) (int, error)
+}
+
+type Service struct {
+	roles RepositoryInterface
+	users userStore
+}
+
+func NewService(roles RepositoryInterface, users userStore) *Service {
+	return &Service{roles: roles, users: users}
+}
 
 // CheckPermission memastikan user berhak atas permission (ADMIN selalu lolos).
-func (s *UserService) CheckPermission(ctx context.Context, userCode, permCode string) error {
+func (s *Service) CheckPermission(ctx context.Context, userCode, permCode string) error {
 	user, err := s.users.GetByCode(ctx, userCode)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return fmt.Errorf("permission user lookup: %w", err)
 	}
@@ -31,12 +60,24 @@ func (s *UserService) CheckPermission(ctx context.Context, userCode, permCode st
 		return fmt.Errorf("permission check: %w", err)
 	}
 	if !ok {
-		return ErrForbidden
+		return services.ErrForbidden
 	}
 	return nil
 }
 
-func (s *UserService) ListPermissions(ctx context.Context) ([]models.Permission, error) {
+func (s *Service) ListRoles(ctx context.Context) ([]models.Role, error) {
+	roles, err := s.roles.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list roles: %w", err)
+	}
+	return roles, nil
+}
+
+func (s *Service) CountRoles(ctx context.Context) (int, error) {
+	return s.roles.Count(ctx)
+}
+
+func (s *Service) ListPermissions(ctx context.Context) ([]models.Permission, error) {
 	perms, err := s.roles.ListPermissions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list permissions: %w", err)
@@ -45,11 +86,11 @@ func (s *UserService) ListPermissions(ctx context.Context) ([]models.Permission,
 }
 
 // GetRoleDetail mengembalikan role + kode permission miliknya (matriks RBAC).
-func (s *UserService) GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error) {
+func (s *Service) GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error) {
 	role, err := s.roles.GetByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrUserNotFound
+			return nil, services.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("get role: %w", err)
 	}
@@ -73,7 +114,7 @@ func validRoleCode(code string) error {
 	return nil
 }
 
-func (s *UserService) CreateRole(ctx context.Context, code, name string) (*models.Role, error) {
+func (s *Service) CreateRole(ctx context.Context, code, name string) (*models.Role, error) {
 	code = strings.TrimSpace(strings.ToUpper(code))
 	name = strings.TrimSpace(name)
 	if err := validRoleCode(code); err != nil {
@@ -93,14 +134,14 @@ func (s *UserService) CreateRole(ctx context.Context, code, name string) (*model
 	return role, nil
 }
 
-func (s *UserService) DeleteRole(ctx context.Context, code string) error {
+func (s *Service) DeleteRole(ctx context.Context, code string) error {
 	code = strings.TrimSpace(strings.ToUpper(code))
 	if code == models.RoleAdmin || code == models.RoleUser {
 		return errors.New("system roles cannot be deleted")
 	}
 	if _, err := s.roles.GetByCode(ctx, code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
 	}
@@ -125,11 +166,11 @@ func (s *UserService) DeleteRole(ctx context.Context, code string) error {
 	return nil
 }
 
-func (s *UserService) SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error {
+func (s *Service) SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error {
 	roleCode = strings.TrimSpace(strings.ToUpper(roleCode))
 	if _, err := s.roles.GetByCode(ctx, roleCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
 	}
@@ -154,7 +195,7 @@ func (s *UserService) SetRolePermissions(ctx context.Context, roleCode string, p
 }
 
 // UpdateUserRole mengganti role akun (butuh USER_ROLE_ASSIGN di handler).
-func (s *UserService) UpdateUserRole(ctx context.Context, userCode, roleCode string) error {
+func (s *Service) UpdateUserRole(ctx context.Context, userCode, roleCode string) error {
 	roleCode = strings.TrimSpace(strings.ToUpper(roleCode))
 	if _, err := s.roles.GetByCode(ctx, roleCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -164,14 +205,10 @@ func (s *UserService) UpdateUserRole(ctx context.Context, userCode, roleCode str
 	}
 	if err := s.users.UpdateRole(ctx, userCode, roleCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return fmt.Errorf("update user role: %w", err)
 	}
 	return nil
 }
 
-// GenerateAccessTokenFor mengemas ulang pembuatan token (dipakai refresh flow).
-func (s *UserService) accessTokenFor(user *models.User) (string, error) {
-	return utils.GenerateAccessToken(s.jwtSecret, user.Code, user.Username, user.RoleCode)
-}
