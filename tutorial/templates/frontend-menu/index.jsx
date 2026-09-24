@@ -13,14 +13,12 @@ import {
 } from '../../../components'
 
 // TEMPLATE mainpage menu baru. Cara pakai:
-// 1. Copy folder ini ke menus/admin/<menu>/ (khusus ADMIN) ATAU
-//    menus/user/<menu>/ (semua role yang diberi permission menu; satu
-//    permission memberi akses ke seluruh fungsi menu, lihat tutorial/README.md).
-//    Contoh: menus/admin/laporan/ atau menus/user/laporan/
-// 2. Sesuaikan meta di bawah (label tampil di sidebar, icon lihat
-//    components/icons.jsx -> PATHS, order = urutan sidebar).
-// 3. Isi api.js dengan fungsi menu ini, lalu ganti isi Card dengan UI-mu.
-// 4. npm run build -> menu langsung tampil. Selesai, tanpa sentuh file lain.
+// 1. Copy folder ini ke menus/user/<menu>/ untuk semua role yang diberi
+//    permission menu, atau menus/admin/<menu>/ untuk menu khusus ADMIN.
+//    Nama folder menjadi kode permission otomatis, contoh laporan -> MENU_LAPORAN.
+// 2. Sesuaikan meta di bawah (label, icon, order).
+// 3. Ganti placeholder <menu> di api.js dan isi halaman dengan UI-mu.
+// 4. Jalankan migrate jika permission baru, lalu build dan restart backend.
 export const meta = { label: 'Menu Baru', icon: 'list', order: 50 }
 
 export default function MenuBaru() {
