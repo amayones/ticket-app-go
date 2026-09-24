@@ -47,16 +47,14 @@ export function allMenus() {
 }
 
 // Menu untuk satu role + permission:
-// - ADMIN: melihat semua menu.
-// - Role lain: hanya menu yang permission-nya diberikan; satu permission
-//   memberi akses ke seluruh fungsi menu tersebut.
+// - ADMIN: hanya menu admin yang permission-nya diberikan.
+// - Role lain: hanya menu user yang permission-nya diberikan.
+// Satu permission memberi akses ke seluruh fungsi menu tersebut.
 export function menusForRole(role, permissions = []) {
-  if ((role || '').toUpperCase() === 'ADMIN') return ALL_MENUS
-
+  const isAdmin = (role || '').toUpperCase() === 'ADMIN'
   const permSet = new Set(permissions)
   return ALL_MENUS.filter((m) => {
-    if (m.scope === 'ADMIN') return false
-    const needed = permissionFor(m.key)
-    return permSet.has(needed)
+    if (m.scope === 'ADMIN' && !isAdmin) return false
+    return permSet.has(permissionFor(m.key))
   })
 }
