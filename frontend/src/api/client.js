@@ -78,8 +78,11 @@ export const api = {
     if (!claims || !claims.user_code) return null
     return { code: claims.user_code, username: claims.username || '', role: claims.role || '' }
   },
-  async register(username, email, password) {
-    return request('/api/users', { method: 'POST', body: { username, email, password } })
+  // Tambah user hanya oleh admin (butuh USER_CREATE). Tanpa registrasi publik.
+  async createUser(username, email, password, roleCode) {
+    const body = { username, email, password }
+    if (roleCode) body.role_code = roleCode
+    return request('/api/users', { method: 'POST', body, auth: true })
   },
   async login(username, password) {
     const data = await request('/api/login', { method: 'POST', body: { username, password } })
