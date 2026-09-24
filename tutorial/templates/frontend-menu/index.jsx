@@ -13,8 +13,8 @@ import {
 } from '../../../components'
 
 // TEMPLATE mainpage menu baru. Cara pakai:
-// 1. Copy folder ini ke menus/user/<menu>/ untuk semua role yang diberi
-//    permission menu, atau menus/admin/<menu>/ untuk menu khusus ADMIN.
+// 1. Copy folder ini ke menus/<module>/<menu>/, misalnya
+//    menus/system/laporan/ atau menus/account/laporan/.
 //    Nama folder menjadi kode permission otomatis, contoh laporan -> MENU_LAPORAN.
 // 2. Sesuaikan meta di bawah (label, icon, order).
 // 3. Ganti placeholder <menu> di api.js dan isi halaman dengan UI-mu.
