@@ -117,6 +117,10 @@ Buka `http://localhost:5173` → login `admin` / `admin` (atau `user` /
 
 ## Resep: Role Baru & Menu Baru
 
+> Panduan langkah-demi-langkah + template siap-copy ada di
+> **`tutorial/README.md`** (`tutorial/templates/`: mainpage `index.jsx`,
+> `api.js` frontend, `new-role.sql`). Ringkasannya di bawah.
+
 ### Role baru (mis. `EDITOR`)
 
 1. Buat role: menu Role & Permission → **Role baru** (kode huruf besar).
