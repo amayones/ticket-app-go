@@ -54,6 +54,19 @@ type UserServiceInterface interface {
 	Logout(ctx context.Context, refreshToken string) error
 	LogoutAll(ctx context.Context, userCode string) error
 	ListRoles(ctx context.Context) ([]models.Role, error)
+	CheckPermission(ctx context.Context, userCode, permCode string) error
+	CreateRole(ctx context.Context, code, name string) (*models.Role, error)
+	DeleteRole(ctx context.Context, code string) error
+	GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error)
+	ListPermissions(ctx context.Context) ([]models.Permission, error)
+	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
+	UpdateUserRole(ctx context.Context, userCode, roleCode string) error
+	ListSessions(ctx context.Context, userCode string) ([]models.Session, error)
+	ListAllSessions(ctx context.Context, limit, offset int) ([]models.Session, error)
+	RevokeSession(ctx context.Context, callerCode string, sessionID int, manageAll bool) error
+	CountUsers(ctx context.Context) (int, error)
+	CountRoles(ctx context.Context) (int, error)
+	CountActiveSessions(ctx context.Context) (int, error)
 	CleanupExpiredTokens(ctx context.Context) (int64, error)
 }
 
@@ -293,7 +306,7 @@ func (s *UserService) Login(ctx context.Context, username, password string) (str
 	if !utils.CheckPasswordHash(password, user.Password) {
 		return "", "", ErrInvalidLogin
 	}
-	access, err := utils.GenerateAccessToken(s.jwtSecret, user.Code, user.Username, user.RoleCode)
+	access, err := s.accessTokenFor(user)
 	if err != nil {
 		return "", "", err
 	}
@@ -339,7 +352,7 @@ func (s *UserService) RefreshAccessToken(ctx context.Context, refreshToken strin
 		}
 		return "", "", fmt.Errorf("refresh user lookup: %w", err)
 	}
-	newAccess, err := utils.GenerateAccessToken(s.jwtSecret, user.Code, user.Username, user.RoleCode)
+	newAccess, err := s.accessTokenFor(user)
 	if err != nil {
 		return "", "", err
 	}
@@ -387,6 +400,18 @@ func (s *UserService) ListRoles(ctx context.Context) ([]models.Role, error) {
 		return nil, fmt.Errorf("list roles: %w", err)
 	}
 	return roles, nil
+}
+
+func (s *UserService) CountUsers(ctx context.Context) (int, error) {
+	return s.users.Count(ctx)
+}
+
+func (s *UserService) CountRoles(ctx context.Context) (int, error) {
+	return s.roles.Count(ctx)
+}
+
+func (s *UserService) CountActiveSessions(ctx context.Context) (int, error) {
+	return s.refresh.CountActive(ctx)
 }
 
 func (s *UserService) CleanupExpiredTokens(ctx context.Context) (int64, error) {
