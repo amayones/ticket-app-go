@@ -13,14 +13,17 @@ Browser ──► app.exe :1067 ──┬──► /               (frontend Rea
                                SQL Server (database Go)
 ```
 
-**Fitur utama:** register/login user, JWT access 15 menit + refresh token rotasi
-7 hari (disimpan sebagai hash SHA-256), rate-limit, single-binary embed,
+**Fitur utama:** login user + RBAC, JWT access 15 menit + refresh token rotasi
+7 hari (disimpan sebagai hash SHA-256), audit log, system log, notifikasi,
+rate-limit, database sqlserver/postgres/sqlite, single-binary embed,
 skrip build satu pintu (`Taskfile.yml`), CI + Dockerfile siap pakai.
 
 ---
 
 ## Daftar Isi
 
+- [Mulai dari Nol — Fresh Clone sampai Jalan](#mulai-dari-nol--fresh-clone-sampai-jalan)
+- [Resep: Role Baru & Menu Baru](#resep-role-baru--menu-baru)
 0. [Panduan Memakai Aplikasi — Klik per Klik](#0-panduan-memakai-aplikasi--klik-per-klik)
 1. [Mulai Cepat — Langkah demi Langkah](#1-mulai-cepat--langkah-demi-langkah)
 2. [Memahami Isi Proyek (Tur Folder)](#2-memahami-isi-proyek-tur-folder)
@@ -29,6 +32,135 @@ skrip build satu pintu (`Taskfile.yml`), CI + Dockerfile siap pakai.
 5. [Referensi Perintah & Konfigurasi](#5-referensi-perintah--konfigurasi)
 6. [Deploy Production](#6-deploy-production)
 7. [Troubleshooting & FAQ](#7-troubleshooting--faq)
+
+---
+
+## Mulai dari Nol — Fresh Clone sampai Jalan
+
+Ikuti 1–7 berurutan. Hasil akhir: database sama persis seperti database dev
+(9 tabel + seed), aplikasi jalan, bisa login `admin`/`admin`.
+
+### 1. Prasyarat
+
+| Kebutuhan | Versi | Cara cek |
+|-----------|-------|----------|
+| Go | 1.27+ | `go version` |
+| Node.js | 20+ | `node --version` |
+| SQL Server | 2019+ (atau pilih sqlite/postgres, lihat langkah 4) | `sqlcmd -S localhost,1433 -U <user> -P <pass> -Q "SELECT 1"` |
+| Git | bebas | `git --version` |
+
+### 2. Clone
+
+```bash
+git clone <url-repo>.git
+cd go-core
+```
+
+### 3. Buat `.env`
+
+```bash
+copy .env.example .env   # Windows
+# atau: cp .env.example .env
+notepad .env
+```
+
+Isi wajib: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`,
+`DB_PASSWORD`, `JWT_SECRET` (min 32 char acak: `openssl rand -hex 32`).
+`DB_CONNECTION` default `sqlserver` — ganti ke `postgres`/`sqlite` bila
+perlu (lihat tabel env di Bagian 5).
+
+### 4. Siapkan database (pilih SATU engine)
+
+**A. SQL Server** — buat DB kosong lalu migrasi + seed:
+
+```bash
+sqlcmd -S localhost,1433 -U <user> -P <pass> -Q "CREATE DATABASE Go"
+sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate.sql
+sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate2_rbac.sql
+sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/seed-admin.sql
+# atau sekaligus: task migrate (2 file migrasi), lalu seed manual 1 file
+```
+
+**B. SQLite** (tanpa server): `sqlite3 ./data/go-core.db < scripts/schema.sqlite.sql`
+lalu set `DB_CONNECTION=sqlite` + `DB_DATABASE=./data/go-core.db`.
+
+**C. PostgreSQL**: buat DB kosong → `psql -h … -U … -d … -f scripts/schema.postgres.sql`
+→ set `DB_CONNECTION=postgres` (+ host/port/database/username/password).
+
+### 5. Samakan isi dengan database dev (checklist)
+
+```bash
+sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -Q "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME"
+```
+
+Harus tepat **9 tabel**: `CPAUDITLOG`, `CPNOTIFLOG`, `CPNOTIFTEMPLATE`,
+`CPPERMISSION`, `CPREFRESHTOKEN`, `CPROLE`, `CPROLEPERMISSION`, `CPSYSLOG`,
+`CPUSER` (tanpa sisa `users`/`refresh_tokens` lowercase). Seed wajib:
+`CPROLE` = `ADMIN`+`USER` (2), `CPPERMISSION` = 18, `CPROLEPERMISSION` = 23
+(ADMIN 18, USER 5), `CPNOTIFTEMPLATE` = 3 (`NTPL-WELCOME/RESET/ALERT`),
+`CPUSER` = 2 (`admin`/ADMIN, `user`/USER).
+
+### 6. Jalankan
+
+```bash
+./scripts/start.sh     # 1 terminal: backend :1067 + frontend :5173
+# berhenti: Ctrl+C
+```
+
+### 7. Buka & login
+
+Buka `http://localhost:5173` → login `admin` / `admin` (atau `user` /
+`user` untuk role USER). **Langsung ganti kedua password** via Dashboard
+> Keamanan akun. Lanjut ke Bagian 0 untuk tur tiap menu.
+
+---
+
+## Resep: Role Baru & Menu Baru
+
+### Role baru (mis. `EDITOR`)
+
+1. Buat role: menu Role & Permission → **Role baru** (kode huruf besar).
+2. Centang permission-nya di matriks → **Simpan**.
+3. Pindahkan user: User Account → pensil → dropdown Role. Atau via SQL +
+   daftar permission manual di `CPROLEPERMISSION`.
+4. (Opsional, agar punya halaman sendiri) buat folder `frontend/src/menus/editor/`
+   — role `EDITOR` otomatis melihat menu `shared/` + `editor/`.
+
+### Menu baru (langsung tampil di sidebar)
+
+**Frontend** — tambah 1 folder (nama folder = key menu, huruf kecil):
+
+```
+frontend/src/menus/<role>/<menu>/
+├── index.jsx   # WAJIB: mainpage, `export default function`, + opsional:
+│               # export const meta = { label: 'Judul', icon: 'bell', order: 8 }
+├── api.js      # fungsi menu ini (pakai apiRequest dari api/client.js)
+└── components/ # pecahan halaman (opsional)
+```
+
+`<role>` = `shared` (semua role) | `admin` (ADMIN) | `user` (USER) |
+nama-role-lowercase (role custom). Contoh: `menus/admin/laporan/index.jsx`
+langsung tampil di sidebar admin tanpa sentuh file lain. Daftar ikon valid:
+lihat `components/icons.jsx` (`PATHS`).
+
+**Backend** — tambah 1 folder + 1 baris registrasi:
+
+```
+features/<menu>/
+├── <menu>_repository.go  # type Repository + NewRepository(db, dialect);
+│                         # SQL SELALU di variabel `query`, di-run via
+│                         # r.dialect.Bind(query), hasilnya dipetakan ke struct
+├── <menu>_service.go     # type Service + NewService(...) + ServiceInterface
+├── <menu>_handler.go     # type Handler + NewHandler(...) + method per endpoint
+└── (tambah *_test.go bila ada logika yang perlu diuji)
+```
+
+Lalu di `routes/routes.go`: tambah 1 field di `routes.Deps` + 1 blok route
+(contoh blok `/admin` yang sudah ada), dan rakit di `main.go` mengikuti
+pola `// Wiring per menu`. Konvensi nama (konsisten semua menu): repo
+`List/GetByX/Create/Update/Delete/Count`, service sama + kata kerja domain
+(`Login`, `Send`, `Prune`), handler bernama endpointnya (`GetUsers`,
+`SendNotification`), error service via `web.ServiceError`.
 
 ---
 
@@ -236,7 +368,7 @@ CREATE TABLE CPREFRESHTOKEN (
 > bawaan) + `CPNOTIFLOG`. Aman diulang (idempotent).
 >
 > **Bukan SQL Server?** Ganti engine tanpa ubah kode — semua query ditulis
-> netral (`?` + dialect layer di `repositories/dialect.go`) dan teruji di
+> netral (`?` + dialect layer di `repositories/db.go`) dan teruji di
 > SQLite:
 > - **PostgreSQL**: buat DB kosong → `psql -h … -U … -d … -f scripts/schema.postgres.sql`
 >   → set `DB_CONNECTION=postgres` (+ host/port/database/username/password).
@@ -316,14 +448,18 @@ go-core/
 ├── hide_windows.go         # sembunyikan console (--hide) khusus Windows
 ├── hide_other.go           # versi no-op untuk Linux/macOS
 │
-├── config/                 # baca & validasi konfigurasi
-├── models/                 # entity DB + DTO API
-├── repositories/           # query SQL (mentah, parameterized)
-├── services/               # logika bisnis + aturan auth
-├── handlers/               # HTTP: parse request → panggil service → tulis JSON
-├── middleware/             # auth JWT + rate-limit
-├── routes/                 # daftarkan semua endpoint + middleware global
+├── config/                 # baca & validasi konfigurasi (multi driver)
+├── models/                 # entity DB + DTO API (kontrak bersama)
+├── repositories/           # kernel DB: dialect, timeout (tanpa query bisnis)
+├── services/               # errors.go: error bermakna bersama (errors.Is)
+├── features/<menu>/        # 1 menu = 1 folder: <menu>_repository.go +
+│                           # <menu>_service.go + <menu>_handler.go
+│                           # (users, roles, sessions, audit, security,
+│                           #  syslog, notifications)
+├── middleware/             # auth JWT + rate-limit + RBAC
+├── routes/                 # middleware global + registrasi tiap menu
 ├── internal/pidfile/       # helper PID file (dipakai app & stop)
+├── internal/web/           # helper HTTP bersama (JSON, paginasi, error map)
 ├── cmd/stop/               # program kecil penghenti app background
 │
 ├── frontend/               # aplikasi React (Vite)
@@ -343,12 +479,21 @@ go-core/
 Setiap request API mengalir **dari luar ke dalam** seperti ini:
 
 ```
-routes/  →  middleware/  →  handlers/  →  services/  →  repositories/  →  SQL Server
-(daftar     (cek JWT,       (terima JSON,  (aturan bisnis:  (query         (tabel
- endpoint)   rate-limit)     tulis JSON)    validasi, hash)   parameterized) users/refresh_tokens)
-                              ▲                  │
-                           models/dto.go ────────┘
-                           (bentuk data request/response)
+routes/  →  middleware/  →  features/<menu>/  →  models/ + SQL Server/Postgres/SQLite
+(daftar     (cek JWT,       <menu>_handler.go     (entity + DTO,
+ endpoint    rate-limit,     (terima JSON,         dialect query
+ + RBAC)      tulis JSON)     parameterized)
+               ↓
+         <menu>_service.go
+         (aturan bisnis:
+          validasi, hash,
+          JWT, RBAC, rotasi)
+               ↓
+         <menu>_repository.go
+         (query SQL mentah di
+          variabel `query`,
+          di-run, dipetakan
+          ke response)
 ```
 
 Peran tiap folder:
@@ -356,15 +501,13 @@ Peran tiap folder:
 | Folder | Isi file | Tugasnya dalam bahasa sederhana |
 |--------|----------|----------------------------------|
 | `config/` | `env.go`, `database.go` | Baca `.env` **sekali** saat start (`Load()` → struct `Config`), validasi (JWT ≥32 char, port numerik), buka koneksi DB dengan timeout. Tidak pernah `log.Fatal` — selalu kembalikan `error`. |
-| `models/` | `user.go`, `refresh_token.go`, `role.go`, `permission.go`, `audit.go`, `syslog.go`, `notification.go`, `session.go`, `dto.go` | `User` = baris `CPUSER`; `Role`/`Permission`/`RoleDetail` (matriks RBAC); `AuditLog`+`AuditFilter`; `SysLog`; `NotifTemplate`/`NotifLog`/`NotifSendRequest`; `Session`+`SecuritySummary`. `ID` selalu disembunyikan dari JSON. |
-| `repositories/` | `user/refresh_token/role/audit/syslog/notification_repository.go` | Satu-satunya tempat berisi SQL (`CPUSER`, `CPREFRESHTOKEN`, `CPROLE`, `CPPERMISSION`, `CPROLEPERMISSION`, `CPAUDITLOG`, `CPSYSLOG`, `CPNOTIF*`; relasi via `CODE`). Query parameterized, timeout 5 detik, paginated. Token = **hash SHA-256**. |
-| `services/` | `user_service.go` + `rbac/session/audit/syslog/notification_service.go` | RBAC (`CheckPermission`, role CRUD, matriks permission, `UpdateUserRole`), sesi (list/revoke), audit & syslog (best-effort), notifikasi (render `{{var}}` + catat log). |
-| `handlers/` | `user_handler.go`, `admin_handler.go`, `deps.go` | User: audit otomatis (register/login/update/delete/sesi) + syslog untuk error 500 + `requireSelfOrPerm` (pemilik atau pemegang permission). Admin: 20 endpoint menu (role, sesi, audit, security, syslog, notifikasi). |
-| `middleware/` | `auth.go`, `ratelimit.go`, `rbac.go` | `RequirePermission(...)` → 403 JSON `forbidden: missing X` bila role tak punya permission (ADMIN selalu lolos). |
-| `services/` | `user_service.go` (+ `*_test.go`) | Otak aplikasi: normalisasi email (`trim+lowercase`), validasi, bcrypt, buat kode `USR-XXXXXXXX` + role default `USER`, buat/cek JWT (`user_code` + `role`), rotasi refresh token, batasi 5 sesi/user, petakan error DB ke error bermakna (`ErrUsernameTaken`, …). Punya unit test (`go test ./services/`). |
-| `handlers/` | `user_handler.go` | Penerjemah HTTP↔service: batasi body 1 MB, tolak field asing, parse `code`, cek "hanya pemilik data" (`requireSelf` bandingkan `user_code` JWT), tulis sukses/error **selalu JSON** `{...}` / `{error: ...}`. |
-| `middleware/` | `auth.go`, `ratelimit.go` | `NewAuth(secret)` = satpam JWT (cek `Bearer`, pin HS256, cek `iss/aud/exp`); `RateLimiter` = pembatas request/menit per IP (anti-spoof XFF, kirim header `Retry-After`). |
-| `routes/` | `routes.go` | Daftar endpoint `/api/*` + `/healthz`, pasang middleware global (`RequestID`, `Logger`, `Recoverer`, `Timeout`), dan rate-limit berbeda per endpoint (login 5/mnt, register 10/mnt, refresh 30/mnt). |
+| `models/` | `user.go`, `refresh_token.go`, `role.go`, `permission.go`, `audit.go`, `syslog.go`, `notification.go`, `session.go`, `dto.go` | Kontrak DB bersama semua menu. `ID` selalu disembunyikan dari JSON. |
+| `repositories/` | `db.go` (+ `db_test.go`) | Kernel DB: `Dialect` (mssql/postgres/sqlite), `Bind` (`?`→`@pN`/`$N`), `Table`, `Now`, timeout, `NullStr`. Tanpa query bisnis. |
+| `services/` | `errors.go` | Error bermakna bersama (`ErrUserNotFound`, …) agar `errors.Is` lintas menu tetap cocok. |
+| `features/<menu>/` | `<menu>_repository.go`, `<menu>_service.go`, `<menu>_handler.go` (+ `*_test.go`) | Satu menu = satu folder. Repo: SQL mentah di variabel `query` → `Bind` → run → petakan ke struct. Service: `Repository`/`Service`/`Handler` + `New…` + interface (validasi, hash, JWT, RBAC, rotasi, 5 sesi/user). Handler: parse JSON (`internal/web`), panggil service, tulis JSON, audit best-effort. Depend antar-menu hanya via interface lokal (tanpa import silang). |
+| `middleware/` | `auth.go`, `ratelimit.go`, `rbac.go` | `NewAuth` (Bearer, HS256, iss/aud/exp); `RateLimiter` tanpa goroutine (purge oportunistik); `RequirePermission(...)` → 403 `forbidden: missing X` (ADMIN selalu lolos). |
+| `internal/web/` | `web.go` | Helper HTTP bersama: `WriteJSON`, `WriteError`, `DecodeJSON` (tolak field asing, cap 1 MB), `Paginate`, `PathCode`, `ServiceError` (peta error→status tunggal). |
+| `routes/` | `routes.go` | Middleware global + `Deps` (1 handler per menu) + blok route per menu. Tambah menu = tambah field + blok. |
 | `internal/pidfile/` | `pidfile.go` | Satu-satunya penentu lokasi PID file (`%TEMP%\go-core.pid` + fallback nama lama) agar app dan stop.exe **tidak pernah beda path**. |
 | `cmd/stop/` | `main.go`, `signal_*.go` | `stop.exe`: kirim SIGINT (graceful, tunggu 8 dtk) → baru force-kill **PID itu saja**; sengaja **tidak** kill by-name agar tak salah bunuh proses lain. Windows + Unix. |
 | `main.go` | — | Lem: load config → tulis PID → konek DB → rakit service → pasang route → tempel frontend embed → jalan + graceful shutdown. Tiap jam bersihkan refresh token kedaluwarsa. |
@@ -383,11 +526,19 @@ frontend/
 │   ├── App.jsx             # shell: dibungkus ToastProvider; login fokus tanpa
 │   │                       # navbar; sidebar + topbar HP + toggle tema
 │   ├── index.css           # token CSS + `@import "tailwindcss"`
-│   ├── api/client.js       # SATU-SATUNYA yang fetch ke backend:
-│   │                       # simpan token di localStorage, auto-refresh 1x saat
-│   │                       # 401; register/login/logout/listUsers/getUser/
-│   │                       # updateUser/deleteUser/logoutAll + currentUser()
-│   │                       # (baca user_id dari klaim JWT, tanpa request)
+│   ├── api/client.js       # inti: request + auth (login/logout) + token
+│   │                       # localStorage + auto-refresh 1x saat 401 +
+│   │                       # currentUser()/health(). Fungsi tiap menu ada di
+│   │                       # menus/<role>/<menu>/api.js (pakai apiRequest)
+│   ├── menus/              # 1 menu = 1 folder (auto-scan registry.js):
+│   │   ├── registry.js     # import.meta.glob menus/*/*/index.jsx → sidebar
+│   │   ├── shared/dashboard/   # semua role: profil, sesi, password,
+│   │   │   │               # ringkasan + pintasan admin
+│   │   │   └── index.jsx   # mainpage + export const meta {label,icon,order}
+│   │   ├── admin/<menu>/   # ADMIN: users (+components/EditUserModal.jsx),
+│   │   │                   # roles, sessions, audit, security, syslog,
+│   │   │                   # notifications — tiap folder: index.jsx + api.js
+│   │   └── user/           # USER (.gitkeep; tambah folder menu bila perlu)
 │   ├── components/         # UI KIT modern (lihat 2.5): Toast, Alert, Modal,
 │   │   │                   # ConfirmDialog, Button, TextField/PasswordInput,
 │   │   │                   # Spinner/Skeleton, EmptyState, Badge, Pagination,
@@ -416,7 +567,9 @@ frontend/
     └── .gitignore          # placeholder agar go:embed tetap compile di fresh clone
 ```
 
-Alur data frontend: `pages/*.jsx` → `api/client.js` → `fetch(${VITE_API_URL}/api/...)`.
+Alur data frontend: `menus/<role>/<menu>/index.jsx` → `api.js` menu itu →
+`apiRequest` (`api/client.js`) → `fetch(${VITE_API_URL}/api/...)`.
+`App.jsx` membangun sidebar otomatis dari `menus/registry.js` (filter role).
 Saat dev (`npm run dev`), `VITE_API_URL` kosong → request relatif `/api/...` →
 diproxy Vite ke backend. Saat production (di-embed), frontend disajikan dari
 binary yang sama → request relatif otomatis benar.
@@ -630,15 +783,16 @@ Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 ### 5.2 Testing
 
 ```powershell
-task test                       # vet + seluruh test Go (race detector)
-go test ./services/ -run TestLogin -v   # satu grup test
-go test -race ./...             # eksplisit
-npm --prefix frontend run lint  # lint React
+task test                                # vet + seluruh test Go (race detector)
+go test ./features/users/ -run TestLogin -v   # satu grup test
+go test -race ./...                      # eksplisit
+npm --prefix frontend run lint           # lint React
 ```
 
-Test ada di `services/user_service_test.go` (table-driven: validasi, duplikat,
-cap 5 sesi, rotasi, expired, logout) dengan mock thread-safe
-(`user_service_mock_test.go`, tanpa DB).
+Test per menu di `features/<menu>/*_test.go` tanpa DB: `features/users/`
+(table-driven validasi, duplikat, cap 5 sesi, rotasi, expired, logout,
+mock thread-safe), `features/roles/` (RBAC + lifecycle role),
+`repositories/` (dialect bind), `routes/` (wiring + matriks 403).
 
 ---
 
@@ -686,7 +840,7 @@ Checklist sebelum live: `JWT_SECRET` acak ≥32 char & beda dari dev,
 | Token lama invalid setelah update server | Wajar — JWT kini berisi `user_code` (bukan `user_id`) + tabel jadi `CP*` → semua user wajib login ulang |
 
 **FAQ singkat:**
-- *Data user dari mana?* SQL Server, tabel `users` + `refresh_tokens` (lihat Langkah 3).
+- *Data user dari mana?* Database `Go`, tabel `CPUSER` + `CPREFRESHTOKEN` + `CPROLE` dkk (lihat Mulai dari Nol langkah 4).
 - *Ganti React dengan framework lain?* Bisa — yang di-embed hanya isi `frontend/dist/`; backend tidak peduli isinya.
-- *Tambah endpoint baru?* Urutan: SQL di `repositories/` → aturan di `services/` (+test) → JSON di `handlers/` → daftar di `routes/` → pakai dari `api/client.js`.
+- *Tambah endpoint baru?* Lihat resep di atas (Resep: Role Baru & Menu Baru): 1 folder `features/<menu>/` + 1 blok route + fungsi di `menus/<role>/<menu>/api.js`.
 - *Frontend & backend beda server?* Isi `VITE_API_URL` di frontend + rebuild; backend tetap sama (tambah CORS bila perlu).
