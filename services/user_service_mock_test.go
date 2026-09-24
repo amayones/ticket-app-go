@@ -145,6 +145,18 @@ func (m *MockUserRepository) Count(ctx context.Context) (int, error) {
 	return len(m.Users), nil
 }
 
+func (m *MockUserRepository) CountByRole(ctx context.Context, roleCode string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, u := range m.Users {
+		if u.RoleCode == roleCode {
+			n++
+		}
+	}
+	return n, nil
+}
+
 type MockRefreshTokenRepository struct {
 	mu     sync.Mutex
 	Tokens map[string]*models.RefreshToken // keyed by hash
