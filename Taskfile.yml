@@ -87,6 +87,12 @@ tasks:
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1
 
+  migrate:
+    desc: Apply scripts/migrate.sql to SQL Server (requires sqlcmd)
+    dotenv: ['.env']
+    cmds:
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -i scripts/migrate.sql
+
   test:
     desc: Go vet + race tests
     cmds:
