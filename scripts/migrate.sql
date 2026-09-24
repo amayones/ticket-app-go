@@ -1,0 +1,109 @@
+-- Migrasi skema ke tabel CP*: huruf besar, prefix CP, relasi via CODE.
+--   CPROLE          master role (ADMIN, USER)
+--   CPUSER          akun (relasi ke CPROLE via ROLE_CODE)
+--   CPREFRESHTOKEN  sesi (relasi ke CPUSER via USER_CODE, bukan user_id)
+-- Kolom ID tetap ada sebagai IDENTITY (PK fisik) tapi tidak dipakai relasi/API.
+--
+-- Aman diulang (idempotent): migrasi data hanya jalan bila target masih kosong,
+-- tabel lama hanya dihapus bila jumlah baris terbukti sama.
+--
+-- Jalankan: sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate.sql
+-- Atau:     task migrate
+SET XACT_ABORT ON;
+BEGIN TRAN;
+
+-- 1. CPROLE -----------------------------------------------------------------
+IF OBJECT_ID(N'dbo.CPROLE', N'U') IS NULL
+CREATE TABLE dbo.CPROLE (
+  ID INT IDENTITY(1,1) NOT NULL,
+  CODE NVARCHAR(20) NOT NULL,
+  NAME NVARCHAR(100) NOT NULL,
+  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPROLE_CREATED DEFAULT GETDATE(),
+  UPDATED_AT DATETIME NOT NULL CONSTRAINT DF_CPROLE_UPDATED DEFAULT GETDATE(),
+  CONSTRAINT PK_CPROLE PRIMARY KEY CLUSTERED (ID),
+  CONSTRAINT UQ_CPROLE_CODE UNIQUE NONCLUSTERED (CODE)
+);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.CPROLE WHERE CODE = N'ADMIN')
+  INSERT INTO dbo.CPROLE (CODE, NAME) VALUES (N'ADMIN', N'Administrator');
+IF NOT EXISTS (SELECT 1 FROM dbo.CPROLE WHERE CODE = N'USER')
+  INSERT INTO dbo.CPROLE (CODE, NAME) VALUES (N'USER', N'Pengguna');
+
+-- 2. CPUSER -----------------------------------------------------------------
+IF OBJECT_ID(N'dbo.CPUSER', N'U') IS NULL
+CREATE TABLE dbo.CPUSER (
+  ID INT IDENTITY(1,1) NOT NULL,
+  CODE NVARCHAR(20) NOT NULL,
+  USERNAME NVARCHAR(50) NOT NULL,
+  EMAIL NVARCHAR(255) NOT NULL,
+  PASSWORD NVARCHAR(255) NOT NULL,
+  ROLE_CODE NVARCHAR(20) NOT NULL CONSTRAINT DF_CPUSER_ROLE DEFAULT N'USER',
+  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPUSER_CREATED DEFAULT GETDATE(),
+  UPDATED_AT DATETIME NOT NULL CONSTRAINT DF_CPUSER_UPDATED DEFAULT GETDATE(),
+  CONSTRAINT PK_CPUSER PRIMARY KEY CLUSTERED (ID),
+  CONSTRAINT UQ_CPUSER_CODE UNIQUE NONCLUSTERED (CODE),
+  CONSTRAINT UQ_CPUSER_USERNAME UNIQUE NONCLUSTERED (USERNAME),
+  CONSTRAINT UQ_CPUSER_EMAIL UNIQUE NONCLUSTERED (EMAIL),
+  CONSTRAINT FK_CPUSER_ROLE FOREIGN KEY (ROLE_CODE) REFERENCES dbo.CPROLE (CODE)
+);
+
+-- 3. Migrasi users -> CPUSER (sekali saja) -----------------------------------
+IF OBJECT_ID(N'dbo.users', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.CPUSER)
+BEGIN
+  INSERT INTO dbo.CPUSER (CODE, USERNAME, EMAIL, PASSWORD, ROLE_CODE, CREATED_AT, UPDATED_AT)
+  SELECT N'USR-' + RIGHT(N'000000' + CAST(ID AS NVARCHAR(6)), 6),
+         USERNAME, EMAIL, PASSWORD, N'USER', CREATED_AT, UPDATED_AT
+  FROM dbo.users;
+END
+
+-- 4. CPREFRESHTOKEN -----------------------------------------------------------
+IF OBJECT_ID(N'dbo.CPREFRESHTOKEN', N'U') IS NULL
+CREATE TABLE dbo.CPREFRESHTOKEN (
+  ID INT IDENTITY(1,1) NOT NULL,
+  USER_CODE NVARCHAR(20) NOT NULL,
+  TOKEN NVARCHAR(512) NOT NULL,
+  EXPIRES_AT DATETIME NOT NULL,
+  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPRT_CREATED DEFAULT GETDATE(),
+  CONSTRAINT PK_CPREFRESHTOKEN PRIMARY KEY CLUSTERED (ID),
+  CONSTRAINT UQ_CPRT_TOKEN UNIQUE NONCLUSTERED (TOKEN),
+  CONSTRAINT FK_CPRT_USER FOREIGN KEY (USER_CODE) REFERENCES dbo.CPUSER (CODE) ON DELETE CASCADE
+);
+
+-- 5. Migrasi refresh_tokens -> CPREFRESHTOKEN ----------------------------------
+IF OBJECT_ID(N'dbo.refresh_tokens', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.CPREFRESHTOKEN)
+BEGIN
+  INSERT INTO dbo.CPREFRESHTOKEN (USER_CODE, TOKEN, EXPIRES_AT, CREATED_AT)
+  SELECT N'USR-' + RIGHT(N'000000' + CAST(r.USER_ID AS NVARCHAR(6)), 6),
+         r.TOKEN, r.EXPIRES_AT, r.CREATED_AT
+  FROM dbo.refresh_tokens r
+  WHERE EXISTS (
+    SELECT 1 FROM dbo.CPUSER c
+    WHERE c.CODE = N'USR-' + RIGHT(N'000000' + CAST(r.USER_ID AS NVARCHAR(6)), 6)
+  );
+END
+
+-- 6. Verifikasi jumlah, lalu hapus tabel lama ---------------------------------
+IF OBJECT_ID(N'dbo.users', N'U') IS NOT NULL
+BEGIN
+  DECLARE @old_u INT, @new_u INT;
+  SELECT @old_u = COUNT(*) FROM dbo.users;
+  SELECT @new_u = COUNT(*) FROM dbo.CPUSER;
+  IF @old_u <> @new_u
+  BEGIN
+    RAISERROR(N'Migrasi CPUSER gagal: %d baris lama vs %d baris baru', 16, 1, @old_u, @new_u);
+  END
+  IF OBJECT_ID(N'dbo.refresh_tokens', N'U') IS NOT NULL
+  BEGIN
+    DECLARE @old_r INT, @new_r INT;
+    SELECT @old_r = COUNT(*) FROM dbo.refresh_tokens;
+    SELECT @new_r = COUNT(*) FROM dbo.CPREFRESHTOKEN;
+    IF @old_r <> @new_r
+    BEGIN
+      RAISERROR(N'Migrasi CPREFRESHTOKEN gagal: %d vs %d', 16, 1, @old_r, @new_r);
+    END
+    DROP TABLE dbo.refresh_tokens;
+  END
+  DROP TABLE dbo.users;
+END
+
+COMMIT TRAN;
