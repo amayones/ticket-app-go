@@ -3,7 +3,7 @@ import { api } from '../api/client.js'
 import { Alert, Button, Modal, TextField, useToast } from '../components'
 
 // Modal edit user: hanya mengirim field yang diubah (patch parsial).
-// Dipasang dengan key={user.id} oleh induk agar form ter-reset tiap ganti user.
+// Dipasang dengan key={user.code} oleh induk agar form ter-reset tiap ganti user.
 export default function EditUserModal({ user, onClose, onSaved }) {
   const toast = useToast()
   const [username, setUsername] = useState(user?.username || '')
@@ -28,7 +28,7 @@ export default function EditUserModal({ user, onClose, onSaved }) {
     }
     setLoading(true)
     try {
-      await api.updateUser(user.id, patch)
+      await api.updateUser(user.code, patch)
       toast.success('Profil berhasil diperbarui.')
       onSaved()
       onClose()
