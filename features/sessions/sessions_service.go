@@ -45,7 +45,7 @@ func (s *Service) ListAllSessions(ctx context.Context, limit, offset int) ([]mod
 	return sessions, nil
 }
 
-// RevokeSession mencabut satu sesi milik user (pemilik atau SESSION_MANAGE).
+// RevokeSession mencabut satu sesi milik user (pemilik atau MENU_SESSIONS).
 func (s *Service) RevokeSession(ctx context.Context, callerCode string, sessionID int, manageAll bool) error {
 	sessions, err := s.refresh.ListAll(ctx, repositories.MaxListLimit, 0)
 	if err != nil {
