@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, onSessionExpired } from './api/client.js'
-import { Alert, Badge, Button, Icon, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
+import { Badge, Button, Icon, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
 import { menusForRole } from './menus/registry.js'
 import { LoginForm } from './pages/Auth.jsx'
 
@@ -67,13 +67,7 @@ function Shell() {
     toast.success('Sesi dipulihkan. Selamat melanjutkan!')
   }
 
-  // Keluar penuh dari popup (misal ingin ganti akun): kembali ke halaman login.
-  function handleSwitchAccount() {
-    setSessionExpired(false)
-    setLastMe(null)
-    setLoggedIn(false)
-    setView('login')
-  }
+
 
   function handleAccountDeleted() {
     setSessionExpired(false)
@@ -273,24 +267,17 @@ function Shell() {
         </footer>
       </div>
 
-      {/* Popup wajib saat sesi habis: tetap di halaman terakhir, tidak boleh
-          di-skip (tanpa × / backdrop / ESC). Login sukses -> lanjut di tempat. */}
       <Modal
         open={sessionExpired}
-        title="Sesi berakhir — login lagi"
+        title="Sesi habis — login lagi"
         size="sm"
         showClose={false}
         closeOnBackdrop={false}
-        footer={
-          <Button variant="secondary" size="sm" onClick={handleSwitchAccount}>
-            Ganti akun
-          </Button>
-        }
       >
         <div className="flex flex-col gap-4">
-          <Alert tone="warning" title="Sesi habis">
-            Sesi Anda telah berakhir. Login kembali untuk melanjutkan tanpa kehilangan halaman ini.
-          </Alert>
+          <p className="text-sm text-zinc-600 dark:text-zinc-300">
+            Sesi Anda telah berakhir. Login kembali untuk melanjutkan di halaman ini.
+          </p>
           <LoginForm onDone={handleRelogin} />
         </div>
       </Modal>
