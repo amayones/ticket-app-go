@@ -1,5 +1,5 @@
 # Placeholder agar //go:embed all:frontend/dist tetap compile di fresh clone.
 # Isi dist/* lain tetap di-ignore. File ini dibuat ulang otomatis oleh
-# scripts/build.ps1 setelah `vite build` (emptyOutDir menghapusnya).
+# scripts/build-frontend.sh setelah `vite build` (emptyOutDir menghapusnya).
 *
 !.gitignore
