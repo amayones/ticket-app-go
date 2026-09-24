@@ -1,125 +1,70 @@
-package handlers
+package users
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
-
+	"golang-backend/features/audit"
+	"golang-backend/features/roles"
+	"golang-backend/features/syslog"
+	"golang-backend/internal/web"
 	"golang-backend/middleware"
 	"golang-backend/models"
 	"golang-backend/services"
+	"golang-backend/utils"
 )
 
-// MaxBodyBytes caps JSON bodies (DoS protection).
-const MaxBodyBytes = 1 << 20 // 1 MB
-
-// UserHandler depends on the service interface (mockable), not concrete.
+// Handler depends on abstractions (mockable), not concretes.
 // Audit + Syslog are best-effort (nil-safe) so failures never break requests.
-type UserHandler struct {
-	Service services.UserServiceInterface
-	Audit   AuditLogger
-	Sys     SysLogger
+type Handler struct {
+	Service ServiceInterface
+	Perms   roles.ServiceInterface
+	Audit   audit.ServiceInterface
+	Sys     syslog.ServiceInterface
 }
 
-func NewUserHandler(service services.UserServiceInterface, audit AuditLogger, sys SysLogger) *UserHandler {
-	return &UserHandler{Service: service, Audit: audit, Sys: sys}
+func NewHandler(service ServiceInterface, perms roles.ServiceInterface, audit audit.ServiceInterface, sys syslog.ServiceInterface) *Handler {
+	return &Handler{Service: service, Perms: perms, Audit: audit, Sys: sys}
 }
 
-func (h *UserHandler) audit(r *http.Request, actorCode, action, entity, entityCode, detail string) {
+func (h *Handler) audit(r *http.Request, actorCode, action, entity, entityCode, detail string) {
 	if h.Audit == nil {
 		return
 	}
-	_ = h.Audit.Log(r.Context(), actorCode, action, entity, entityCode, detail, services.ClientIP(r.RemoteAddr))
+	_ = h.Audit.Log(r.Context(), actorCode, action, entity, entityCode, detail, utils.ClientIP(r.RemoteAddr))
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		slog.Error("encode response", "err", err)
+func (h *Handler) handleServiceError(w http.ResponseWriter, err error) {
+	if web.ServiceError(w, err) == http.StatusInternalServerError && h.Sys != nil {
+		_ = h.Sys.Error(context.Background(), "users_handler", err.Error())
 	}
-}
-
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
-}
-
-func decodeJSON(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON")
-		return false
-	}
-	return true
-}
-
-func (h *UserHandler) handleServiceError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, services.ErrInputRequired),
-		errors.Is(err, services.ErrUsernameTooShort),
-		errors.Is(err, services.ErrInvalidEmail),
-		errors.Is(err, services.ErrPasswordTooShort),
-		errors.Is(err, services.ErrPasswordTooLong):
-		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, services.ErrUsernameTaken),
-		errors.Is(err, services.ErrEmailTaken):
-		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, services.ErrInvalidLogin),
-		errors.Is(err, services.ErrInvalidRefresh):
-		writeError(w, http.StatusUnauthorized, err.Error())
-	case errors.Is(err, services.ErrForbidden):
-		writeError(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, services.ErrUserNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
-	default:
-		slog.Error("internal error", "err", err)
-		if h.Sys != nil {
-			_ = h.Sys.Error(context.Background(), "user_handler", err.Error())
-		}
-		writeError(w, http.StatusInternalServerError, "Something went wrong")
-	}
-}
-
-func parseCode(r *http.Request) (string, bool) {
-	code := strings.TrimSpace(chi.URLParam(r, "code"))
-	if code == "" {
-		return "", false
-	}
-	return code, true
 }
 
 // requireSelfOrPerm allows the owner, or anyone holding the permission
 // (e.g. admin with USER_UPDATE can edit other users).
-func requireSelfOrPerm(h *UserHandler, w http.ResponseWriter, r *http.Request, code, perm string) bool {
+func requireSelfOrPerm(h *Handler, w http.ResponseWriter, r *http.Request, code, perm string) bool {
 	callerCode, ok := middleware.GetUserCode(r)
 	if !ok {
-		writeError(w, http.StatusForbidden, services.ErrForbidden.Error())
+		web.WriteError(w, http.StatusForbidden, services.ErrForbidden.Error())
 		return false
 	}
 	if callerCode == code {
 		return true
 	}
-	if err := h.Service.CheckPermission(r.Context(), callerCode, perm); err != nil {
-		writeError(w, http.StatusForbidden, services.ErrForbidden.Error())
+	if err := h.Perms.CheckPermission(r.Context(), callerCode, perm); err != nil {
+		web.WriteError(w, http.StatusForbidden, services.ErrForbidden.Error())
 		return false
 	}
 	return true
 }
 
-func (h *UserHandler) Health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
+	web.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
-	limit, offset := paginate(r)
+func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
+	limit, offset := web.Paginate(r)
 	users, err := h.Service.ListUsers(r.Context(), limit, offset)
 	if err != nil {
 		h.handleServiceError(w, err)
@@ -128,29 +73,13 @@ func (h *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	if users == nil {
 		users = []models.UserResponse{}
 	}
-	writeJSON(w, http.StatusOK, users)
+	web.WriteJSON(w, http.StatusOK, users)
 }
 
-func paginate(r *http.Request) (limit, offset int) {
-	limit = 50
-	offset = 0
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
-			limit = n
-		}
-	}
-	if v := r.URL.Query().Get("offset"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-			offset = n
-		}
-	}
-	return limit, offset
-}
-
-func (h *UserHandler) GetUserByCode(w http.ResponseWriter, r *http.Request) {
-	code, ok := parseCode(r)
+func (h *Handler) GetUserByCode(w http.ResponseWriter, r *http.Request) {
+	code, ok := web.PathCode(r, "code")
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid user code")
+		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
 	user, err := h.Service.GetUserByCode(r.Context(), code)
@@ -158,12 +87,12 @@ func (h *UserHandler) GetUserByCode(w http.ResponseWriter, r *http.Request) {
 		h.handleServiceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, user.ToResponse())
+	web.WriteJSON(w, http.StatusOK, user.ToResponse())
 }
 
-func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateUserRequest
-	if !decodeJSON(w, r, &req) {
+	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
 	// Hanya pemegang USER_ROLE_ASSIGN boleh menentukan role non-default.
@@ -171,8 +100,8 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.RoleCode) != "" &&
 		!strings.EqualFold(strings.TrimSpace(req.RoleCode), models.DefaultRoleCode) {
 		caller, _ := middleware.GetUserCode(r)
-		if err := h.Service.CheckPermission(r.Context(), caller, models.PermUserRoleAssign); err != nil {
-			writeError(w, http.StatusForbidden, services.ErrForbidden.Error())
+		if err := h.Perms.CheckPermission(r.Context(), caller, models.PermUserRoleAssign); err != nil {
+			web.WriteError(w, http.StatusForbidden, services.ErrForbidden.Error())
 			return
 		}
 		roleCode = strings.ToUpper(strings.TrimSpace(req.RoleCode))
@@ -184,23 +113,23 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	caller, _ := middleware.GetUserCode(r)
 	h.audit(r, caller, models.AuditRegister, models.EntityUser, code, "Akun "+req.Username+" dibuat oleh "+caller)
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
+	web.WriteJSON(w, http.StatusCreated, map[string]interface{}{
 		"message": "User created successfully",
 		"code":    code,
 	})
 }
 
-func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	code, ok := parseCode(r)
+func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	code, ok := web.PathCode(r, "code")
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid user code")
+		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
 	if !requireSelfOrPerm(h, w, r, code, models.PermUserUpdate) {
 		return
 	}
 	var req models.UpdateUserRequest
-	if !decodeJSON(w, r, &req) {
+	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
 	if err := h.Service.UpdateUser(r.Context(), code, req); err != nil {
@@ -209,13 +138,13 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	caller, _ := middleware.GetUserCode(r)
 	h.audit(r, caller, models.AuditUpdateUser, models.EntityUser, code, "Profil diperbarui")
-	writeJSON(w, http.StatusOK, map[string]string{"message": "User updated successfully"})
+	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "User updated successfully"})
 }
 
-func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	code, ok := parseCode(r)
+func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	code, ok := web.PathCode(r, "code")
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid user code")
+		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
 	if !requireSelfOrPerm(h, w, r, code, models.PermUserDelete) {
@@ -227,12 +156,12 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	caller, _ := middleware.GetUserCode(r)
 	h.audit(r, caller, models.AuditDeleteUser, models.EntityUser, code, "Akun dihapus")
-	writeJSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
+	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
 }
 
-func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req models.LoginRequest
-	if !decodeJSON(w, r, &req) {
+	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
 	accessToken, refreshToken, err := h.Service.Login(r.Context(), req.Username, req.Password)
@@ -243,16 +172,16 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit(r, "", models.AuditLogin, models.EntityAuth, req.Username, "Login berhasil: "+req.Username)
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]string{
+	web.WriteJSON(w, http.StatusOK, map[string]string{
 		"message":       "Login successful",
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 	})
 }
 
-func (h *UserHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var req models.RefreshRequest
-	if !decodeJSON(w, r, &req) {
+	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
 	accessToken, newRefreshToken, err := h.Service.RefreshAccessToken(r.Context(), req.RefreshToken)
@@ -261,15 +190,15 @@ func (h *UserHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]string{
+	web.WriteJSON(w, http.StatusOK, map[string]string{
 		"access_token":  accessToken,
 		"refresh_token": newRefreshToken,
 	})
 }
 
-func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	var req models.LogoutRequest
-	if !decodeJSON(w, r, &req) {
+	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
 	if err := h.Service.Logout(r.Context(), req.RefreshToken); err != nil {
@@ -277,13 +206,13 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r, "", models.AuditLogout, models.EntitySession, "", "Sesi dicabut via logout")
-	writeJSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
+	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
 }
 
-func (h *UserHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
-	code, ok := parseCode(r)
+func (h *Handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
+	code, ok := web.PathCode(r, "code")
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid user code")
+		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
 	if !requireSelfOrPerm(h, w, r, code, models.PermSessionManage) {
@@ -295,17 +224,7 @@ func (h *UserHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	}
 	caller, _ := middleware.GetUserCode(r)
 	h.audit(r, caller, models.AuditLogoutAll, models.EntitySession, code, "Semua sesi dicabut")
-	writeJSON(w, http.StatusOK, map[string]string{"message": "Logged out from all devices"})
+	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "Logged out from all devices"})
 }
 
-func (h *UserHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
-	roles, err := h.Service.ListRoles(r.Context())
-	if err != nil {
-		h.handleServiceError(w, err)
-		return
-	}
-	if roles == nil {
-		roles = []models.Role{}
-	}
-	writeJSON(w, http.StatusOK, roles)
-}
+
