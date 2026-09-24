@@ -3,8 +3,8 @@ package models
 import "time"
 
 // Permission codes (seed di scripts/migrate2_rbac.sql). Satu permission
-// per menu: jika role punya permission ini, menu-nya tampil di sidebar.
-// Tambah menu = tambah konstanta di sini + seed di SQL.
+// per menu: jika role punya permission ini, role dapat memakai seluruh
+// fungsi menu tersebut. Tambah menu = tambah konstanta di sini + seed di SQL.
 const (
 	MenuDashboard     = "MENU_DASHBOARD"
 	MenuUsers         = "MENU_USERS"
