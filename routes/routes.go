@@ -63,7 +63,6 @@ func SetupRoutesWithConfig(userHandler *handlers.UserHandler, adminHandler *hand
 	r.Get("/healthz", userHandler.Health)
 
 	loginLimiter := appmw.NewRateLimiterWithOptions(cfg.LoginLimit, cfg.LoginWindow, cfg.TrustProxy)
-	registerLimiter := appmw.NewRateLimiterWithOptions(cfg.RegisterLimit, cfg.RegisterWindow, cfg.TrustProxy)
 	refreshLimiter := appmw.NewRateLimiterWithOptions(cfg.RefreshLimit, cfg.RefreshWindow, cfg.TrustProxy)
 	auth := appmw.NewAuth(cfg.JWTSecret)
 
@@ -74,7 +73,9 @@ func SetupRoutesWithConfig(userHandler *handlers.UserHandler, adminHandler *hand
 		r.With(auth).Get("/roles", userHandler.ListRoles)
 		r.Route("/users", func(r chi.Router) {
 			r.With(auth).Get("/", userHandler.GetUsers)
-			r.With(registerLimiter.Middleware).Post("/", userHandler.CreateUser)
+			// Tanpa registrasi publik: tambah user hanya oleh pemegang USER_CREATE.
+			r.With(auth, appmw.RequirePermission(userHandler.Service, models.PermUserCreate)).
+				Post("/", userHandler.CreateUser)
 			r.With(auth).Get("/{code}", userHandler.GetUserByCode)
 			r.With(auth).Put("/{code}", userHandler.UpdateUser)
 			r.With(auth).Delete("/{code}", userHandler.DeleteUser)
