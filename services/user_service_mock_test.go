@@ -128,6 +128,23 @@ func (m *MockUserRepository) Delete(ctx context.Context, code string) error {
 	return nil
 }
 
+func (m *MockUserRepository) UpdateRole(ctx context.Context, code, roleCode string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.Users[code]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	u.RoleCode = roleCode
+	return nil
+}
+
+func (m *MockUserRepository) Count(ctx context.Context) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.Users), nil
+}
+
 type MockRefreshTokenRepository struct {
 	mu     sync.Mutex
 	Tokens map[string]*models.RefreshToken // keyed by hash
@@ -193,6 +210,38 @@ func (m *MockRefreshTokenRepository) CountByUserCode(ctx context.Context, userCo
 	return count, nil
 }
 
+func (m *MockRefreshTokenRepository) CountActive(ctx context.Context) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.Tokens), nil
+}
+
+func (m *MockRefreshTokenRepository) ListByUserCode(ctx context.Context, userCode string) ([]models.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]models.Session, 0)
+	for _, v := range m.Tokens {
+		if v.UserCode == userCode {
+			out = append(out, models.Session{UserCode: v.UserCode, ExpiresAt: v.ExpiresAt, CreatedAt: v.CreatedAt})
+		}
+	}
+	return out, nil
+}
+
+func (m *MockRefreshTokenRepository) ListAll(ctx context.Context, limit, offset int) ([]models.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]models.Session, 0)
+	for _, v := range m.Tokens {
+		out = append(out, models.Session{UserCode: v.UserCode, ExpiresAt: v.ExpiresAt, CreatedAt: v.CreatedAt})
+	}
+	return out, nil
+}
+
+func (m *MockRefreshTokenRepository) DeleteByID(ctx context.Context, id int) (bool, error) {
+	return false, nil
+}
+
 func (m *MockRefreshTokenRepository) DeleteOldestByUserCode(ctx context.Context, userCode string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -239,4 +288,42 @@ func (m *MockRoleRepository) GetByCode(ctx context.Context, code string) (*model
 		}
 	}
 	return nil, sql.ErrNoRows
+}
+
+func (m *MockRoleRepository) Create(ctx context.Context, role *models.Role) error {
+	m.Roles = append(m.Roles, *role)
+	return nil
+}
+
+func (m *MockRoleRepository) Delete(ctx context.Context, code string) error {
+	for i, r := range m.Roles {
+		if r.Code == code {
+			m.Roles = append(m.Roles[:i], m.Roles[i+1:]...)
+			return nil
+		}
+	}
+	return sql.ErrNoRows
+}
+
+func (m *MockRoleRepository) Count(ctx context.Context) (int, error) {
+	return len(m.Roles), nil
+}
+
+func (m *MockRoleRepository) ListPermissions(ctx context.Context) ([]models.Permission, error) {
+	return []models.Permission{{Code: models.PermUserRead, Name: "Lihat user", Group: "USER"}}, nil
+}
+
+func (m *MockRoleRepository) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
+	return []string{models.PermUserRead}, nil
+}
+
+func (m *MockRoleRepository) SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error {
+	return nil
+}
+
+func (m *MockRoleRepository) HasPermission(ctx context.Context, roleCode, permCode string) (bool, error) {
+	if roleCode == models.RoleAdmin {
+		return true, nil
+	}
+	return permCode == models.PermUserRead, nil
 }
