@@ -1,4 +1,4 @@
-package services
+package users
 
 import (
 	"context"
@@ -300,6 +300,15 @@ func (m *MockRoleRepository) GetByCode(ctx context.Context, code string) (*model
 		}
 	}
 	return nil, sql.ErrNoRows
+}
+
+func (m *MockRoleRepository) RoleExists(ctx context.Context, code string) (bool, error) {
+	for _, r := range m.Roles {
+		if r.Code == code {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *MockRoleRepository) Create(ctx context.Context, role *models.Role) error {

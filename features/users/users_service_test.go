@@ -1,4 +1,4 @@
-package services
+package users
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"golang-backend/models"
+	"golang-backend/services"
 )
 
 var errUsernameConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_CPUSER_USERNAME'`)
@@ -16,13 +17,13 @@ var errCodeConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'U
 
 const testJWTSecret = "test-secret-key-for-unit-tests-32-chars"
 
-func newTestService(t *testing.T) (*UserService, *MockUserRepository, *MockRefreshTokenRepository) {
+func newTestService(t *testing.T) (*Service, *MockUserRepository, *MockRefreshTokenRepository) {
 	t.Helper()
 	t.Setenv("JWT_SECRET", testJWTSecret)
 	repo := NewMockUserRepository()
 	refreshRepo := NewMockRefreshTokenRepository()
 	roleRepo := NewMockRoleRepository()
-	svc, err := NewUserService(repo, refreshRepo, roleRepo, testJWTSecret)
+	svc, err := NewService(repo, refreshRepo, roleRepo, testJWTSecret)
 	if err != nil {
 		t.Fatalf("NewUserService: %v", err)
 	}
@@ -59,11 +60,11 @@ func TestCreateUser_Table(t *testing.T) {
 		password string
 		wantErr  error
 	}{
-		{"invalid email", "budi", "bukan-email", "password123", ErrInvalidEmail},
-		{"short password", "budi", "budi@example.com", "123", ErrPasswordTooShort},
-		{"short username", "ab", "budi@example.com", "password123", ErrUsernameTooShort},
-		{"blank spaces", "   ", "budi@example.com", "password123", ErrInputRequired},
-		{"too long password", "budi", "budi@example.com", strings.Repeat("x", 73), ErrPasswordTooLong},
+		{"invalid email", "budi", "bukan-email", "password123", services.ErrInvalidEmail},
+		{"short password", "budi", "budi@example.com", "123", services.ErrPasswordTooShort},
+		{"short username", "ab", "budi@example.com", "password123", services.ErrUsernameTooShort},
+		{"blank spaces", "   ", "budi@example.com", "password123", services.ErrInputRequired},
+		{"too long password", "budi", "budi@example.com", strings.Repeat("x", 73), services.ErrPasswordTooLong},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -93,11 +94,11 @@ func TestCreateUser_Duplicates(t *testing.T) {
 	if _, err := svc.CreateUser(context.Background(), "budi", "budi@example.com", "password123", ""); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if _, err := svc.CreateUser(context.Background(), "budi", "lain@example.com", "password123", ""); !errors.Is(err, ErrUsernameTaken) {
-		t.Fatalf("expected ErrUsernameTaken, got %v", err)
+	if _, err := svc.CreateUser(context.Background(), "budi", "lain@example.com", "password123", ""); !errors.Is(err, services.ErrUsernameTaken) {
+		t.Fatalf("expected services.ErrUsernameTaken, got %v", err)
 	}
-	if _, err := svc.CreateUser(context.Background(), "lain", "budi@example.com", "password123", ""); !errors.Is(err, ErrEmailTaken) {
-		t.Fatalf("expected ErrEmailTaken, got %v", err)
+	if _, err := svc.CreateUser(context.Background(), "lain", "budi@example.com", "password123", ""); !errors.Is(err, services.ErrEmailTaken) {
+		t.Fatalf("expected services.ErrEmailTaken, got %v", err)
 	}
 }
 
@@ -126,11 +127,11 @@ func TestLogin(t *testing.T) {
 	if err != nil || access == "" || refresh == "" {
 		t.Fatalf("expected tokens, got %v", err)
 	}
-	if _, _, err := svc.Login(ctx, "budi", "passwordsalah"); !errors.Is(err, ErrInvalidLogin) {
-		t.Fatalf("expected ErrInvalidLogin, got %v", err)
+	if _, _, err := svc.Login(ctx, "budi", "passwordsalah"); !errors.Is(err, services.ErrInvalidLogin) {
+		t.Fatalf("expected services.ErrInvalidLogin, got %v", err)
 	}
-	if _, _, err := svc.Login(ctx, "tidakada", "password123"); !errors.Is(err, ErrInvalidLogin) {
-		t.Fatalf("expected ErrInvalidLogin, got %v", err)
+	if _, _, err := svc.Login(ctx, "tidakada", "password123"); !errors.Is(err, services.ErrInvalidLogin) {
+		t.Fatalf("expected services.ErrInvalidLogin, got %v", err)
 	}
 }
 
@@ -154,19 +155,8 @@ func TestLogin_EvictsBeyondCap(t *testing.T) {
 
 func TestGetUserByCode_NotFound(t *testing.T) {
 	svc, _, _ := newTestService(t)
-	if _, err := svc.GetUserByCode(context.Background(), "USR-TIDAKADA"); !errors.Is(err, ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound, got %v", err)
-	}
-}
-
-func TestListRoles(t *testing.T) {
-	svc, _, _ := newTestService(t)
-	roles, err := svc.ListRoles(context.Background())
-	if err != nil {
-		t.Fatalf("list roles: %v", err)
-	}
-	if len(roles) != 2 {
-		t.Fatalf("expected 2 seeded roles, got %d", len(roles))
+	if _, err := svc.GetUserByCode(context.Background(), "USR-TIDAKADA"); !errors.Is(err, services.ErrUserNotFound) {
+		t.Fatalf("expected services.ErrUserNotFound, got %v", err)
 	}
 }
 
@@ -184,8 +174,8 @@ func TestUpdateUser_Partial(t *testing.T) {
 	if repo.Users[code].Password != oldHash {
 		t.Fatal("password hash must not change on profile-only update")
 	}
-	if err := svc.UpdateUser(ctx, "USR-TIDAKADA", models.UpdateUserRequest{Username: strptr("x")}); !errors.Is(err, ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	if err := svc.UpdateUser(ctx, "USR-TIDAKADA", models.UpdateUserRequest{Username: strptr("x")}); !errors.Is(err, services.ErrUserNotFound) {
+		t.Fatalf("expected services.ErrUserNotFound, got %v", err)
 	}
 }
 
@@ -199,8 +189,8 @@ func TestDeleteUser_Success(t *testing.T) {
 	if len(repo.Users) != 0 {
 		t.Fatalf("expected 0 users after delete, got %d", len(repo.Users))
 	}
-	if err := svc.DeleteUser(ctx, code); !errors.Is(err, ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	if err := svc.DeleteUser(ctx, code); !errors.Is(err, services.ErrUserNotFound) {
+		t.Fatalf("expected services.ErrUserNotFound, got %v", err)
 	}
 }
 
@@ -215,11 +205,11 @@ func TestRefresh_RotatesAndInvalidatesOld(t *testing.T) {
 	if err != nil || newAccess == "" || newRefresh == "" {
 		t.Fatalf("refresh: %v", err)
 	}
-	if _, _, err := svc.RefreshAccessToken(ctx, refresh); !errors.Is(err, ErrInvalidRefresh) {
+	if _, _, err := svc.RefreshAccessToken(ctx, refresh); !errors.Is(err, services.ErrInvalidRefresh) {
 		t.Fatalf("expected old token invalidated, got %v", err)
 	}
-	if _, _, err := svc.RefreshAccessToken(ctx, "token-yang-tidak-ada"); !errors.Is(err, ErrInvalidRefresh) {
-		t.Fatalf("expected ErrInvalidRefresh, got %v", err)
+	if _, _, err := svc.RefreshAccessToken(ctx, "token-yang-tidak-ada"); !errors.Is(err, services.ErrInvalidRefresh) {
+		t.Fatalf("expected services.ErrInvalidRefresh, got %v", err)
 	}
 }
 
@@ -234,8 +224,8 @@ func TestRefresh_Expired(t *testing.T) {
 	for _, rt := range refreshRepo.Tokens {
 		rt.ExpiresAt = time.Now().Add(-time.Hour)
 	}
-	if _, _, err := svc.RefreshAccessToken(ctx, refresh); !errors.Is(err, ErrInvalidRefresh) {
-		t.Fatalf("expected expired -> ErrInvalidRefresh, got %v", err)
+	if _, _, err := svc.RefreshAccessToken(ctx, refresh); !errors.Is(err, services.ErrInvalidRefresh) {
+		t.Fatalf("expected expired -> services.ErrInvalidRefresh, got %v", err)
 	}
 }
 
@@ -249,10 +239,10 @@ func TestLogout(t *testing.T) {
 	if err := svc.Logout(ctx, refresh); err != nil {
 		t.Fatalf("logout: %v", err)
 	}
-	if _, _, err := svc.RefreshAccessToken(ctx, refresh); !errors.Is(err, ErrInvalidRefresh) {
+	if _, _, err := svc.RefreshAccessToken(ctx, refresh); !errors.Is(err, services.ErrInvalidRefresh) {
 		t.Fatalf("expected invalid after logout, got %v", err)
 	}
-	if err := svc.Logout(ctx, "ngawur"); !errors.Is(err, ErrInvalidRefresh) {
-		t.Fatalf("expected logout unknown -> ErrInvalidRefresh, got %v", err)
+	if err := svc.Logout(ctx, "ngawur"); !errors.Is(err, services.ErrInvalidRefresh) {
+		t.Fatalf("expected logout unknown -> services.ErrInvalidRefresh, got %v", err)
 	}
 }
