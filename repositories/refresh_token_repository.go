@@ -17,7 +17,11 @@ type RefreshTokenRepositoryInterface interface {
 	DeleteByUserCode(ctx context.Context, userCode string) error
 	DeleteExpired(ctx context.Context) (int64, error)
 	CountByUserCode(ctx context.Context, userCode string) (int, error)
+	CountActive(ctx context.Context) (int, error)
 	DeleteOldestByUserCode(ctx context.Context, userCode string) error
+	ListByUserCode(ctx context.Context, userCode string) ([]models.Session, error)
+	ListAll(ctx context.Context, limit, offset int) ([]models.Session, error)
+	DeleteByID(ctx context.Context, id int) (bool, error)
 }
 
 type RefreshTokenRepository struct {
@@ -105,6 +109,15 @@ func (r *RefreshTokenRepository) CountByUserCode(ctx context.Context, userCode s
 	return count, nil
 }
 
+func (r *RefreshTokenRepository) CountActive(ctx context.Context) (int, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	var count int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM dbo.CPREFRESHTOKEN WHERE EXPIRES_AT >= GETDATE()`).Scan(&count)
+	return count, err
+}
+
 // DeleteOldestByUserCode evicts one row. NOTE: Count+DeleteOldest+Create is
 // still non-atomic under concurrency; DB-level cap (trigger/proc) is the
 // full fix. This keeps sessions bounded in the common case.
@@ -119,4 +132,71 @@ func (r *RefreshTokenRepository) DeleteOldestByUserCode(ctx context.Context, use
 	`
 	_, err := r.db.ExecContext(ctx, query, userCode)
 	return err
+}
+
+// ListByUserCode returns active sessions of one user (hashes never exposed).
+func (r *RefreshTokenRepository) ListByUserCode(ctx context.Context, userCode string) ([]models.Session, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	return r.querySessions(ctx, `
+		SELECT t.ID, t.USER_CODE, u.USERNAME, t.EXPIRES_AT, t.CREATED_AT
+		FROM dbo.CPREFRESHTOKEN t JOIN dbo.CPUSER u ON u.CODE = t.USER_CODE
+		WHERE t.USER_CODE = @p1 AND t.EXPIRES_AT >= GETDATE()
+		ORDER BY t.CREATED_AT DESC`, userCode)
+}
+
+// ListAll returns active sessions of all users (admin view).
+func (r *RefreshTokenRepository) ListAll(ctx context.Context, limit, offset int) ([]models.Session, error) {
+	if limit <= 0 {
+		limit = DefaultListLimit
+	}
+	if limit > MaxListLimit {
+		limit = MaxListLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	return r.querySessions(ctx, `
+		SELECT t.ID, t.USER_CODE, u.USERNAME, t.EXPIRES_AT, t.CREATED_AT
+		FROM dbo.CPREFRESHTOKEN t JOIN dbo.CPUSER u ON u.CODE = t.USER_CODE
+		WHERE t.EXPIRES_AT >= GETDATE()
+		ORDER BY t.CREATED_AT DESC
+		OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY`, offset, limit)
+}
+
+func (r *RefreshTokenRepository) querySessions(ctx context.Context, query string, args ...any) ([]models.Session, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.Session, 0)
+	for rows.Next() {
+		var s models.Session
+		if err := rows.Scan(&s.ID, &s.UserCode, &s.Username, &s.ExpiresAt, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DeleteByID revokes one session by row ID (owner or admin enforced by caller).
+func (r *RefreshTokenRepository) DeleteByID(ctx context.Context, id int) (bool, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	res, err := r.db.ExecContext(ctx, `DELETE FROM dbo.CPREFRESHTOKEN WHERE ID = @p1`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
