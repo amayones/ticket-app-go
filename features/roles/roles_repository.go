@@ -1,16 +1,18 @@
-package repositories
+package roles
 
 import (
 	"context"
 	"database/sql"
 
 	"golang-backend/models"
+	"golang-backend/repositories"
 )
 
-// RoleRepositoryInterface reads/writes CPROLE + permission mapping.
-type RoleRepositoryInterface interface {
+// RepositoryInterface reads/writes CPROLE + permission mapping.
+type RepositoryInterface interface {
 	List(ctx context.Context) ([]models.Role, error)
 	GetByCode(ctx context.Context, code string) (*models.Role, error)
+	RoleExists(ctx context.Context, code string) (bool, error)
 	Create(ctx context.Context, role *models.Role) error
 	Delete(ctx context.Context, code string) error
 	Count(ctx context.Context) (int, error)
@@ -20,21 +22,21 @@ type RoleRepositoryInterface interface {
 	HasPermission(ctx context.Context, roleCode, permCode string) (bool, error)
 }
 
-type RoleRepository struct {
+type Repository struct {
 	db      *sql.DB
-	dialect Dialect
+	dialect repositories.Dialect
 }
 
-func NewRoleRepository(db *sql.DB, dialect Dialect) RoleRepositoryInterface {
-	return &RoleRepository{db: db, dialect: dialect}
+func NewRepository(db *sql.DB, dialect repositories.Dialect) RepositoryInterface {
+	return &Repository{db: db, dialect: dialect}
 }
 
-func (r *RoleRepository) roleTable() string { return r.dialect.Table("CPROLE") }
-func (r *RoleRepository) permTable() string { return r.dialect.Table("CPPERMISSION") }
-func (r *RoleRepository) mapTable() string  { return r.dialect.Table("CPROLEPERMISSION") }
+func (r *Repository) roleTable() string { return r.dialect.Table("CPROLE") }
+func (r *Repository) permTable() string { return r.dialect.Table("CPPERMISSION") }
+func (r *Repository) mapTable() string  { return r.dialect.Table("CPROLEPERMISSION") }
 
-func (r *RoleRepository) List(ctx context.Context) ([]models.Role, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) List(ctx context.Context) ([]models.Role, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT ID, CODE, NAME, CREATED_AT, UPDATED_AT FROM `+r.roleTable()+` ORDER BY CODE ASC`)
@@ -56,8 +58,20 @@ func (r *RoleRepository) List(ctx context.Context) ([]models.Role, error) {
 	return roles, nil
 }
 
-func (r *RoleRepository) GetByCode(ctx context.Context, code string) (*models.Role, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) RoleExists(ctx context.Context, code string) (bool, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	var n int
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
+		`SELECT COUNT(*) FROM `+r.roleTable()+` WHERE CODE = ?`), code).Scan(&n)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (r *Repository) GetByCode(ctx context.Context, code string) (*models.Role, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var role models.Role
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
@@ -69,16 +83,16 @@ func (r *RoleRepository) GetByCode(ctx context.Context, code string) (*models.Ro
 	return &role, nil
 }
 
-func (r *RoleRepository) Create(ctx context.Context, role *models.Role) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Create(ctx context.Context, role *models.Role) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	_, err := r.db.ExecContext(ctx, r.dialect.Bind(
 		`INSERT INTO `+r.roleTable()+` (CODE, NAME) VALUES (?, ?)`), role.Code, role.Name)
 	return err
 }
 
-func (r *RoleRepository) Delete(ctx context.Context, code string) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Delete(ctx context.Context, code string) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	res, err := r.db.ExecContext(ctx,
 		r.dialect.Bind(`DELETE FROM `+r.roleTable()+` WHERE CODE = ?`), code)
@@ -95,8 +109,8 @@ func (r *RoleRepository) Delete(ctx context.Context, code string) error {
 	return nil
 }
 
-func (r *RoleRepository) Count(ctx context.Context) (int, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Count(ctx context.Context) (int, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx,
@@ -104,8 +118,8 @@ func (r *RoleRepository) Count(ctx context.Context) (int, error) {
 	return n, err
 }
 
-func (r *RoleRepository) ListPermissions(ctx context.Context) ([]models.Permission, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) ListPermissions(ctx context.Context) ([]models.Permission, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT ID, CODE, NAME, PERMGROUP, DESCRIPTION, CREATED_AT FROM `+r.permTable()+` ORDER BY PERMGROUP ASC, CODE ASC`)
@@ -129,8 +143,8 @@ func (r *RoleRepository) ListPermissions(ctx context.Context) ([]models.Permissi
 	return perms, nil
 }
 
-func (r *RoleRepository) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(
 		`SELECT PERMISSION_CODE FROM `+r.mapTable()+` WHERE ROLE_CODE = ? ORDER BY PERMISSION_CODE ASC`), roleCode)
@@ -153,8 +167,8 @@ func (r *RoleRepository) GetRolePermissions(ctx context.Context, roleCode string
 }
 
 // SetRolePermissions replaces the permission set atomically.
-func (r *RoleRepository) SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -175,8 +189,8 @@ func (r *RoleRepository) SetRolePermissions(ctx context.Context, roleCode string
 	return tx.Commit()
 }
 
-func (r *RoleRepository) HasPermission(ctx context.Context, roleCode, permCode string) (bool, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) HasPermission(ctx context.Context, roleCode, permCode string) (bool, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
