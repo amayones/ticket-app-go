@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client.js'
+import { api } from '../../../api/client.js'
+import { listAllSessions, listMySessions, revokeSession } from './api.js'
+import { logoutAll } from '../users/api.js'
+
+export const meta = { label: 'Sesi & Auth', icon: 'key', order: 3 }
 import {
   Alert,
   Badge,
@@ -13,7 +17,7 @@ import {
   SkeletonRows,
   useSmoothLoading,
   useToast,
-} from '../components'
+} from '../../../components'
 
 const PAGE_SIZE = 15
 
@@ -42,9 +46,9 @@ export default function Sessions() {
     setError('')
     try {
       if (tab === 'all' && isAdmin) {
-        setSessions(await api.listAllSessions(PAGE_SIZE, offset))
+        setSessions(await listAllSessions(PAGE_SIZE, offset))
       } else {
-        setSessions(await api.listMySessions())
+        setSessions(await listMySessions())
       }
     } catch (err) {
       setError(err.message)
@@ -65,7 +69,7 @@ export default function Sessions() {
   async function revoke() {
     if (!revoking) return
     try {
-      await api.revokeSession(revoking.id)
+      await revokeSession(revoking.id)
       toast.success('Sesi berhasil dicabut.')
       setRevoking(null)
       load()
@@ -76,7 +80,7 @@ export default function Sessions() {
 
   async function logoutAll() {
     try {
-      await api.logoutAll(me.code)
+      await logoutAll(me.code)
       toast.warning('Semua sesi Anda dicabut. Silakan login ulang.', { title: 'Sesi berakhir' })
       load()
     } catch (err) {
