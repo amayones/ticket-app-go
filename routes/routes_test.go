@@ -264,7 +264,7 @@ func TestAdminRBAC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Sesi menu admin hanya bisa diakses role ADMIN.
+	// Sesi menu hanya bisa diakses role yang memiliki permission MENU_SESSIONS.
 	if rec := doReq(t, r, "GET", "/api/admin/sessions", "", adminTok); rec.Code != 200 {
 		t.Fatalf("admin sessions must be 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
