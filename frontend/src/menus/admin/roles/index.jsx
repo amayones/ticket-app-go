@@ -33,7 +33,7 @@ function RoleList({ roles, selected, showLoading, error, onCreate, onSelect, onE
   return (
     <Card className="h-full flex flex-col">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <CardTitle description="Buat role, hapus role custom, dan pilih role untuk atur permission di kanan. Role ADMIN & USER bawaan tidak bisa dihapus.">
+        <CardTitle description="Buat role, hapus role custom, dan pilih role untuk mengatur akses menu di kanan. Role ADMIN & USER bawaan tidak bisa dihapus.">
           Daftar Role
         </CardTitle>
         <Button size="sm" onClick={onCreate}>
@@ -95,8 +95,8 @@ function PermissionMatrix({ selected, checked, perms, grouped, loading, saving, 
   return (
     <Card className="h-full flex flex-col">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <CardTitle description="Centang permission lalu simpan. ADMIN selalu lolos semua permission tanpa perlu dicentang.">
-          Matriks permission — <span className="font-mono">{selected}</span>
+        <CardTitle description="Centang menu yang boleh diakses role ini. Satu centang memberi akses ke semua fungsi menu tersebut.">
+          Matriks akses menu — <span className="font-mono">{selected}</span>
         </CardTitle>
         <div className="flex gap-2">
           {canDelete && (
@@ -191,7 +191,7 @@ export default function Roles() {
     try {
       const [r, p] = await Promise.all([listRoles(), listPermissions()])
       setRoles(Array.isArray(r) ? r : [])
-      setPerms(Array.isArray(p) ? p : [])
+      setPerms(Array.isArray(p) ? p.filter((permission) => permission.code.startsWith('MENU_')) : [])
       if (!selected && r.length > 0) setSelected(r[0].code)
     } catch (err) {
       setError(err.message)
@@ -207,7 +207,7 @@ export default function Roles() {
   useEffect(() => {
     if (!selected) return
     getRole(selected)
-      .then((d) => setChecked(d.permissions || []))
+      .then((d) => setChecked((d.permissions || []).filter((code) => code.startsWith('MENU_'))))
       .catch(() => setChecked([]))
   }, [selected])
 
