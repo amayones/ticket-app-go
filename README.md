@@ -847,6 +847,7 @@ Checklist sebelum live: `JWT_SECRET` acak ≥32 char & beda dari dev,
 | Toast/modal tidak muncul | Pastikan halaman dibungkus `<ToastProvider>` (sudah di `App.jsx`) dan panggil `useToast()` di dalam provider |
 | `localhost:1067` 404 di browser | Buka `http://localhost:1067/` (bukan `/api`); hard refresh `Ctrl+Shift+R` |
 | `Missing authorization header` / 401 | Endpoint privat butuh `Authorization: Bearer <access_token>` → login dulu; jika expired, client auto-refresh |
+| Matriks akses menu kosong / dashboard `user not found` | Jalankan `task migrate` agar seed `MENU_*` terbaru ada, restart backend, lalu login ulang; token lama juga bisa perlu logout/login |
 | `Too many requests` (429) | Kena rate-limit → tunggu sesuai header `Retry-After`, jangan spam retry |
 | Port bentrok | Ganti `APP_PORT` di `.env` → restart backend; Vite ikut otomatis |
 | `stop.exe` → "PID file not found" | App tidak jalan via PID (mungkin crash) → cek Task Manager; hapus `%TEMP%\go-core.pid` jika stale |
