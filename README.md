@@ -136,7 +136,7 @@ Ikuti langkah 1–6 berurutan. Estimasi: ±15 menit untuk pemula.
 | npm | 9+ | `npm --version` |
 | SQL Server | 2019+ / Express juga bisa | SSMS / `sqlcmd` konek |
 | Git | bebas | `git --version` |
-| `task` (opsional) | 3.x | `task --version` — kalau belum ada, semua perintah `task x` bisa diganti `pwsh ./scripts/x.ps1` |
+| `task` (opsional) | 3.x | `task --version` — kalau belum ada, semua perintah `task x` bisa diganti `bash ./scripts/x.sh` |
 
 > SQL Server harus **sudah berjalan** sebelum backend dijalankan
 > (cek via `services.msc` → `SQL Server (MSSQLSERVER)` → Running).
@@ -233,9 +233,9 @@ task start
 # -> Ctrl+C mematikan keduanya sekaligus
 ```
 
-Tanpa CLI task: `pwsh ./scripts/start.ps1`. Masih ingin 2 terminal terpisah?
-`task dev` (atau manual: terminal 1 `go run .`, terminal 2
-`npm --prefix frontend run dev`).
+Tanpa CLI task: `bash ./scripts/start.sh` (atau langsung `./scripts/start.sh`).
+Masih ingin 2 terminal terpisah? Manual: terminal 1 `go run .`, terminal 2
+`npm --prefix frontend run dev`.
 
 > Catatan: log `WARN frontend/dist missing` saat `go run .` itu **normal** di mode
 > dev (frontend belum di-build). API tetap jalan.
@@ -270,7 +270,7 @@ end-to-end (login admin → tambah user → muat daftar user → logout).
 ### Langkah 6 — Build production (single binary)
 
 ```powershell
-task build            # atau: pwsh ./scripts/build.ps1
+task build            # atau: bash ./scripts/build.sh
 .\app.exe             # jalan di foreground, buka http://localhost:1067/
 ```
 
@@ -307,7 +307,7 @@ go-core/
 ├── cmd/stop/               # program kecil penghenti app background
 │
 ├── frontend/               # aplikasi React (Vite)
-├── scripts/                # build.ps1, watch.ps1, dev.ps1, migrate.sql (skema CP*)
+├── scripts/                # *.sh universal (build/start/dev/watch/run/stop/clean) + migrate.sql (skema CP*)
 ├── Taskfile.yml            # satu pintu semua perintah (task build/test/...)
 │
 ├── Dockerfile              # image production multi-stage
@@ -436,16 +436,20 @@ Tailwind + varian `dark:` + ikon dari `icons.jsx`, lalu daftarkan di
 ```
 Taskfile.yml  →  task build | test | watch | dev | clean | run | tray | stop | ...
      │                │
-     │                └── memanggil ./scripts/*.ps1 (logika asli hanya di sini)
-     │
-     └── butuh CLI `task`? Kalau belum install, langsung: pwsh ./scripts/build.ps1
+     │                └── memanggil ./scripts/*.sh (logika asli hanya di sini)
+      │
+      └── butuh CLI `task`? Kalau belum install, langsung: bash ./scripts/build.sh
 ```
 
 | File | Perintah | Isi kerjanya |
 |------|----------|--------------|
-| `scripts/build.ps1` | `task build` | `npm ci` → `vite build` → buat ulang `dist/.gitignore` → `go vet` → `go build -trimpath -ldflags "-s -w"` → `app.exe` + `stop.exe` |
-| `scripts/watch.ps1` | `task watch` | Pantau `*.go/js/jsx/css/html` → rebuild + restart via **PID file** (bukan kill by-name) |
-| `scripts/dev.ps1` | `task dev` | Buka 2 jendela: Vite HMR + `go run .` |
+| `scripts/build.sh` (+ `build-frontend.sh`/`build-backend.sh`) | `task build` | `npm ci` → `vite build` → buat ulang `dist/.gitignore` → `go vet` → `go build -trimpath -ldflags "-s -w"` → `app`/`stop` (`.exe` di Windows) |
+| `scripts/start.sh` | `task start` | **1 terminal**: backend background + Vite foreground + health-check, Ctrl+C matikan keduanya |
+| `scripts/dev.sh` | `task dev` | Alias `start.sh` (1 terminal: Vite HMR + `go run .`) |
+| `scripts/watch.sh` | `task watch` | Pantau `*.go/js/jsx/css/html` (polling) → rebuild + restart via **PID file** (bukan kill by-name) |
+| `scripts/run.sh` | `task run` / `task tray` | Build + jalan foreground (`--hide` untuk background) |
+| `scripts/stop.sh` | `task stop` | Hentikan app via PID file (tanpa kill by-name) |
+| `scripts/clean.sh` | `task clean` | Hapus binary + output `dist` |
 | `Taskfile.yml` | semua `task *` | Definisi task lintas-fungsi: `install`, `build-frontend`, `build-backend`, `test` (`go vet` + `go test -race`), `lint-frontend`, `clean` (aman Windows) |
 
 ### 2.4 File konfigurasi & operasional
@@ -585,7 +589,7 @@ Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 | `task install` | `npm ci` di frontend | Sinkron dep frontend |
 | `task clean` | Hapus `app.exe`, `stop.exe`, output `dist` | Mulai bersih |
 
-> Belum install CLI `task`? Ganti `task build` → `pwsh ./scripts/build.ps1`
+> Belum install CLI `task`? Ganti `task build` → `bash ./scripts/build.sh`
 > (dan seterusnya). Go + Node tetap wajib.
 
 ### 5.1 Variabel environment
