@@ -50,33 +50,23 @@ Pastikan backend + frontend sudah jalan (cara menjalankannya ada di
 > Port `1067` bisa berbeda bila `APP_PORT` di `.env` diubah. Vite otomatis
 > mengikuti port tersebut untuk proxy `/api`, jadi tidak perlu setting manual.
 
-Saat halaman terbuka Anda melihat **header "Go Core"** di atas dan sebuah kartu
-form di tengah. Ada 2 tab di kanan header: **Login** dan **Register**.
+Saat halaman terbuka Anda melihat **kartu Login di tengah layar** (tanpa navbar —
+halaman ini fokus untuk login saja).
 
-### 0.2 Daftar akun baru (tab Register)
+> **Tidak ada registrasi publik.** Akun hanya bisa dibuat oleh **admin** lewat
+> menu User Account → **Tambah User**. Akun admin bawaan: username `admin`
+> (password awal `Admin123!` — wajib diganti setelah login pertama via
+> Edit profil → Password baru).
 
-1. Klik tab **Register** di kanan atas.
-2. Isi 3 kolom:
-   - **Username** — minimal 3 karakter, contoh: `budi`
-   - **Email** — harus format email valid, contoh: `budi@example.com`
-   - **Password** — minimal 8 karakter (maks 72). Klik **ikon mata** di kanan
-     kolom untuk mengintip/menyembunyikan ketikan.
-3. Klik tombol **Register** (tombol menampilkan animasi loading saat diproses).
-4. Hasilnya:
-   - **Berhasil** → muncul **notifikasi toast hijau** "Akun dibuat" di kanan
-     atas layar, lalu otomatis pindah ke tab **Login**.
-   - **Gagal** (mis. username sudah dipakai) → muncul **kotak peringatan merah**
-     di dalam form. Kotak ini bisa ditutup dengan tombol **×** di kanannya.
+### 0.2 Masuk ke aplikasi (Login)
 
-### 0.3 Masuk ke aplikasi (tab Login)
-
-1. Isi **Username** dan **Password** akun yang tadi didaftarkan.
-2. Klik **Login**.
-3. **Berhasil** → muncul toast hijau "Selamat datang kembali!" dan halaman
-   berganti ke **Daftar Pengguna**. Header kini menampilkan tombol
-   **Users** dan **Logout**.
-4. **Gagal** (salah password) → kotak merah "Login gagal" muncul di form dan
-   bisa di-close dengan tombol ×.
+1. Isi **Username** dan **Password** (minta ke admin bila belum punya akun).
+   Klik **ikon mata** di kanan kolom password untuk mengintip ketikan.
+2. Klik **Login** (tombol menampilkan animasi loading saat diproses).
+3. **Berhasil** → toast hijau "Selamat datang kembali!" dan masuk ke aplikasi
+   **sidebar** (layar lebar) atau navigasi atas (layar HP).
+4. **Gagal** (salah password) → **kotak merah** "Login gagal" muncul di form
+   dan bisa ditutup dengan tombol **×**.
 
 ### 0.4 Halaman Daftar Pengguna (Users)
 
@@ -110,7 +100,7 @@ atas (layar HP). Menu yang tampil tergantung role:
 
 | Menu | Untuk | Isi & cara pakai |
 |------|-------|------------------|
-| **User Account** | semua | Kartu user + avatar + badge role (lihat 0.4). Admin bisa mengganti role lewat dialog Edit (dropdown Role). |
+| **User Account** | semua | Kartu user + avatar + badge role (lihat 0.4). Admin: tombol **Tambah User** (username, email, password awal + role) dan dropdown Role di dialog Edit. |
 | **Role & Permission** | ADMIN | Pilih role (tombol kiri) → centang permission per grup di matriks → **Simpan permission**. **Role baru** (kode huruf besar, mis. `EDITOR`) → atur permission-nya → user bisa dipindah ke role itu. Role `ADMIN`/`USER` bawaan tidak bisa dihapus; role yang masih dipakai user tidak bisa dihapus. |
 | **Sesi & Auth** | semua | Tab **Sesi saya**: daftar perangkat login + tombol sampah untuk mencabut satu sesi + tombol cabut semua. Tab **Semua sesi** (ADMIN): semua user + pagination. |
 | **Audit Log** | ADMIN | Tabel siapa–apa–kapan–IP. Filter: aksi (LOGIN, DELETE_USER, …), entitas, kode pelaku + tombol Filter/Reset + pagination. |
@@ -124,8 +114,9 @@ atas (layar HP). Menu yang tampil tergantung role:
   (ada garis progres di bawahnya).
 - **Dialog** (edit/konfirmasi) bisa ditutup dengan tombol ×, klik area gelap di
   luar dialog, atau tombol **Esc** di keyboard.
-- **Dark mode** mengikuti pengaturan sistem operasi/laptop Anda secara otomatis
-  (coba ubah Windows ke Dark mode → tampilan ikut gelap).
+- **Tema terang sebagai default.** Ganti ke gelap via tombol **bulan/matahari**
+  di sidebar (bawah, samping Logout) atau topbar HP — pilihan tersimpan di
+  browser dan tetap dipakai saat dibuka lagi.
 - Tampilan responsif: buka di HP, kartu dan tombol menyesuaikan layar kecil.
 
 ---
@@ -260,8 +251,9 @@ Atau sekaligus dengan satu perintah: `task dev`.
 curl http://localhost:1067/healthz
 # -> {"status":"ok"}
 
-# 2. register user pertama
-curl -X POST http://localhost:1067/api/users `
+# 2. login sebagai admin, lalu buat user pertama (tanpa registrasi publik)
+#    login dulu untuk dapat <token>, lalu:
+curl -X POST http://localhost:1067/api/users -H "Authorization: Bearer <token>" `
   -H "Content-Type: application/json" `
   -d '{"username":"budi","email":"budi@example.com","password":"password123"}'
 # -> {"code":"USR-XXXXXX","message":"User created successfully"}
@@ -276,8 +268,8 @@ curl -X POST http://localhost:1067/api/login `
 curl http://localhost:1067/api/users -H "Authorization: Bearer <token>"
 ```
 
-Lalu buka `http://localhost:5173` → halaman Login/Register/Users harus bisa dipakai
-end-to-end (daftar → login → muat daftar user → logout).
+Lalu buka `http://localhost:5173` → halaman Login/Users harus bisa dipakai
+end-to-end (login admin → tambah user → muat daftar user → logout).
 
 ### Langkah 6 — Build production (single binary)
 
@@ -372,8 +364,8 @@ frontend/
 ├── public/favicon.svg      # ikon (disajikan apa adanya)
 ├── src/
 │   ├── main.jsx            # entry React (StrictMode) + import index.css & ui.css
-│   ├── App.jsx             # shell: dibungkus ToastProvider; header, navigasi,
-│   │                       # footer; state login + view
+│   ├── App.jsx             # shell: dibungkus ToastProvider; login fokus tanpa
+│   │                       # navbar; sidebar + topbar HP + toggle tema
 │   ├── index.css           # token CSS + `@import "tailwindcss"`
 │   ├── api/client.js       # SATU-SATUNYA yang fetch ke backend:
 │   │                       # simpan token di localStorage, auto-refresh 1x saat
@@ -386,9 +378,11 @@ frontend/
 │   │   │                   # Avatar, Card, Icon + index.js (barrel export)
 │   │   ├── ui.css          # keyframes: toast slide-in, modal pop, fade,
 │   │   │                   # progress bar, skeleton shimmer
+│   │   ├── theme.js        # tema terang default + simpan pilihan (localStorage)
+│   │   ├── ThemeToggle.jsx # tombol bulan/matahari
 │   │   └── index.js        # `import { Button, Modal } from '../components'`
 │   └── pages/
-│       ├── Auth.jsx        # LoginForm, RegisterForm
+│       ├── Auth.jsx        # LoginForm (tanpa registrasi; fokus login)
 │       ├── Users.jsx       # User Account Management (kartu, role badge,
 │       │                   # pagination, edit/logout-all/hapus)
 │       ├── EditUserModal.jsx # dialog edit + dropdown role (khusus admin)
@@ -434,7 +428,8 @@ backdrop, tombol Esc), responsif, dark-mode otomatis (`dark:` mengikuti
 | Pagination | `Pagination.jsx` | `<Pagination offset limit count hasMore onPage>` — offset-based, cocok dengan `limit/offset` backend. |
 | Avatar | `Avatar.jsx` | `<Avatar name size="sm\|md\|lg"/>` — inisial + gradien stabil per nama. |
 | Card / CardTitle | `Card.jsx` | Pembungkus section konten yang konsisten. |
-| Icon | `icons.jsx` | `<Icon name="check\|x\|info\|warning\|eye\|pencil\|trash\|logout\|…"/>` |
+| Icon | `icons.jsx` | `<Icon name="check\|x\|info\|warning\|eye\|pencil\|trash\|logout\|sun\|moon\|…"/>` |
+| ThemeToggle | `ThemeToggle.jsx` + `theme.js` | `<ThemeToggle/>` — terang default, dark via class `.dark`, tersimpan di browser |
 
 Contoh menambah komponen baru yang konsisten: buat `Baru.jsx` + pakai kelas
 Tailwind + varian `dark:` + ikon dari `icons.jsx`, lalu daftarkan di
@@ -540,7 +535,7 @@ Base URL prod: `http://localhost:1067/` (keduanya satu origin).
 | Method | Path | Auth | Rate-limit | Body | Sukses |
 |--------|------|------|------------|------|--------|
 | GET | `/healthz` | — | — | — | `{"status":"ok"}` |
-| POST | `/api/users` | — | 10/mnt | `{username, email, password}` (role otomatis `USER`) | `201 {"code","message"}` (`code` = `USR-XXXXXXXX`) |
+| POST | `/api/users` | Bearer + `USER_CREATE` | — | `{username, email, password, role_code?}` (tanpa registrasi publik; role default `USER`, role lain butuh `USER_ROLE_ASSIGN`) | `201 {"code","message"}` (`code` = `USR-XXXXXXXX`) |
 | POST | `/api/login` | — | 5/mnt | `{username, password}` | `200 {access_token, refresh_token}` (JWT berisi `user_code` + `role`) |
 | POST | `/api/refresh` | — | 30/mnt | `{refresh_token}` | `200 {access_token, refresh_token}` (lama hangus) |
 | POST | `/api/logout` | — | 30/mnt | `{refresh_token}` | `200 {message}` |
