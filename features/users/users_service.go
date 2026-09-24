@@ -1,4 +1,4 @@
-package services
+package users
 
 import (
 	"context"
@@ -9,22 +9,8 @@ import (
 	"time"
 
 	"golang-backend/models"
-	"golang-backend/repositories"
+	"golang-backend/services"
 	"golang-backend/utils"
-)
-
-var (
-	ErrInputRequired    = errors.New("username, email, and password are required")
-	ErrUsernameTooShort = errors.New("username must be at least 3 characters")
-	ErrInvalidEmail     = errors.New("invalid email format")
-	ErrPasswordTooShort = errors.New("password must be at least 8 characters")
-	ErrPasswordTooLong  = errors.New("password must not exceed 72 bytes")
-	ErrUsernameTaken    = errors.New("username already taken")
-	ErrEmailTaken       = errors.New("email already registered")
-	ErrInvalidLogin     = errors.New("invalid username or password")
-	ErrUserNotFound     = errors.New("user not found")
-	ErrInvalidRefresh   = errors.New("invalid or expired refresh token")
-	ErrForbidden        = errors.New("forbidden")
 )
 
 const (
@@ -32,15 +18,9 @@ const (
 	codeGenRetries          = 5
 )
 
-// Re-export TTLs so callers have one source of truth.
-const (
-	AccessTokenTTL  = utils.AccessTokenTTL
-	RefreshTokenTTL = utils.RefreshTokenTTL
-)
-
-// UserServiceInterface allows handlers to depend on abstraction (mockable).
+// ServiceInterface allows handlers to depend on abstraction (mockable).
 // Identity is the public user CODE (CPUSER.CODE), never the numeric ID.
-type UserServiceInterface interface {
+type ServiceInterface interface {
 	ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error)
 	GetUserByCode(ctx context.Context, code string) (*models.User, error)
 	CreateUser(ctx context.Context, username, email, password, roleCode string) (string, error)
@@ -50,64 +30,66 @@ type UserServiceInterface interface {
 	RefreshAccessToken(ctx context.Context, refreshToken string) (string, string, error)
 	Logout(ctx context.Context, refreshToken string) error
 	LogoutAll(ctx context.Context, userCode string) error
-	ListRoles(ctx context.Context) ([]models.Role, error)
-	CheckPermission(ctx context.Context, userCode, permCode string) error
-	CreateRole(ctx context.Context, code, name string) (*models.Role, error)
-	DeleteRole(ctx context.Context, code string) error
-	GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error)
-	ListPermissions(ctx context.Context) ([]models.Permission, error)
-	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
-	UpdateUserRole(ctx context.Context, userCode, roleCode string) error
-	ListSessions(ctx context.Context, userCode string) ([]models.Session, error)
-	ListAllSessions(ctx context.Context, limit, offset int) ([]models.Session, error)
-	RevokeSession(ctx context.Context, callerCode string, sessionID int, manageAll bool) error
 	CountUsers(ctx context.Context) (int, error)
-	CountRoles(ctx context.Context) (int, error)
-	CountActiveSessions(ctx context.Context) (int, error)
-	CleanupExpiredTokens(ctx context.Context) (int64, error)
 }
 
-type UserService struct {
-	users   repositories.UserRepositoryInterface
-	refresh repositories.RefreshTokenRepositoryInterface
-	roles   repositories.RoleRepositoryInterface
+// roleChecker dipenuhi roles.Repository (tanpa import antar-fitur).
+type roleChecker interface {
+	RoleExists(ctx context.Context, code string) (bool, error)
+}
+
+// refreshStore dipenuhi sessions.Repository (tanpa import antar-fitur).
+type refreshStore interface {
+	Create(ctx context.Context, token *models.RefreshToken) error
+	GetByTokenHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
+	DeleteByTokenHash(ctx context.Context, tokenHash string) (bool, error)
+	DeleteByUserCode(ctx context.Context, userCode string) error
+	DeleteExpired(ctx context.Context) (int64, error)
+	CountByUserCode(ctx context.Context, userCode string) (int, error)
+	DeleteOldestByUserCode(ctx context.Context, userCode string) error
+}
+
+type Service struct {
+	users     RepositoryInterface
+	refresh   refreshStore
+	roles     roleChecker
 	jwtSecret string
 }
 
-func NewUserService(
-	users repositories.UserRepositoryInterface,
-	refresh repositories.RefreshTokenRepositoryInterface,
-	roles repositories.RoleRepositoryInterface,
+func NewService(
+	users RepositoryInterface,
+	refresh refreshStore,
+	roles roleChecker,
 	jwtSecret string,
-) (*UserService, error) {
+) (*Service, error) {
 	if err := utils.ValidateSecret(jwtSecret); err != nil {
 		return nil, fmt.Errorf("invalid JWT secret: %w", err)
 	}
-	return &UserService{users: users, refresh: refresh, roles: roles, jwtSecret: jwtSecret}, nil
+	return &Service{users: users, refresh: refresh, roles: roles, jwtSecret: jwtSecret}, nil
 }
 
-func (s *UserService) validateUserInput(username, email, password string) error {
+func (s *Service) validateUserInput(username, email, password string) error {
 	if strings.TrimSpace(username) == "" ||
 		strings.TrimSpace(email) == "" ||
 		strings.TrimSpace(password) == "" {
-		return ErrInputRequired
+		return services.ErrInputRequired
 	}
 	if !utils.IsValidUsername(username) {
-		return ErrUsernameTooShort
+		return services.ErrUsernameTooShort
 	}
 	if !utils.IsValidEmail(email) {
-		return ErrInvalidEmail
+		return services.ErrInvalidEmail
 	}
 	if len(password) > utils.MaxPasswordBytes {
-		return ErrPasswordTooLong
+		return services.ErrPasswordTooLong
 	}
 	if !utils.IsValidPassword(password) {
-		return ErrPasswordTooShort
+		return services.ErrPasswordTooShort
 	}
 	return nil
 }
 
-func (s *UserService) mapDBError(err error) error {
+func (s *Service) mapDBError(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -121,21 +103,21 @@ func (s *UserService) mapDBError(err error) error {
 	isUniqueViolation := strings.Contains(msg, "2627") || strings.Contains(msg, "2601")
 	switch {
 	case isEmailViolation:
-		return ErrEmailTaken
+		return services.ErrEmailTaken
 	case isUsernameViolation:
-		return ErrUsernameTaken
+		return services.ErrUsernameTaken
 	case isUniqueViolation:
 		// Generic unique violation without identifiable constraint:
 		// attribute to username (most common) — DB pre-checks above
 		// already disambiguate the usual cases.
-		return ErrUsernameTaken
+		return services.ErrUsernameTaken
 	default:
 		return err
 	}
 }
 
 // uniqueUserCode generates a USR-XXXXXXXX code not yet taken.
-func (s *UserService) uniqueUserCode(ctx context.Context) (string, error) {
+func (s *Service) uniqueUserCode(ctx context.Context) (string, error) {
 	for i := 0; i < codeGenRetries; i++ {
 		code, err := utils.GenerateUserCode()
 		if err != nil {
@@ -151,7 +133,7 @@ func (s *UserService) uniqueUserCode(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("could not generate unique user code after %d tries", codeGenRetries)
 }
 
-func (s *UserService) ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error) {
+func (s *Service) ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error) {
 	users, err := s.users.List(ctx, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
@@ -163,18 +145,18 @@ func (s *UserService) ListUsers(ctx context.Context, limit, offset int) ([]model
 	return out, nil
 }
 
-func (s *UserService) GetUserByCode(ctx context.Context, code string) (*models.User, error) {
+func (s *Service) GetUserByCode(ctx context.Context, code string) (*models.User, error) {
 	user, err := s.users.GetByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrUserNotFound
+			return nil, services.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 	return user, nil
 }
 
-func (s *UserService) CreateUser(ctx context.Context, username, email, password, roleCode string) (string, error) {
+func (s *Service) CreateUser(ctx context.Context, username, email, password, roleCode string) (string, error) {
 	username = utils.NormalizeUsername(username)
 	email = utils.NormalizeEmail(email)
 	if err := s.validateUserInput(username, email, password); err != nil {
@@ -183,20 +165,19 @@ func (s *UserService) CreateUser(ctx context.Context, username, email, password,
 	roleCode = strings.ToUpper(strings.TrimSpace(roleCode))
 	if roleCode == "" {
 		roleCode = models.DefaultRoleCode
-	} else if _, err := s.roles.GetByCode(ctx, roleCode); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", errors.New("role not found")
-		}
+	} else if ok, err := s.roles.RoleExists(ctx, roleCode); err != nil {
 		return "", fmt.Errorf("check role: %w", err)
+	} else if !ok {
+		return "", errors.New("role not found")
 	}
 	// Pre-check for friendlier errors (DB constraint remains source of truth).
 	if _, err := s.users.GetByUsername(ctx, username); err == nil {
-		return "", ErrUsernameTaken
+		return "", services.ErrUsernameTaken
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("check username: %w", err)
 	}
 	if _, err := s.users.GetByEmail(ctx, email); err == nil {
-		return "", ErrEmailTaken
+		return "", services.ErrEmailTaken
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("check email: %w", err)
 	}
@@ -221,11 +202,11 @@ func (s *UserService) CreateUser(ctx context.Context, username, email, password,
 	return code, nil
 }
 
-func (s *UserService) UpdateUser(ctx context.Context, code string, input models.UpdateUserRequest) error {
+func (s *Service) UpdateUser(ctx context.Context, code string, input models.UpdateUserRequest) error {
 	existing, err := s.users.GetByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return fmt.Errorf("get user for update: %w", err)
 	}
@@ -241,10 +222,10 @@ func (s *UserService) UpdateUser(ctx context.Context, code string, input models.
 	}
 	if input.Password != nil && *input.Password != "" {
 		if len(*input.Password) > utils.MaxPasswordBytes {
-			return ErrPasswordTooLong
+			return services.ErrPasswordTooLong
 		}
 		if !utils.IsValidPassword(*input.Password) {
-			return ErrPasswordTooShort
+			return services.ErrPasswordTooShort
 		}
 		hash, err := utils.HashPassword(*input.Password)
 		if err != nil {
@@ -253,28 +234,28 @@ func (s *UserService) UpdateUser(ctx context.Context, code string, input models.
 		passwordHash = hash
 	}
 	if strings.TrimSpace(username) == "" || strings.TrimSpace(email) == "" {
-		return ErrInputRequired
+		return services.ErrInputRequired
 	}
 	if !utils.IsValidUsername(username) {
-		return ErrUsernameTooShort
+		return services.ErrUsernameTooShort
 	}
 	if !utils.IsValidEmail(email) {
-		return ErrInvalidEmail
+		return services.ErrInvalidEmail
 	}
 	updated := &models.User{Code: code, Username: username, Email: email, Password: passwordHash}
 	if err := s.users.Update(ctx, updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return s.mapDBError(err)
 	}
 	return nil
 }
 
-func (s *UserService) DeleteUser(ctx context.Context, code string) error {
+func (s *Service) DeleteUser(ctx context.Context, code string) error {
 	if err := s.users.Delete(ctx, code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -283,7 +264,7 @@ func (s *UserService) DeleteUser(ctx context.Context, code string) error {
 	return nil
 }
 
-func (s *UserService) evictIfNeeded(ctx context.Context, userCode string) error {
+func (s *Service) evictIfNeeded(ctx context.Context, userCode string) error {
 	count, err := s.refresh.CountByUserCode(ctx, userCode)
 	if err != nil {
 		return fmt.Errorf("count refresh tokens: %w", err)
@@ -297,20 +278,20 @@ func (s *UserService) evictIfNeeded(ctx context.Context, userCode string) error 
 	return nil
 }
 
-func (s *UserService) Login(ctx context.Context, username, password string) (string, string, error) {
+func (s *Service) Login(ctx context.Context, username, password string) (string, string, error) {
 	username = utils.NormalizeUsername(username)
 	if username == "" || password == "" {
-		return "", "", ErrInvalidLogin
+		return "", "", services.ErrInvalidLogin
 	}
 	user, err := s.users.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", "", ErrInvalidLogin
+			return "", "", services.ErrInvalidLogin
 		}
 		return "", "", fmt.Errorf("login lookup: %w", err)
 	}
 	if !utils.CheckPasswordHash(password, user.Password) {
-		return "", "", ErrInvalidLogin
+		return "", "", services.ErrInvalidLogin
 	}
 	access, err := s.accessTokenFor(user)
 	if err != nil {
@@ -326,7 +307,7 @@ func (s *UserService) Login(ctx context.Context, username, password string) (str
 	rt := models.RefreshToken{
 		UserCode:  user.Code,
 		Token:     utils.HashRefreshToken(refresh),
-		ExpiresAt: time.Now().Add(RefreshTokenTTL),
+		ExpiresAt: time.Now().Add(utils.RefreshTokenTTL),
 	}
 	if err := s.refresh.Create(ctx, &rt); err != nil {
 		return "", "", fmt.Errorf("store refresh token: %w", err)
@@ -334,27 +315,27 @@ func (s *UserService) Login(ctx context.Context, username, password string) (str
 	return access, refresh, nil
 }
 
-func (s *UserService) RefreshAccessToken(ctx context.Context, refreshToken string) (string, string, error) {
+func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken string) (string, string, error) {
 	if strings.TrimSpace(refreshToken) == "" {
-		return "", "", ErrInvalidRefresh
+		return "", "", services.ErrInvalidRefresh
 	}
 	hash := utils.HashRefreshToken(strings.TrimSpace(refreshToken))
 	rt, err := s.refresh.GetByTokenHash(ctx, hash)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", "", ErrInvalidRefresh
+			return "", "", services.ErrInvalidRefresh
 		}
 		return "", "", fmt.Errorf("lookup refresh token: %w", err)
 	}
 	if time.Now().After(rt.ExpiresAt) {
 		_, _ = s.refresh.DeleteByTokenHash(ctx, hash)
-		return "", "", ErrInvalidRefresh
+		return "", "", services.ErrInvalidRefresh
 	}
 	user, err := s.users.GetByCode(ctx, rt.UserCode)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			_, _ = s.refresh.DeleteByTokenHash(ctx, hash)
-			return "", "", ErrInvalidRefresh
+			return "", "", services.ErrInvalidRefresh
 		}
 		return "", "", fmt.Errorf("refresh user lookup: %w", err)
 	}
@@ -374,7 +355,7 @@ func (s *UserService) RefreshAccessToken(ctx context.Context, refreshToken strin
 	newRT := models.RefreshToken{
 		UserCode:  user.Code,
 		Token:     utils.HashRefreshToken(newRefresh),
-		ExpiresAt: time.Now().Add(RefreshTokenTTL),
+		ExpiresAt: time.Now().Add(utils.RefreshTokenTTL),
 	}
 	if err := s.refresh.Create(ctx, &newRT); err != nil {
 		return "", "", fmt.Errorf("store rotated token: %w", err)
@@ -382,44 +363,29 @@ func (s *UserService) RefreshAccessToken(ctx context.Context, refreshToken strin
 	return newAccess, newRefresh, nil
 }
 
-func (s *UserService) Logout(ctx context.Context, refreshToken string) error {
+func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	if strings.TrimSpace(refreshToken) == "" {
-		return ErrInvalidRefresh
+		return services.ErrInvalidRefresh
 	}
 	deleted, err := s.refresh.DeleteByTokenHash(ctx, utils.HashRefreshToken(strings.TrimSpace(refreshToken)))
 	if err != nil {
 		return fmt.Errorf("logout: %w", err)
 	}
 	if !deleted {
-		return ErrInvalidRefresh
+		return services.ErrInvalidRefresh
 	}
 	return nil
 }
 
-func (s *UserService) LogoutAll(ctx context.Context, userCode string) error {
+func (s *Service) LogoutAll(ctx context.Context, userCode string) error {
 	return s.refresh.DeleteByUserCode(ctx, userCode)
 }
 
-func (s *UserService) ListRoles(ctx context.Context) ([]models.Role, error) {
-	roles, err := s.roles.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list roles: %w", err)
-	}
-	return roles, nil
-}
-
-func (s *UserService) CountUsers(ctx context.Context) (int, error) {
+func (s *Service) CountUsers(ctx context.Context) (int, error) {
 	return s.users.Count(ctx)
 }
 
-func (s *UserService) CountRoles(ctx context.Context) (int, error) {
-	return s.roles.Count(ctx)
-}
-
-func (s *UserService) CountActiveSessions(ctx context.Context) (int, error) {
-	return s.refresh.CountActive(ctx)
-}
-
-func (s *UserService) CleanupExpiredTokens(ctx context.Context) (int64, error) {
-	return s.refresh.DeleteExpired(ctx)
+// GenerateAccessTokenFor mengemas ulang pembuatan token (dipakai refresh flow).
+func (s *Service) accessTokenFor(user *models.User) (string, error) {
+	return utils.GenerateAccessToken(s.jwtSecret, user.Code, user.Username, user.RoleCode)
 }
