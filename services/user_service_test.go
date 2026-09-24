@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -11,7 +10,6 @@ import (
 	"golang-backend/models"
 )
 
-var sqlErrNoRows = sql.ErrNoRows
 var errUsernameConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_CPUSER_USERNAME'`)
 var errEmailConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_CPUSER_EMAIL'`)
 var errCodeConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_CPUSER_CODE'`)
