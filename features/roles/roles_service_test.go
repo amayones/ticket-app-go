@@ -120,8 +120,8 @@ func newTestService() (*Service, *fakeRoleRepo, *fakeUserStore) {
 func TestCheckPermission(t *testing.T) {
 	svc, _, _ := newTestService()
 	ctx := context.Background()
-	if err := svc.CheckPermission(ctx, "USR-ADMIN", "NGAWUR"); err != nil {
-		t.Fatalf("admin must pass all: %v", err)
+	if err := svc.CheckPermission(ctx, "USR-ADMIN", models.MenuAudit); err != nil {
+		t.Fatalf("admin menu access: %v", err)
 	}
 	if err := svc.CheckPermission(ctx, "USR-00001", models.MenuDashboard); err != nil {
 		t.Fatalf("user read: %v", err)
