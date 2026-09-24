@@ -35,7 +35,8 @@ type MeResponse struct {
 	Code        string   `json:"code"`
 	Username    string   `json:"username"`
 	Email       string   `json:"email"`
-	RoleCode    string   `json:"role"`
+	Role        string   `json:"role"`
+	RoleCode    string   `json:"role_code"`
 	RoleName    string   `json:"role_name,omitempty"`
 	Permissions []string `json:"permissions"`
 }
