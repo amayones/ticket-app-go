@@ -75,16 +75,6 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// GetEnv returns raw env value.
-func GetEnv(key string) string {
-	return os.Getenv(key)
-}
-
-// GetEnvDefault returns env value or fallback when empty.
-func GetEnvDefault(key, fallback string) string {
-	return getEnvDefault(key, fallback)
-}
-
 func getEnvDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
