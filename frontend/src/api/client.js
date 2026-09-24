@@ -1,5 +1,9 @@
-// Central API client: base URL from VITE_API_URL, JSON envelope,
+// Core API client: base URL from VITE_API_URL, JSON envelope,
 // auto refresh-token rotation on 401, no-store for auth calls.
+//
+// Aturan modular: file ini HANYA berisi infrastruktur (request) + fungsi
+// inti (auth, sesi JWT, health). Fungsi tiap menu tinggal di
+// menus/<role>/<menu>/api.js dan memakai apiRequest dari sini.
 const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 const store = {
@@ -70,6 +74,9 @@ function parseJwt(token) {
   }
 }
 
+// Low-level request untuk dipakai api.js tiap menu (menus/<role>/<menu>/api.js).
+export const apiRequest = request
+
 export const api = {
   // Profil user yang sedang login, dibaca dari klaim JWT (tanpa request).
   currentUser() {
@@ -77,12 +84,6 @@ export const api = {
     const claims = parseJwt(store.access)
     if (!claims || !claims.user_code) return null
     return { code: claims.user_code, username: claims.username || '', role: claims.role || '' }
-  },
-  // Tambah user hanya oleh admin (butuh USER_CREATE). Tanpa registrasi publik.
-  async createUser(username, email, password, roleCode) {
-    const body = { username, email, password }
-    if (roleCode) body.role_code = roleCode
-    return request('/api/users', { method: 'POST', body, auth: true })
   },
   async login(username, password) {
     const data = await request('/api/login', { method: 'POST', body: { username, password } })
@@ -97,97 +98,6 @@ export const api = {
     } finally {
       store.clear()
     }
-  },
-  async listUsers(limit = 50, offset = 0) {
-    const data = await request(`/api/users?limit=${limit}&offset=${offset}`, { auth: true })
-    return Array.isArray(data) ? data : []
-  },
-  async getUser(code) {
-    return request(`/api/users/${code}`, { auth: true })
-  },
-  // Patch parsial: kirim hanya field yang berubah { username?, email?, password? }.
-  async updateUser(code, patch) {
-    return request(`/api/users/${code}`, { method: 'PUT', body: patch, auth: true })
-  },
-  async deleteUser(code) {
-    return request(`/api/users/${code}`, { method: 'DELETE', auth: true })
-  },
-  async logoutAll(code) {
-    return request(`/api/users/${code}/logout-all`, { method: 'POST', auth: true })
-  },
-  async listRoles() {
-    return request('/api/roles', { auth: true })
-  },
-  // --- Role & Permission (RBAC, admin) ---
-  async getRole(code) {
-    return request(`/api/admin/roles/${code}`, { auth: true })
-  },
-  async createRole(code, name) {
-    return request('/api/admin/roles', { method: 'POST', body: { code, name }, auth: true })
-  },
-  async deleteRole(code) {
-    return request(`/api/admin/roles/${code}`, { method: 'DELETE', auth: true })
-  },
-  async listPermissions() {
-    return request('/api/admin/permissions', { auth: true })
-  },
-  async setRolePermissions(code, permissions) {
-    return request(`/api/admin/roles/${code}/permissions`, { method: 'PUT', body: { permissions }, auth: true })
-  },
-  async updateUserRole(code, roleCode) {
-    return request(`/api/users/${code}/role`, { method: 'PUT', body: { role_code: roleCode }, auth: true })
-  },
-  // --- Authentication & Session Management ---
-  async listMySessions() {
-    const data = await request('/api/admin/sessions', { auth: true })
-    return Array.isArray(data) ? data : []
-  },
-  async listAllSessions(limit = 20, offset = 0) {
-    const data = await request(`/api/admin/sessions/all?limit=${limit}&offset=${offset}`, { auth: true })
-    return Array.isArray(data) ? data : []
-  },
-  async revokeSession(id) {
-    return request(`/api/admin/sessions/${id}`, { method: 'DELETE', auth: true })
-  },
-  // --- Audit Log ---
-  async listAudit({ action = '', entity = '', actor = '', limit = 20, offset = 0 } = {}) {
-    const q = new URLSearchParams({ action, entity, actor, limit, offset })
-    const data = await request(`/api/admin/audit?${q}`, { auth: true })
-    return Array.isArray(data) ? data : []
-  },
-  // --- Security Center ---
-  async securitySummary() {
-    return request('/api/admin/security/summary', { auth: true })
-  },
-  // --- Error / System Log ---
-  async listSyslogs({ level = '', limit = 20, offset = 0 } = {}) {
-    const q = new URLSearchParams({ level, limit, offset })
-    const data = await request(`/api/admin/syslogs?${q}`, { auth: true })
-    return Array.isArray(data) ? data : []
-  },
-  async pruneSyslogs(days = 30) {
-    return request(`/api/admin/syslogs?days=${days}`, { method: 'DELETE', auth: true })
-  },
-  // --- Notification Template & Log ---
-  async listTemplates(activeOnly = false) {
-    const data = await request(`/api/admin/notifications/templates${activeOnly ? '?active=1' : ''}`, { auth: true })
-    return Array.isArray(data) ? data : []
-  },
-  async createTemplate(payload) {
-    return request('/api/admin/notifications/templates', { method: 'POST', body: payload, auth: true })
-  },
-  async updateTemplate(code, payload) {
-    return request(`/api/admin/notifications/templates/${code}`, { method: 'PUT', body: payload, auth: true })
-  },
-  async deleteTemplate(code) {
-    return request(`/api/admin/notifications/templates/${code}`, { method: 'DELETE', auth: true })
-  },
-  async sendNotification(payload) {
-    return request('/api/admin/notifications/send', { method: 'POST', body: payload, auth: true })
-  },
-  async listNotifLogs(limit = 20, offset = 0) {
-    const data = await request(`/api/admin/notifications/logs?limit=${limit}&offset=${offset}`, { auth: true })
-    return Array.isArray(data) ? data : []
   },
   async health() {
     return request('/healthz')
