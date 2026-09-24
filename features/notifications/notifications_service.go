@@ -1,4 +1,4 @@
-package services
+package notifications
 
 import (
 	"context"
@@ -8,19 +8,29 @@ import (
 	"strings"
 
 	"golang-backend/models"
-	"golang-backend/repositories"
+	"golang-backend/services"
 	"golang-backend/utils"
 )
 
 // NotificationService mengelola template + riwayat pengiriman.
 // "Pengiriman" saat ini dicatat ke CPNOTIFLOG (provider email/SMS nyata
 // bisa disuntik di sini tanpa mengubah handler).
-type NotificationService struct {
-	repo repositories.NotificationRepositoryInterface
+type ServiceInterface interface {
+	ListTemplates(ctx context.Context, activeOnly bool) ([]models.NotifTemplate, error)
+	CreateTemplate(ctx context.Context, name, channel, subject, body string, active bool) (*models.NotifTemplate, error)
+	UpdateTemplate(ctx context.Context, code, name, channel, subject, body string, active bool) error
+	DeleteTemplate(ctx context.Context, code string) error
+	Send(ctx context.Context, req models.NotifSendRequest) (*models.NotifLog, error)
+	ListLogs(ctx context.Context, limit, offset int) ([]models.NotifLog, error)
+	CountSentSince(ctx context.Context, hours int) (int, error)
 }
 
-func NewNotificationService(repo repositories.NotificationRepositoryInterface) *NotificationService {
-	return &NotificationService{repo: repo}
+type Service struct {
+	repo RepositoryInterface
+}
+
+func NewService(repo RepositoryInterface) *Service {
+	return &Service{repo: repo}
 }
 
 func validChannel(c string) error {
@@ -32,7 +42,7 @@ func validChannel(c string) error {
 	}
 }
 
-func (s *NotificationService) ListTemplates(ctx context.Context, activeOnly bool) ([]models.NotifTemplate, error) {
+func (s *Service) ListTemplates(ctx context.Context, activeOnly bool) ([]models.NotifTemplate, error) {
 	t, err := s.repo.ListTemplates(ctx, activeOnly)
 	if err != nil {
 		return nil, fmt.Errorf("list templates: %w", err)
@@ -40,7 +50,7 @@ func (s *NotificationService) ListTemplates(ctx context.Context, activeOnly bool
 	return t, nil
 }
 
-func (s *NotificationService) CreateTemplate(ctx context.Context, name, channel, subject, body string, active bool) (*models.NotifTemplate, error) {
+func (s *Service) CreateTemplate(ctx context.Context, name, channel, subject, body string, active bool) (*models.NotifTemplate, error) {
 	name = strings.TrimSpace(name)
 	body = strings.TrimSpace(body)
 	if name == "" || body == "" {
@@ -64,7 +74,7 @@ func (s *NotificationService) CreateTemplate(ctx context.Context, name, channel,
 	return t, nil
 }
 
-func (s *NotificationService) UpdateTemplate(ctx context.Context, code, name, channel, subject, body string, active bool) error {
+func (s *Service) UpdateTemplate(ctx context.Context, code, name, channel, subject, body string, active bool) error {
 	name = strings.TrimSpace(name)
 	body = strings.TrimSpace(body)
 	if name == "" || body == "" {
@@ -80,17 +90,17 @@ func (s *NotificationService) UpdateTemplate(ctx context.Context, code, name, ch
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return fmt.Errorf("update template: %w", err)
 	}
 	return nil
 }
 
-func (s *NotificationService) DeleteTemplate(ctx context.Context, code string) error {
+func (s *Service) DeleteTemplate(ctx context.Context, code string) error {
 	if err := s.repo.DeleteTemplate(ctx, code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return services.ErrUserNotFound
 		}
 		return fmt.Errorf("delete template: %w", err)
 	}
@@ -107,7 +117,7 @@ func render(input string, vars map[string]string) string {
 }
 
 // Send merender template + mencatat ke CPNOTIFLOG (status SENT).
-func (s *NotificationService) Send(ctx context.Context, req models.NotifSendRequest) (*models.NotifLog, error) {
+func (s *Service) Send(ctx context.Context, req models.NotifSendRequest) (*models.NotifLog, error) {
 	recipient := strings.TrimSpace(req.Recipient)
 	if recipient == "" {
 		return nil, errors.New("recipient is required")
@@ -141,10 +151,14 @@ func (s *NotificationService) Send(ctx context.Context, req models.NotifSendRequ
 	return entry, nil
 }
 
-func (s *NotificationService) ListLogs(ctx context.Context, limit, offset int) ([]models.NotifLog, error) {
+func (s *Service) ListLogs(ctx context.Context, limit, offset int) ([]models.NotifLog, error) {
 	logs, err := s.repo.ListLogs(ctx, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list notification logs: %w", err)
 	}
 	return logs, nil
+}
+
+func (s *Service) CountSentSince(ctx context.Context, hours int) (int, error) {
+	return s.repo.CountSentSince(ctx, hours)
 }
