@@ -1,4 +1,4 @@
-package repositories
+package notifications
 
 import (
 	"context"
@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"golang-backend/models"
+	"golang-backend/repositories"
 )
 
-// NotificationRepositoryInterface persists CPNOTIFTEMPLATE + CPNOTIFLOG.
-type NotificationRepositoryInterface interface {
+// RepositoryInterface persists CPNOTIFTEMPLATE + CPNOTIFLOG.
+type RepositoryInterface interface {
 	ListTemplates(ctx context.Context, activeOnly bool) ([]models.NotifTemplate, error)
 	GetTemplate(ctx context.Context, code string) (*models.NotifTemplate, error)
 	CreateTemplate(ctx context.Context, t *models.NotifTemplate) error
@@ -20,20 +21,20 @@ type NotificationRepositoryInterface interface {
 	CountSentSince(ctx context.Context, hours int) (int, error)
 }
 
-type NotificationRepository struct {
+type Repository struct {
 	db      *sql.DB
-	dialect Dialect
+	dialect repositories.Dialect
 }
 
-func NewNotificationRepository(db *sql.DB, dialect Dialect) NotificationRepositoryInterface {
-	return &NotificationRepository{db: db, dialect: dialect}
+func NewRepository(db *sql.DB, dialect repositories.Dialect) RepositoryInterface {
+	return &Repository{db: db, dialect: dialect}
 }
 
-func (r *NotificationRepository) tmplTable() string { return r.dialect.Table("CPNOTIFTEMPLATE") }
-func (r *NotificationRepository) logTable() string  { return r.dialect.Table("CPNOTIFLOG") }
+func (r *Repository) tmplTable() string { return r.dialect.Table("CPNOTIFTEMPLATE") }
+func (r *Repository) logTable() string  { return r.dialect.Table("CPNOTIFLOG") }
 
-func (r *NotificationRepository) ListTemplates(ctx context.Context, activeOnly bool) ([]models.NotifTemplate, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) ListTemplates(ctx context.Context, activeOnly bool) ([]models.NotifTemplate, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `
 		SELECT CODE, NAME, CHANNEL, SUBJECT, BODY, IS_ACTIVE, CREATED_AT, UPDATED_AT
@@ -63,8 +64,8 @@ func (r *NotificationRepository) ListTemplates(ctx context.Context, activeOnly b
 	return out, nil
 }
 
-func (r *NotificationRepository) GetTemplate(ctx context.Context, code string) (*models.NotifTemplate, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) GetTemplate(ctx context.Context, code string) (*models.NotifTemplate, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var t models.NotifTemplate
 	var subject sql.NullString
@@ -79,24 +80,24 @@ func (r *NotificationRepository) GetTemplate(ctx context.Context, code string) (
 	return &t, nil
 }
 
-func (r *NotificationRepository) CreateTemplate(ctx context.Context, t *models.NotifTemplate) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) CreateTemplate(ctx context.Context, t *models.NotifTemplate) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	_, err := r.db.ExecContext(ctx, r.dialect.Bind(`
 		INSERT INTO `+r.tmplTable()+` (CODE, NAME, CHANNEL, SUBJECT, BODY, IS_ACTIVE)
 		VALUES (?, ?, ?, ?, ?, ?)`),
-		t.Code, t.Name, t.Channel, nullStr(t.Subject), t.Body, t.IsActive)
+		t.Code, t.Name, t.Channel, repositories.NullStr(t.Subject), t.Body, t.IsActive)
 	return err
 }
 
-func (r *NotificationRepository) UpdateTemplate(ctx context.Context, t *models.NotifTemplate) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) UpdateTemplate(ctx context.Context, t *models.NotifTemplate) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	res, err := r.db.ExecContext(ctx, r.dialect.Bind(`
 		UPDATE `+r.tmplTable()+`
 		SET NAME = ?, CHANNEL = ?, SUBJECT = ?, BODY = ?, IS_ACTIVE = ?, UPDATED_AT = `+r.dialect.Now()+`
 		WHERE CODE = ?`),
-		t.Name, t.Channel, nullStr(t.Subject), t.Body, t.IsActive, t.Code)
+		t.Name, t.Channel, repositories.NullStr(t.Subject), t.Body, t.IsActive, t.Code)
 	if err != nil {
 		return err
 	}
@@ -110,8 +111,8 @@ func (r *NotificationRepository) UpdateTemplate(ctx context.Context, t *models.N
 	return nil
 }
 
-func (r *NotificationRepository) DeleteTemplate(ctx context.Context, code string) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) DeleteTemplate(ctx context.Context, code string) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	res, err := r.db.ExecContext(ctx,
 		r.dialect.Bind(`DELETE FROM `+r.tmplTable()+` WHERE CODE = ?`), code)
@@ -128,39 +129,39 @@ func (r *NotificationRepository) DeleteTemplate(ctx context.Context, code string
 	return nil
 }
 
-func (r *NotificationRepository) CreateLog(ctx context.Context, l *models.NotifLog) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) CreateLog(ctx context.Context, l *models.NotifLog) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	_, err := r.db.ExecContext(ctx, r.dialect.Bind(`
 		INSERT INTO `+r.logTable()+` (CODE, TEMPLATE_CODE, CHANNEL, RECIPIENT, SUBJECT, BODY, STATUS, ERROR)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-		l.Code, nullStr(l.TemplateCode), l.Channel, l.Recipient,
-		nullStr(l.Subject), l.Body, l.Status, nullStr(l.Error))
+		l.Code, repositories.NullStr(l.TemplateCode), l.Channel, l.Recipient,
+		repositories.NullStr(l.Subject), l.Body, l.Status, repositories.NullStr(l.Error))
 	return err
 }
 
-func (r *NotificationRepository) ListLogs(ctx context.Context, limit, offset int) ([]models.NotifLog, error) {
+func (r *Repository) ListLogs(ctx context.Context, limit, offset int) ([]models.NotifLog, error) {
 	if limit <= 0 {
-		limit = DefaultListLimit
+		limit = repositories.DefaultListLimit
 	}
-	if limit > MaxListLimit {
-		limit = MaxListLimit
+	if limit > repositories.MaxListLimit {
+		limit = repositories.MaxListLimit
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	ctx, cancel := withTimeout(ctx)
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `
 		SELECT CODE, TEMPLATE_CODE, CHANNEL, RECIPIENT, SUBJECT, BODY, STATUS, ERROR, CREATED_AT
 		FROM ` + r.logTable() + `
 		ORDER BY ID DESC `
 	var args []any
-	if r.dialect == DialectMSSQL {
-		query += pageMSSQL()
+	if r.dialect == repositories.DialectMSSQL {
+		query += repositories.PageMSSQL()
 		args = []any{offset, limit}
 	} else {
-		query += pageStd()
+		query += repositories.PageStd()
 		args = []any{limit, offset}
 	}
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), args...)
@@ -184,8 +185,8 @@ func (r *NotificationRepository) ListLogs(ctx context.Context, limit, offset int
 	return out, nil
 }
 
-func (r *NotificationRepository) CountSentSince(ctx context.Context, hours int) (int, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) CountSentSince(ctx context.Context, hours int) (int, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(`
