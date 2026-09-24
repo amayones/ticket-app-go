@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client.js'
-import { Alert, Badge, Button, Card, CardTitle, Icon, Skeleton, useSmoothLoading, useToast } from '../components'
+import { securitySummary } from './api.js'
+import { listAudit } from '../audit/api.js'
+
+export const meta = { label: 'Security Center', icon: 'shield', order: 5 }
+import { Alert, Badge, Button, Card, CardTitle, Icon, Skeleton, useSmoothLoading, useToast } from '../../../components'
 
 function StatCard({ icon, label, value, tone }) {
   const tones = {
@@ -33,8 +36,8 @@ export default function Security() {
     setError('')
     try {
       const [s, a] = await Promise.all([
-        api.securitySummary(),
-        api.listAudit({ limit: 8, offset: 0 }),
+        securitySummary(),
+        listAudit({ limit: 8, offset: 0 }),
       ])
       setSummary(s)
       setRecent(Array.isArray(a) ? a : [])
