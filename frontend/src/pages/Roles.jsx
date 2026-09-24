@@ -12,6 +12,7 @@ import {
   Modal,
   SkeletonRows,
   TextField,
+  useSmoothLoading,
   useToast,
 } from '../components'
 
@@ -32,6 +33,7 @@ export default function Roles() {
   const [selected, setSelected] = useState(null) // role code
   const [checked, setChecked] = useState([])
   const [loading, setLoading] = useState(true)
+  const showLoading = useSmoothLoading(loading)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
@@ -153,7 +155,7 @@ export default function Roles() {
           </Alert>
         )}
 
-        {loading ? (
+        {showLoading ? (
           <SkeletonRows rows={3} />
         ) : roles.length === 0 ? (
           <EmptyState title="Belum ada role" description="Buat role pertama lewat tombol di atas." />
@@ -179,7 +181,7 @@ export default function Roles() {
         )}
       </Card>
 
-      {selected && !loading && (
+      {selected && !showLoading && (
         <Card>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <CardTitle description="Centang permission lalu simpan. ADMIN selalu lolos semua permission tanpa perlu dicentang.">

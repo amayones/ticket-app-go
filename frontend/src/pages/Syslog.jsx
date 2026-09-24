@@ -11,6 +11,7 @@ import {
   Icon,
   Pagination,
   SkeletonRows,
+  useSmoothLoading,
   useToast,
 } from '../components'
 
@@ -39,6 +40,7 @@ export default function Syslog() {
   const [days, setDays] = useState(30)
   const [confirmPrune, setConfirmPrune] = useState(false)
   const [loading, setLoading] = useState(true)
+  const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
@@ -109,7 +111,7 @@ export default function Syslog() {
         </Alert>
       )}
 
-      {loading ? (
+      {showLoading ? (
         <SkeletonRows rows={5} />
       ) : logs.length === 0 ? (
         <EmptyState
@@ -146,7 +148,7 @@ export default function Syslog() {
         </div>
       )}
 
-      {!loading && logs.length > 0 && (
+      {!showLoading && logs.length > 0 && (
         <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
           <Pagination
             offset={offset}

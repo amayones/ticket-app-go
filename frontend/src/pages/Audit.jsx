@@ -10,6 +10,7 @@ import {
   Icon,
   Pagination,
   SkeletonRows,
+  useSmoothLoading,
 } from '../components'
 
 const PAGE_SIZE = 20
@@ -61,6 +62,7 @@ export default function Audit() {
   const [actor, setActor] = useState('')
   const [actorInput, setActorInput] = useState('')
   const [loading, setLoading] = useState(true)
+  const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
@@ -145,7 +147,7 @@ export default function Audit() {
         </Alert>
       )}
 
-      {loading ? (
+      {showLoading ? (
         <SkeletonRows rows={5} />
       ) : logs.length === 0 ? (
         <EmptyState
@@ -184,7 +186,7 @@ export default function Audit() {
         </div>
       )}
 
-      {!loading && logs.length > 0 && (
+      {!showLoading && logs.length > 0 && (
         <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
           <Pagination
             offset={offset}

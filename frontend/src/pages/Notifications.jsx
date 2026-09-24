@@ -13,6 +13,7 @@ import {
   Pagination,
   SkeletonRows,
   TextField,
+  useSmoothLoading,
   useToast,
 } from '../components'
 
@@ -84,6 +85,7 @@ export default function Notifications() {
   const [logs, setLogs] = useState([])
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
+  const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null) // template obj | 'new'
   const [saving, setSaving] = useState(false)
@@ -227,7 +229,7 @@ export default function Notifications() {
           </Alert>
         )}
 
-        {loading ? (
+        {showLoading ? (
           <SkeletonRows rows={3} />
         ) : tab === 'templates' ? (
           <>
