@@ -15,14 +15,15 @@ const (
 )
 
 // UserRepositoryInterface is the contract services depend on (mockable).
+// Identity is the public CODE (CPUSER.CODE); numeric IDs never leave the DB.
 type UserRepositoryInterface interface {
 	List(ctx context.Context, limit, offset int) ([]models.User, error)
-	GetByID(ctx context.Context, id int) (*models.User, error)
+	GetByCode(ctx context.Context, code string) (*models.User, error)
 	GetByUsername(ctx context.Context, username string) (*models.User, error)
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
-	Create(ctx context.Context, user *models.User) (int, error)
+	Create(ctx context.Context, user *models.User) error
 	Update(ctx context.Context, user *models.User) error
-	Delete(ctx context.Context, id int) error
+	Delete(ctx context.Context, code string) error
 }
 
 type UserRepository struct {
@@ -37,14 +38,19 @@ func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, queryTimeout)
 }
 
+const userColumns = `u.CODE, u.USERNAME, u.EMAIL, u.PASSWORD, u.ROLE_CODE, r.NAME, u.CREATED_AT, u.UPDATED_AT`
+const userJoin = `FROM dbo.CPUSER u JOIN dbo.CPROLE r ON r.CODE = u.ROLE_CODE`
+
 func scanUser(row interface {
 	Scan(dest ...any) error
 }, user *models.User) error {
 	return row.Scan(
-		&user.ID,
+		&user.Code,
 		&user.Username,
 		&user.Email,
 		&user.Password,
+		&user.RoleCode,
+		&user.RoleName,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -64,9 +70,9 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]models.
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		SELECT id, username, email, '' AS password, created_at, updated_at
-		FROM users
-		ORDER BY id DESC
+		SELECT ` + userColumns + `
+		` + userJoin + `
+		ORDER BY u.ID DESC
 		OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY
 	`
 	rows, err := r.db.QueryContext(ctx, query, offset, limit)
@@ -89,32 +95,26 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]models.
 	return users, nil
 }
 
-func (r *UserRepository) Create(ctx context.Context, user *models.User) (int, error) {
+func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		INSERT INTO users (username, email, password)
-		OUTPUT INSERTED.id
-		VALUES (@p1, @p2, @p3)
+		INSERT INTO dbo.CPUSER (CODE, USERNAME, EMAIL, PASSWORD, ROLE_CODE)
+		VALUES (@p1, @p2, @p3, @p4, @p5)
 	`
-	var id int
-	err := r.db.QueryRowContext(ctx, query, user.Username, user.Email, user.Password).Scan(&id)
-	if err != nil {
-		return 0, err
-	}
-	user.ID = id
-	return id, nil
+	_, err := r.db.ExecContext(ctx, query, user.Code, user.Username, user.Email, user.Password, user.RoleCode)
+	return err
 }
 
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		UPDATE users
-		SET username = @p1, email = @p2, password = @p3, updated_at = GETDATE()
-		WHERE id = @p4
+		UPDATE dbo.CPUSER
+		SET USERNAME = @p1, EMAIL = @p2, PASSWORD = @p3, UPDATED_AT = GETDATE()
+		WHERE CODE = @p4
 	`
-	res, err := r.db.ExecContext(ctx, query, user.Username, user.Email, user.Password, user.ID)
+	res, err := r.db.ExecContext(ctx, query, user.Username, user.Email, user.Password, user.Code)
 	if err != nil {
 		return err
 	}
@@ -128,10 +128,10 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return nil
 }
 
-func (r *UserRepository) Delete(ctx context.Context, id int) error {
+func (r *UserRepository) Delete(ctx context.Context, code string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = @p1`, id)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM dbo.CPUSER WHERE CODE = @p1`, code)
 	if err != nil {
 		return err
 	}
@@ -145,16 +145,16 @@ func (r *UserRepository) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-func (r *UserRepository) GetByID(ctx context.Context, id int) (*models.User, error) {
+func (r *UserRepository) GetByCode(ctx context.Context, code string) (*models.User, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		SELECT id, username, email, password, created_at, updated_at
-		FROM users
-		WHERE id = @p1
+		SELECT ` + userColumns + `
+		` + userJoin + `
+		WHERE u.CODE = @p1
 	`
 	var user models.User
-	if err := scanUser(r.db.QueryRowContext(ctx, query, id), &user); err != nil {
+	if err := scanUser(r.db.QueryRowContext(ctx, query, code), &user); err != nil {
 		return nil, err
 	}
 	return &user, nil
@@ -164,9 +164,9 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		SELECT id, username, email, password, created_at, updated_at
-		FROM users
-		WHERE username = @p1
+		SELECT ` + userColumns + `
+		` + userJoin + `
+		WHERE u.USERNAME = @p1
 	`
 	var user models.User
 	if err := scanUser(r.db.QueryRowContext(ctx, query, username), &user); err != nil {
@@ -179,9 +179,9 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		SELECT id, username, email, password, created_at, updated_at
-		FROM users
-		WHERE email = @p1
+		SELECT ` + userColumns + `
+		` + userJoin + `
+		WHERE u.EMAIL = @p1
 	`
 	var user models.User
 	if err := scanUser(r.db.QueryRowContext(ctx, query, email), &user); err != nil {
