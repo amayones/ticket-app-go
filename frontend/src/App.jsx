@@ -87,23 +87,23 @@ function Shell() {
       {/* Sidebar (desktop) — bisa dilipat via tombol chevron.
           Hanya lebar yang ditransisikan (bukan all) agar tidak bergetar. */}
       <aside
-        className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] transition-[width,padding] md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
+        className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] transition-[width,padding] md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
           collapsed ? 'w-[76px] p-2' : 'w-60 p-3'
         }`}
       >
-        {/* Baris logo tanpa padding-bawah: tombol tepat sejajar tengah logo. */}
+        {/* Baris logo tanpa padding-bawah: tombol tepat sejajar tengah logo.
+            Teks dilipat via grid 0fr->1fr (mulus, tanpa teks tersendat). */}
         <div className="pb-4">
           <div className={`relative flex items-center ${collapsed ? 'justify-center px-0' : 'gap-2 px-1'}`}>
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">
               G
             </span>
             <span
-              className={`whitespace-nowrap text-sm font-bold tracking-tight transition-all delay-100 duration-300 ${
-                collapsed ? 'max-w-0 opacity-0' : 'max-w-[160px] opacity-100'
+              className={`grid whitespace-nowrap text-sm font-bold tracking-tight transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+                collapsed ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'
               }`}
-              style={{ overflow: 'hidden' }}
             >
-              Go Core
+              <span className="min-w-0 overflow-hidden">Go Core</span>
             </span>
             <Tooltip
               label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
@@ -114,19 +114,18 @@ function Shell() {
                 type="button"
                 onClick={toggleSidebar}
                 aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-                className="shrink-0 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-md transition-all duration-300 hover:bg-zinc-50 hover:text-zinc-800 hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+                className="shrink-0 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-md transition-all duration-200 hover:bg-zinc-50 hover:text-zinc-800 hover:shadow-lg active:scale-90 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
               >
                 <Icon
                   name="chevronLeft"
-                  className={`h-4 w-4 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}
+                  className={`h-4 w-4 transition-transform duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? 'rotate-180' : ''}`}
                 />
               </button>
             </Tooltip>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
-          {visibleNav.map((n, i) => {
-            const stagger = `${Math.min(i, 6) * 25}ms`
+          {visibleNav.map((n) => {
             const btn = (
               <button
                 key={n.key}
@@ -142,12 +141,11 @@ function Shell() {
               >
               <Icon name={n.icon} className="h-5 w-5 shrink-0" />
               <span
-                style={{ transitionDelay: stagger, overflow: 'hidden' }}
-                className={`whitespace-nowrap text-[13px] font-medium transition-all duration-300 ${
-                  collapsed ? 'max-w-0 opacity-0' : 'max-w-[160px] opacity-100'
+                className={`grid whitespace-nowrap text-[13px] font-medium transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+                  collapsed ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'
                 }`}
               >
-                {n.label}
+                <span className="min-w-0 overflow-hidden">{n.label}</span>
               </span>
             </button>
             )
@@ -162,17 +160,18 @@ function Shell() {
         </nav>
         <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
           <div
-            className={`transition-all delay-100 duration-300 ${
-              collapsed ? 'max-h-0 opacity-0' : 'mb-2 max-h-20 opacity-100'
+            className={`grid transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+              collapsed ? 'grid-rows-[0fr] opacity-0' : 'mb-2 grid-rows-[1fr] opacity-100'
             }`}
-            style={{ overflow: 'hidden' }}
           >
-            <div className="flex items-center gap-2 px-2">
-              <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
-                <span className="block truncate font-semibold text-zinc-700 dark:text-zinc-200">@{me?.username}</span>
-                <span className="font-mono">{me?.code}</span>
-              </span>
-              <Badge tone={isAdmin ? 'danger' : 'brand'}>{me?.role}</Badge>
+            <div className="min-h-0 overflow-hidden">
+              <div className="flex items-center gap-2 px-2">
+                <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
+                  <span className="block truncate font-semibold text-zinc-700 dark:text-zinc-200">@{me?.username}</span>
+                  <span className="font-mono">{me?.code}</span>
+                </span>
+                <Badge tone={isAdmin ? 'danger' : 'brand'}>{me?.role}</Badge>
+              </div>
             </div>
           </div>
           <div className={`flex items-center gap-1.5 ${collapsed ? 'flex-col' : ''}`}>
