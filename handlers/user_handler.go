@@ -166,12 +166,24 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	code, err := h.Service.CreateUser(r.Context(), req.Username, req.Email, req.Password)
+	// Hanya pemegang USER_ROLE_ASSIGN boleh menentukan role non-default.
+	roleCode := models.DefaultRoleCode
+	if strings.TrimSpace(req.RoleCode) != "" &&
+		!strings.EqualFold(strings.TrimSpace(req.RoleCode), models.DefaultRoleCode) {
+		caller, _ := middleware.GetUserCode(r)
+		if err := h.Service.CheckPermission(r.Context(), caller, models.PermUserRoleAssign); err != nil {
+			writeError(w, http.StatusForbidden, services.ErrForbidden.Error())
+			return
+		}
+		roleCode = strings.ToUpper(strings.TrimSpace(req.RoleCode))
+	}
+	code, err := h.Service.CreateUser(r.Context(), req.Username, req.Email, req.Password, roleCode)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
-	h.audit(r, code, models.AuditRegister, models.EntityUser, code, "Akun "+req.Username+" didaftarkan")
+	caller, _ := middleware.GetUserCode(r)
+	h.audit(r, caller, models.AuditRegister, models.EntityUser, code, "Akun "+req.Username+" dibuat oleh "+caller)
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"message": "User created successfully",
 		"code":    code,
