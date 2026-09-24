@@ -1,7 +1,7 @@
 package routes
 
 // Wiring test: verifies route↔middleware↔handler integration end-to-end
-// with a stub service (no database needed).
+// with stub services (no database needed). One stub per menu.
 
 import (
 	"context"
@@ -12,7 +12,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"golang-backend/handlers"
+	faudit "golang-backend/features/audit"
+	fnotif "golang-backend/features/notifications"
+	froles "golang-backend/features/roles"
+	fsecurity "golang-backend/features/security"
+	fsessions "golang-backend/features/sessions"
+	fsyslog "golang-backend/features/syslog"
+	fusers "golang-backend/features/users"
 	"golang-backend/models"
 	"golang-backend/services"
 	"golang-backend/utils"
@@ -20,76 +26,90 @@ import (
 
 const auditSecret = "audit-secret-32-chars-minimum-xxxx"
 
-type stubService struct{}
+// --- Menu: users ---
 
-func (s *stubService) ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error) {
+type stubUsers struct{}
+
+func (s *stubUsers) ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error) {
 	return []models.UserResponse{{Code: "USR-000001", Username: "budi", Email: "budi@x.com", RoleCode: models.RoleUser}}, nil
 }
-func (s *stubService) GetUserByCode(ctx context.Context, code string) (*models.User, error) {
+func (s *stubUsers) GetUserByCode(ctx context.Context, code string) (*models.User, error) {
 	return &models.User{Code: code, Username: "budi", Email: "budi@x.com", RoleCode: models.RoleUser}, nil
 }
-func (s *stubService) CreateUser(ctx context.Context, u, e, p, role string) (string, error) {
+func (s *stubUsers) CreateUser(ctx context.Context, u, e, p, role string) (string, error) {
 	if u == "" || e == "" || p == "" {
 		return "", services.ErrInputRequired
 	}
 	return "USR-000007", nil
 }
-func (s *stubService) UpdateUser(ctx context.Context, code string, in models.UpdateUserRequest) error {
+func (s *stubUsers) UpdateUser(ctx context.Context, code string, in models.UpdateUserRequest) error {
 	return nil
 }
-func (s *stubService) DeleteUser(ctx context.Context, code string) error { return nil }
-func (s *stubService) Login(ctx context.Context, u, p string) (string, string, error) {
+func (s *stubUsers) DeleteUser(ctx context.Context, code string) error { return nil }
+func (s *stubUsers) Login(ctx context.Context, u, p string) (string, string, error) {
 	return "", "", services.ErrInvalidLogin
 }
-func (s *stubService) RefreshAccessToken(ctx context.Context, t string) (string, string, error) {
+func (s *stubUsers) RefreshAccessToken(ctx context.Context, t string) (string, string, error) {
 	return "", "", services.ErrInvalidRefresh
 }
-func (s *stubService) Logout(ctx context.Context, t string) error { return nil }
-func (s *stubService) LogoutAll(ctx context.Context, code string) error {
+func (s *stubUsers) Logout(ctx context.Context, t string) error { return nil }
+func (s *stubUsers) LogoutAll(ctx context.Context, code string) error {
 	return nil
 }
-func (s *stubService) ListRoles(ctx context.Context) ([]models.Role, error) {
-	return []models.Role{{Code: models.RoleUser, Name: "Pengguna"}}, nil
-}
-func (s *stubService) CheckPermission(ctx context.Context, userCode, perm string) error {
+func (s *stubUsers) CountUsers(ctx context.Context) (int, error) { return 1, nil }
+
+// --- Menu: roles ---
+
+type stubRoles struct{}
+
+func (s *stubRoles) CheckPermission(ctx context.Context, userCode, perm string) error {
 	if userCode == "USR-ADMIN" {
 		return nil
 	}
 	return services.ErrForbidden
 }
-func (s *stubService) CreateRole(ctx context.Context, code, name string) (*models.Role, error) {
+func (s *stubRoles) ListRoles(ctx context.Context) ([]models.Role, error) {
+	return []models.Role{{Code: models.RoleUser, Name: "Pengguna"}}, nil
+}
+func (s *stubRoles) CreateRole(ctx context.Context, code, name string) (*models.Role, error) {
 	return &models.Role{Code: code, Name: name}, nil
 }
-func (s *stubService) DeleteRole(ctx context.Context, code string) error { return nil }
-func (s *stubService) GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error) {
+func (s *stubRoles) DeleteRole(ctx context.Context, code string) error { return nil }
+func (s *stubRoles) GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error) {
 	return &models.RoleDetail{Role: models.Role{Code: code, Name: "Test"}, Permissions: []string{}}, nil
 }
-func (s *stubService) ListPermissions(ctx context.Context) ([]models.Permission, error) {
+func (s *stubRoles) ListPermissions(ctx context.Context) ([]models.Permission, error) {
 	return []models.Permission{{Code: models.PermUserRead, Name: "Lihat user", Group: "USER"}}, nil
 }
-func (s *stubService) SetRolePermissions(ctx context.Context, role string, perms []string) error {
+func (s *stubRoles) SetRolePermissions(ctx context.Context, role string, perms []string) error {
 	return nil
 }
-func (s *stubService) UpdateUserRole(ctx context.Context, userCode, roleCode string) error {
+func (s *stubRoles) UpdateUserRole(ctx context.Context, userCode, roleCode string) error {
 	return nil
 }
-func (s *stubService) ListSessions(ctx context.Context, userCode string) ([]models.Session, error) {
+func (s *stubRoles) CountRoles(ctx context.Context) (int, error) { return 2, nil }
+
+// --- Menu: sessions ---
+
+type stubSessions struct{}
+
+func (s *stubSessions) ListSessions(ctx context.Context, userCode string) ([]models.Session, error) {
 	return []models.Session{}, nil
 }
-func (s *stubService) ListAllSessions(ctx context.Context, limit, offset int) ([]models.Session, error) {
+func (s *stubSessions) ListAllSessions(ctx context.Context, limit, offset int) ([]models.Session, error) {
 	return []models.Session{}, nil
 }
-func (s *stubService) RevokeSession(ctx context.Context, caller string, id int, all bool) error {
+func (s *stubSessions) RevokeSession(ctx context.Context, caller string, id int, all bool) error {
 	return nil
 }
-func (s *stubService) CountUsers(ctx context.Context) (int, error)   { return 1, nil }
-func (s *stubService) CountRoles(ctx context.Context) (int, error)   { return 2, nil }
-func (s *stubService) CountActiveSessions(ctx context.Context) (int, error) {
+func (s *stubSessions) CountActiveSessions(ctx context.Context) (int, error) {
 	return 0, nil
 }
-func (s *stubService) CleanupExpiredTokens(ctx context.Context) (int64, error) {
+func (s *stubSessions) CleanupExpiredTokens(ctx context.Context) (int64, error) {
 	return 0, nil
 }
+
+// --- Menu: audit ---
 
 type stubAudit struct{}
 
@@ -101,16 +121,28 @@ func (s *stubAudit) List(ctx context.Context, f models.AuditFilter) ([]models.Au
 }
 func (s *stubAudit) CountSince(ctx context.Context, hours int) (int, error) { return 0, nil }
 
-type stubSys struct{}
+// --- Menu: security ---
 
-func (s *stubSys) Error(ctx context.Context, source, msg string) error { return nil }
-func (s *stubSys) List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error) {
+type stubSecurity struct{}
+
+func (s *stubSecurity) Summary(ctx context.Context) (models.SecuritySummary, error) {
+	return models.SecuritySummary{}, nil
+}
+
+// --- Menu: syslog ---
+
+type stubSyslog struct{}
+
+func (s *stubSyslog) Error(ctx context.Context, source, msg string) error { return nil }
+func (s *stubSyslog) List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error) {
 	return []models.SysLog{}, nil
 }
-func (s *stubSys) CountSince(ctx context.Context, hours int, level string) (int, error) {
+func (s *stubSyslog) CountSince(ctx context.Context, hours int, level string) (int, error) {
 	return 0, nil
 }
-func (s *stubSys) Prune(ctx context.Context, days int) (int64, error) { return 0, nil }
+func (s *stubSyslog) Prune(ctx context.Context, days int) (int64, error) { return 0, nil }
+
+// --- Menu: notifications ---
 
 type stubNotif struct{}
 
@@ -130,15 +162,28 @@ func (s *stubNotif) Send(ctx context.Context, req models.NotifSendRequest) (*mod
 func (s *stubNotif) ListLogs(ctx context.Context, limit, offset int) ([]models.NotifLog, error) {
 	return []models.NotifLog{}, nil
 }
+func (s *stubNotif) CountSentSince(ctx context.Context, hours int) (int, error) {
+	return 0, nil
+}
 
 func auditRouter(t *testing.T) *chi.Mux {
 	t.Helper()
-	svc := &stubService{}
-	h := handlers.NewUserHandler(svc, &stubAudit{}, &stubSys{})
-	admin := handlers.NewAdminHandler(svc, &stubAudit{}, &stubSys{}, &stubNotif{})
+	usersSvc := &stubUsers{}
+	rolesSvc := &stubRoles{}
+	auditSvc := &stubAudit{}
+	syslogSvc := &stubSyslog{}
+	deps := Deps{
+		Users:         fusers.NewHandler(usersSvc, rolesSvc, auditSvc, syslogSvc),
+		Roles:         froles.NewHandler(rolesSvc, auditSvc),
+		Sessions:      fsessions.NewHandler(&stubSessions{}, rolesSvc, auditSvc),
+		Audit:         faudit.NewHandler(auditSvc),
+		Security:      fsecurity.NewHandler(&stubSecurity{}),
+		Syslog:        fsyslog.NewHandler(syslogSvc, auditSvc),
+		Notifications: fnotif.NewHandler(&stubNotif{}, auditSvc),
+	}
 	cfg := DefaultRouteConfig(auditSecret)
 	cfg.LoginLimit = 2
-	return SetupRoutesWithConfig(h, admin, cfg)
+	return SetupRoutesWithConfig(deps, cfg)
 }
 
 func doReq(t *testing.T, r http.Handler, method, path, body, token string) *httptest.ResponseRecorder {
