@@ -1,24 +1,30 @@
-package services
+package syslog
 
 import (
 	"context"
 	"fmt"
 
 	"golang-backend/models"
-	"golang-backend/repositories"
 	"golang-backend/utils"
 )
 
 // SyslogService mencatat error/sistem ke CPSYSLOG.
-type SyslogService struct {
-	repo repositories.SyslogRepositoryInterface
+type ServiceInterface interface {
+	Error(ctx context.Context, source, message string) error
+	List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error)
+	CountSince(ctx context.Context, hours int, level string) (int, error)
+	Prune(ctx context.Context, days int) (int64, error)
 }
 
-func NewSyslogService(repo repositories.SyslogRepositoryInterface) *SyslogService {
-	return &SyslogService{repo: repo}
+type Service struct {
+	repo RepositoryInterface
 }
 
-func (s *SyslogService) write(ctx context.Context, level, source, message string) error {
+func NewService(repo RepositoryInterface) *Service {
+	return &Service{repo: repo}
+}
+
+func (s *Service) write(ctx context.Context, level, source, message string) error {
 	code, err := utils.GenerateCode(utils.SyslogCodePrefix)
 	if err != nil {
 		return err
@@ -29,19 +35,11 @@ func (s *SyslogService) write(ctx context.Context, level, source, message string
 	return s.repo.Create(ctx, &models.SysLog{Code: code, Level: level, Source: source, Message: message})
 }
 
-func (s *SyslogService) Error(ctx context.Context, source, message string) error {
+func (s *Service) Error(ctx context.Context, source, message string) error {
 	return s.write(ctx, models.SyslogError, source, message)
 }
 
-func (s *SyslogService) Warn(ctx context.Context, source, message string) error {
-	return s.write(ctx, models.SyslogWarn, source, message)
-}
-
-func (s *SyslogService) Info(ctx context.Context, source string, message string) error {
-	return s.write(ctx, models.SyslogInfo, source, message)
-}
-
-func (s *SyslogService) List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error) {
+func (s *Service) List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error) {
 	logs, err := s.repo.List(ctx, f)
 	if err != nil {
 		return nil, fmt.Errorf("list syslog: %w", err)
@@ -49,11 +47,11 @@ func (s *SyslogService) List(ctx context.Context, f models.SyslogFilter) ([]mode
 	return logs, nil
 }
 
-func (s *SyslogService) CountSince(ctx context.Context, hours int, level string) (int, error) {
+func (s *Service) CountSince(ctx context.Context, hours int, level string) (int, error) {
 	return s.repo.CountSince(ctx, hours, level)
 }
 
-func (s *SyslogService) Prune(ctx context.Context, days int) (int64, error) {
+func (s *Service) Prune(ctx context.Context, days int) (int64, error) {
 	if days < 1 {
 		days = 30
 	}
