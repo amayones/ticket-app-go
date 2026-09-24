@@ -1,27 +1,11 @@
 import { useState } from 'react'
 import { api } from './api/client.js'
 import { Badge, Button, Icon, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
+import { menusForRole } from './menus/registry.js'
 import { LoginForm } from './pages/Auth.jsx'
-import Audit from './pages/Audit.jsx'
-import Dashboard from './pages/Dashboard.jsx'
-import Notifications from './pages/Notifications.jsx'
-import Roles from './pages/Roles.jsx'
-import Security from './pages/Security.jsx'
-import Sessions from './pages/Sessions.jsx'
-import Syslog from './pages/Syslog.jsx'
-import UsersList from './pages/Users.jsx'
 
-const NAV = [
-  { key: 'dashboard', label: 'Dashboard', icon: 'home', admin: false },
-  { key: 'users', label: 'User Account', icon: 'users', admin: true },
-  { key: 'roles', label: 'Role & Permission', icon: 'shield', admin: true },
-  { key: 'sessions', label: 'Sesi & Auth', icon: 'key', admin: true },
-  { key: 'audit', label: 'Audit Log', icon: 'list', admin: true },
-  { key: 'security', label: 'Security Center', icon: 'shield', admin: true },
-  { key: 'syslog', label: 'System Log', icon: 'terminal', admin: true },
-  { key: 'notif', label: 'Notifikasi', icon: 'bell', admin: true },
-]
-
+// Shell aplikasi: sidebar/topbar dibangun OTOMATIS dari registry menu
+// (src/menus/registry.js). Tambah menu = tambah folder, tanpa sentuh file ini.
 function sidebarPref() {
   try {
     return localStorage.getItem('go-core-sidebar') === 'collapsed'
@@ -37,8 +21,9 @@ function Shell() {
   const [collapsed, setCollapsed] = useState(sidebarPref)
   const me = api.currentUser()
   const isAdmin = me?.role === 'ADMIN'
-  const visibleNav = NAV.filter((n) => !n.admin || isAdmin)
-  const activeNav = visibleNav.some((n) => n.key === view) ? view : 'dashboard'
+  const visibleMenus = menusForRole(me?.role)
+  const activeMenu = visibleMenus.find((m) => m.key === view) || visibleMenus[0] || null
+  const Active = activeMenu?.Component || null
 
   async function logout() {
     await api.logout()
@@ -86,15 +71,14 @@ function Shell() {
 
   return (
     <div className="anim-boot flex min-h-screen w-full bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      {/* Sidebar (desktop) — bisa dilipat via tombol chevron.
-          Hanya lebar yang ditransisikan (bukan all) agar tidak bergetar. */}
+      {/* Sidebar (desktop) — bisa dilipat via tombol chevron */}
       <aside
         className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white p-3 duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] transition-[width] md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
           collapsed ? 'w-[84px]' : 'w-60'
         }`}
       >
-        {/* Baris logo tanpa padding-bawah: tombol tepat sejajar tengah logo.
-            Teks dilipat via grid 0fr->1fr (mulus, tanpa teks tersendat). */}
+        {/* Logo sejajar ikon menu; tombol lipat menonjol di kanan logo
+            (tengah-tengah tinggi baris logo). */}
         <div className="pb-4">
           <div className={`relative flex items-center ${collapsed ? 'justify-center px-0' : 'gap-2 px-1'}`}>
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">
@@ -127,29 +111,29 @@ function Shell() {
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
-          {visibleNav.map((n) => {
+          {visibleMenus.map((n) => {
             const btn = (
               <button
                 key={n.key}
                 type="button"
                 onClick={() => setView(n.key)}
-              className={`flex w-full items-center rounded-xl px-3 py-2.5 transition-colors ${
-                collapsed ? 'justify-center gap-0' : 'gap-2.5'
-              } ${
-                  activeNav === n.key
+                className={`flex w-full items-center rounded-xl px-3 py-2.5 transition-colors ${
+                  collapsed ? 'justify-center gap-0' : 'gap-2.5'
+                } ${
+                  activeMenu?.key === n.key
                     ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
                     : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
                 }`}
               >
-              <Icon name={n.icon} className="h-5 w-5 shrink-0" />
-              <span
-                className={`grid whitespace-nowrap text-[13px] font-medium transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
-                  collapsed ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'
-                }`}
-              >
-                <span className="min-w-0 overflow-hidden">{n.label}</span>
-              </span>
-            </button>
+                <Icon name={n.icon} className="h-5 w-5 shrink-0" />
+                <span
+                  className={`grid whitespace-nowrap text-[13px] font-medium transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+                    collapsed ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'
+                  }`}
+                >
+                  <span className="min-w-0 overflow-hidden">{n.label}</span>
+                </span>
+              </button>
             )
             return collapsed ? (
               <Tooltip key={n.key} label={n.label} position="right">
@@ -209,13 +193,13 @@ function Shell() {
               G
             </span>
             <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
-              {visibleNav.map((n) => (
+              {visibleMenus.map((n) => (
                 <button
                   key={n.key}
                   type="button"
                   onClick={() => setView(n.key)}
                   className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
-                    activeNav === n.key
+                    activeMenu?.key === n.key
                       ? 'bg-violet-600 text-white'
                       : 'text-zinc-600 dark:text-zinc-300'
                   }`}
@@ -238,15 +222,10 @@ function Shell() {
 
         <main className="mx-auto w-full max-w-5xl flex-1 px-3 py-4 sm:px-4 sm:py-6">
           {/* key memicu animasi masuk yang halus tiap ganti menu */}
-          <div key={activeNav} className="anim-page-in">
-            {activeNav === 'dashboard' && <Dashboard onNavigate={setView} />}
-            {activeNav === 'users' && isAdmin && <UsersList onAccountDeleted={handleAccountDeleted} />}
-            {activeNav === 'roles' && isAdmin && <Roles />}
-            {activeNav === 'sessions' && isAdmin && <Sessions />}
-            {activeNav === 'audit' && isAdmin && <Audit />}
-            {activeNav === 'security' && isAdmin && <Security />}
-            {activeNav === 'syslog' && isAdmin && <Syslog />}
-            {activeNav === 'notif' && isAdmin && <Notifications />}
+          <div key={activeMenu?.key || 'empty'} className="anim-page-in">
+            {Active && (
+              <Active onNavigate={setView} onAccountDeleted={handleAccountDeleted} />
+            )}
           </div>
         </main>
         <footer className="border-t border-zinc-200 py-3 text-center text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
