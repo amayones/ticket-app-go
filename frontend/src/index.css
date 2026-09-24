@@ -12,6 +12,12 @@
   background-color: #09090b;
 }
 
+/* Scrollbar selalu ada agar lebar halaman tidak bergeser (anti getar)
+   saat pindah menu dengan konten panjang vs pendek. */
+html {
+  overflow-y: scroll;
+}
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;
