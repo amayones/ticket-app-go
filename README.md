@@ -54,9 +54,9 @@ Saat halaman terbuka Anda melihat **kartu Login di tengah layar** (tanpa navbar 
 halaman ini fokus untuk login saja).
 
 > **Tidak ada registrasi publik.** Akun hanya bisa dibuat oleh **admin** lewat
-> menu User Account → **Tambah User**. Akun admin bawaan: username `admin`
-> (password awal `Admin123!` — wajib diganti setelah login pertama via
-> Edit profil → Password baru).
+> menu User Account → **Tambah User**. Akun bawaan (2 saja):
+> `admin` / `admin` (role ADMIN) dan `user` / `user` (role USER).
+> Ganti password keduanya setelah login pertama via Edit profil → Password baru.
 
 ### 0.2 Masuk ke aplikasi (Login)
 
@@ -117,6 +117,8 @@ atas (layar HP). Menu yang tampil tergantung role:
 - **Tema terang sebagai default.** Ganti ke gelap via tombol **bulan/matahari**
   di sidebar (bawah, samping Logout) atau topbar HP — pilihan tersimpan di
   browser dan tetap dipakai saat dibuka lagi.
+- **Sidebar bisa dilipat** via tombol chevron di atas sidebar (pilihan
+  tersimpan); konten halaman otomatis melebar/menyempit mengikuti.
 - Tampilan responsif: buka di HP, kartu dan tombol menyesuaikan layar kecil.
 
 ---
@@ -213,8 +215,9 @@ CREATE TABLE CPREFRESHTOKEN (
 > `task migrate` (butuh `sqlcmd`) atau
 > `sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate.sql`.
 > Jadikan user pertama sebagai admin:
-> `UPDATE CPUSER SET ROLE_CODE='ADMIN' WHERE USERNAME='budi';`
-> (lalu login ulang agar klaim `role` di JWT terbarui).
+> Menambah admin lain: buat user via menu, lalu
+> `UPDATE CPUSER SET ROLE_CODE='ADMIN' WHERE USERNAME='user';`
+> (lalu user tersebut login ulang agar klaim `role` di JWT terbarui).
 >
 > Migrasi lanjutan (`scripts/migrate2_rbac.sql`, otomatis ikut via `task migrate`):
 > tabel `CPPERMISSION` (18 permission seed) + `CPROLEPERMISSION` (ADMIN=semua,
@@ -255,13 +258,13 @@ curl http://localhost:1067/healthz
 #    login dulu untuk dapat <token>, lalu:
 curl -X POST http://localhost:1067/api/users -H "Authorization: Bearer <token>" `
   -H "Content-Type: application/json" `
-  -d '{"username":"budi","email":"budi@example.com","password":"password123"}'
+  -d '{"username":"pegawai1","email":"pegawai1@example.com","password":"password123"}'
 # -> {"code":"USR-XXXXXX","message":"User created successfully"}
 
 # 3. login
 curl -X POST http://localhost:1067/api/login `
   -H "Content-Type: application/json" `
-  -d '{"username":"budi","password":"password123"}'
+  -d '{"username":"admin","password":"admin"}'
 # -> {"access_token":"...","refresh_token":"...","message":"Login successful"}
 
 # 4. akses endpoint privat (ganti <token>)
@@ -506,7 +509,7 @@ curl "http://localhost:1067/api/users?limit=10&offset=0" -H "Authorization: Bear
 # Update partial — kirim HANYA field yang berubah (tanpa password = password tetap).
 # Ganti USR-000002 dengan code milik Anda (lihat dari respons register / daftar users):
 curl -X PUT http://localhost:1067/api/users/USR-000002 -H "Authorization: Bearer <token>" `
-  -H "Content-Type: application/json" -d '{"username":"budi2"}'
+  -H "Content-Type: application/json" -d '{"username":"pegawai2"}'
 
 # Cabut semua sesi user tersebut:
 curl -X POST http://localhost:1067/api/users/USR-000002/logout-all -H "Authorization: Bearer <token>"
