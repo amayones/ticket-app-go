@@ -27,9 +27,12 @@ function Shell() {
   // Cache identitas terakhir agar sidebar/halaman tidak lompat saat token
   // sudah dibersihkan (api.currentUser() -> null) tapi popup belum ditutup.
   const [lastMe, setLastMe] = useState(() => api.currentUser())
+  // Permission codes milik user (diambil via GET /api/users/me saat login).
+  // Digunakan untuk filter menu di sidebar.
+  const [permissions, setPermissions] = useState([])
   const me = api.currentUser() || (sessionExpired ? lastMe : null)
   const isAdmin = me?.role === 'ADMIN'
-  const visibleMenus = menusForRole(me?.role)
+  const visibleMenus = menusForRole(me?.role, permissions)
   const activeMenu = visibleMenus.find((m) => m.key === view) || visibleMenus[0] || null
   const Active = activeMenu?.Component || null
 
@@ -41,29 +44,51 @@ function Shell() {
     })
   }, [loggedIn, toast])
 
+  useEffect(() => {
+    if (!loggedIn || permissions.length > 0) return
+    api.getMe()
+      .then((data) => {
+        setPermissions(data.permissions || [])
+        setLastMe(data)
+      })
+      .catch(() => setPermissions([]))
+  }, [loggedIn, permissions.length])
+
   async function logout() {
     await api.logout()
     setSessionExpired(false)
     setLastMe(null)
+    setPermissions([])
     setLoggedIn(false)
     setView('login')
     toast.info('Anda telah keluar. Sampai jumpa!')
   }
 
+  async function loadPermissions() {
+    try {
+      const data = await api.getMe()
+      setPermissions(data.permissions || [])
+      setLastMe(data)
+    } catch {
+      setPermissions([])
+      setLastMe(api.currentUser())
+    }
+  }
+
   function handleAuth() {
-    setLastMe(api.currentUser())
     setLoggedIn(true)
     setView('dashboard')
+    loadPermissions()
     toast.success('Selamat datang kembali!')
   }
 
   // Login ulang dari popup sesi-habis: tetap di halaman terakhir (view
   // tidak diubah), cukup tutup popup + muat ulang konten dengan token baru.
   function handleRelogin() {
-    setLastMe(api.currentUser())
     setSessionExpired(false)
     setLoggedIn(true)
     setSessionTick((t) => t + 1)
+    loadPermissions()
     toast.success('Sesi dipulihkan. Selamat melanjutkan!')
   }
 
@@ -72,6 +97,7 @@ function Shell() {
   function handleAccountDeleted() {
     setSessionExpired(false)
     setLastMe(null)
+    setPermissions([])
     setLoggedIn(false)
     setView('login')
     toast.warning('Akun Anda telah dihapus.', { title: 'Akun dihapus' })
