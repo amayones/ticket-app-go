@@ -20,6 +20,7 @@ type ServiceInterface interface {
 	ListRoles(ctx context.Context) ([]models.Role, error)
 	ListPermissions(ctx context.Context) ([]models.Permission, error)
 	GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error)
+	GetRolePermissions(ctx context.Context, roleCode string) ([]string, error)
 	CreateRole(ctx context.Context, code, name string) (*models.Role, error)
 	DeleteRole(ctx context.Context, code string) error
 	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
@@ -83,6 +84,10 @@ func (s *Service) ListPermissions(ctx context.Context) ([]models.Permission, err
 		return nil, fmt.Errorf("list permissions: %w", err)
 	}
 	return perms, nil
+}
+
+func (s *Service) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
+	return s.roles.GetRolePermissions(ctx, roleCode)
 }
 
 // GetRoleDetail mengembalikan role + kode permission miliknya (matriks RBAC).
@@ -194,7 +199,7 @@ func (s *Service) SetRolePermissions(ctx context.Context, roleCode string, permC
 	return nil
 }
 
-// UpdateUserRole mengganti role akun (butuh USER_ROLE_ASSIGN di handler).
+// UpdateUserRole mengganti role akun (butuh MENU_USERS di handler).
 func (s *Service) UpdateUserRole(ctx context.Context, userCode, roleCode string) error {
 	roleCode = strings.TrimSpace(strings.ToUpper(roleCode))
 	if _, err := s.roles.GetByCode(ctx, roleCode); err != nil {
@@ -211,4 +216,3 @@ func (s *Service) UpdateUserRole(ctx context.Context, userCode, roleCode string)
 	}
 	return nil
 }
-
