@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -73,17 +74,17 @@ func (h *UserHandler) handleServiceError(w http.ResponseWriter, err error) {
 	}
 }
 
-func parseID(r *http.Request) (int, bool) {
-	id, err := strconv.Atoi(chi.URLParam(r, "id"))
-	if err != nil || id <= 0 {
-		return 0, false
+func parseCode(r *http.Request) (string, bool) {
+	code := strings.TrimSpace(chi.URLParam(r, "code"))
+	if code == "" {
+		return "", false
 	}
-	return id, true
+	return code, true
 }
 
-func requireSelf(w http.ResponseWriter, r *http.Request, id int) bool {
-	callerID, ok := middleware.GetUserID(r)
-	if !ok || callerID != id {
+func requireSelf(w http.ResponseWriter, r *http.Request, code string) bool {
+	callerCode, ok := middleware.GetUserCode(r)
+	if !ok || callerCode != code {
 		writeError(w, http.StatusForbidden, services.ErrForbidden.Error())
 		return false
 	}
@@ -123,13 +124,13 @@ func paginate(r *http.Request) (limit, offset int) {
 	return limit, offset
 }
 
-func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(r)
+func (h *UserHandler) GetUserByCode(w http.ResponseWriter, r *http.Request) {
+	code, ok := parseCode(r)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid user ID")
+		writeError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	user, err := h.Service.GetUserByID(r.Context(), id)
+	user, err := h.Service.GetUserByCode(r.Context(), code)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -142,31 +143,31 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	id, err := h.Service.CreateUser(r.Context(), req.Username, req.Email, req.Password)
+	code, err := h.Service.CreateUser(r.Context(), req.Username, req.Email, req.Password)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"message": "User created successfully",
-		"id":      id,
+		"code":    code,
 	})
 }
 
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(r)
+	code, ok := parseCode(r)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid user ID")
+		writeError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelf(w, r, id) {
+	if !requireSelf(w, r, code) {
 		return
 	}
 	var req models.UpdateUserRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := h.Service.UpdateUser(r.Context(), id, req); err != nil {
+	if err := h.Service.UpdateUser(r.Context(), code, req); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
@@ -174,15 +175,15 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(r)
+	code, ok := parseCode(r)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid user ID")
+		writeError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelf(w, r, id) {
+	if !requireSelf(w, r, code) {
 		return
 	}
-	if err := h.Service.DeleteUser(r.Context(), id); err != nil {
+	if err := h.Service.DeleteUser(r.Context(), code); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
@@ -237,17 +238,29 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(r)
+	code, ok := parseCode(r)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid user ID")
+		writeError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelf(w, r, id) {
+	if !requireSelf(w, r, code) {
 		return
 	}
-	if err := h.Service.LogoutAll(r.Context(), id); err != nil {
+	if err := h.Service.LogoutAll(r.Context(), code); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Logged out from all devices"})
+}
+
+func (h *UserHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
+	roles, err := h.Service.ListRoles(r.Context())
+	if err != nil {
+		h.handleServiceError(w, err)
+		return
+	}
+	if roles == nil {
+		roles = []models.Role{}
+	}
+	writeJSON(w, http.StatusOK, roles)
 }
