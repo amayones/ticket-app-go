@@ -1,28 +1,31 @@
-package services
+package audit
 
 import (
 	"context"
 	"fmt"
-	"net"
-	"strings"
 
 	"golang-backend/models"
-	"golang-backend/repositories"
 	"golang-backend/utils"
 )
 
 // AuditService mencatat jejak aksi ke CPAUDITLOG (best-effort dari handler).
-type AuditService struct {
-	repo repositories.AuditRepositoryInterface
+type ServiceInterface interface {
+	Log(ctx context.Context, actorCode, action, entity, entityCode, detail, ip string) error
+	List(ctx context.Context, f models.AuditFilter) ([]models.AuditLog, error)
+	CountSince(ctx context.Context, hours int) (int, error)
 }
 
-func NewAuditService(repo repositories.AuditRepositoryInterface) *AuditService {
-	return &AuditService{repo: repo}
+type Service struct {
+	repo RepositoryInterface
+}
+
+func NewService(repo RepositoryInterface) *Service {
+	return &Service{repo: repo}
 }
 
 // Log menyimpan satu baris audit. Gagal tulis tidak menggagalkan request
 // (caller mengabaikan error), tapi error dikembalikan untuk testing.
-func (s *AuditService) Log(ctx context.Context, actorCode, action, entity, entityCode, detail, ip string) error {
+func (s *Service) Log(ctx context.Context, actorCode, action, entity, entityCode, detail, ip string) error {
 	code, err := utils.GenerateCode(utils.AuditCodePrefix)
 	if err != nil {
 		return err
@@ -38,7 +41,7 @@ func (s *AuditService) Log(ctx context.Context, actorCode, action, entity, entit
 	})
 }
 
-func (s *AuditService) List(ctx context.Context, f models.AuditFilter) ([]models.AuditLog, error) {
+func (s *Service) List(ctx context.Context, f models.AuditFilter) ([]models.AuditLog, error) {
 	logs, err := s.repo.List(ctx, f)
 	if err != nil {
 		return nil, fmt.Errorf("list audit: %w", err)
@@ -46,15 +49,6 @@ func (s *AuditService) List(ctx context.Context, f models.AuditFilter) ([]models
 	return logs, nil
 }
 
-func (s *AuditService) CountSince(ctx context.Context, hours int) (int, error) {
+func (s *Service) CountSince(ctx context.Context, hours int) (int, error) {
 	return s.repo.CountSince(ctx, hours)
-}
-
-// ClientIP mengambil host dari RemoteAddr (tanpa port).
-func ClientIP(remoteAddr string) string {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		return strings.TrimSpace(remoteAddr)
-	}
-	return host
 }
