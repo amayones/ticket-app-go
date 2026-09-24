@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../api/client.js'
-import { getUser, updateUser } from '../../admin/users/api.js'
+import { updateUser } from '../../admin/users/api.js'
 import { securitySummary } from '../../admin/security/api.js'
 
 export const meta = { label: 'Dashboard', icon: 'home', order: 0 }
@@ -40,7 +40,7 @@ export default function Dashboard({ onNavigate }) {
     setLoading(true)
     setError('')
     try {
-      setProfile(await getUser(me.code))
+      setProfile(await api.getMe())
       if (isAdmin) {
         setSummary(await securitySummary().catch(() => null))
       }
