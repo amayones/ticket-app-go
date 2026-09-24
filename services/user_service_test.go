@@ -35,7 +35,7 @@ func strptr(s string) *string { return &s }
 
 func TestCreateUser_Success(t *testing.T) {
 	svc, repo, _ := newTestService(t)
-	code, err := svc.CreateUser(context.Background(), "budi", "budi@example.com", "password123")
+	code, err := svc.CreateUser(context.Background(), "budi", "budi@example.com", "password123", "")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -70,7 +70,7 @@ func TestCreateUser_Table(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, _, _ := newTestService(t)
-			_, err := svc.CreateUser(context.Background(), tc.username, tc.email, tc.password)
+			_, err := svc.CreateUser(context.Background(), tc.username, tc.email, tc.password, "")
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("expected %v, got %v", tc.wantErr, err)
 			}
@@ -80,7 +80,7 @@ func TestCreateUser_Table(t *testing.T) {
 
 func TestCreateUser_NormalizesEmail(t *testing.T) {
 	svc, repo, _ := newTestService(t)
-	code, err := svc.CreateUser(context.Background(), "budi", "  Budi@Example.COM ", "password123")
+	code, err := svc.CreateUser(context.Background(), "budi", "  Budi@Example.COM ", "password123", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -92,21 +92,36 @@ func TestCreateUser_NormalizesEmail(t *testing.T) {
 
 func TestCreateUser_Duplicates(t *testing.T) {
 	svc, _, _ := newTestService(t)
-	if _, err := svc.CreateUser(context.Background(), "budi", "budi@example.com", "password123"); err != nil {
+	if _, err := svc.CreateUser(context.Background(), "budi", "budi@example.com", "password123", ""); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if _, err := svc.CreateUser(context.Background(), "budi", "lain@example.com", "password123"); !errors.Is(err, ErrUsernameTaken) {
+	if _, err := svc.CreateUser(context.Background(), "budi", "lain@example.com", "password123", ""); !errors.Is(err, ErrUsernameTaken) {
 		t.Fatalf("expected ErrUsernameTaken, got %v", err)
 	}
-	if _, err := svc.CreateUser(context.Background(), "lain", "budi@example.com", "password123"); !errors.Is(err, ErrEmailTaken) {
+	if _, err := svc.CreateUser(context.Background(), "lain", "budi@example.com", "password123", ""); !errors.Is(err, ErrEmailTaken) {
 		t.Fatalf("expected ErrEmailTaken, got %v", err)
+	}
+}
+
+func TestCreateUser_WithRole(t *testing.T) {
+	svc, repo, _ := newTestService(t)
+	ctx := context.Background()
+	code, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", "ADMIN")
+	if err != nil {
+		t.Fatalf("create with role: %v", err)
+	}
+	if repo.Users[code].RoleCode != models.RoleAdmin {
+		t.Fatalf("expected role ADMIN, got %q", repo.Users[code].RoleCode)
+	}
+	if _, err := svc.CreateUser(ctx, "siti", "siti@example.com", "password123", "ROLE_TAK_ADA"); err == nil {
+		t.Fatal("expected error for unknown role")
 	}
 }
 
 func TestLogin(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123"); err != nil {
+	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", ""); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	access, refresh, err := svc.Login(ctx, "budi", "password123")
@@ -124,7 +139,7 @@ func TestLogin(t *testing.T) {
 func TestLogin_EvictsBeyondCap(t *testing.T) {
 	svc, _, refreshRepo := newTestService(t)
 	ctx := context.Background()
-	code, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123")
+	code, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", "")
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -160,7 +175,7 @@ func TestListRoles(t *testing.T) {
 func TestUpdateUser_Partial(t *testing.T) {
 	svc, repo, _ := newTestService(t)
 	ctx := context.Background()
-	code, _ := svc.CreateUser(ctx, "budi", "budi@example.com", "password123")
+	code, _ := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", "")
 	oldHash := repo.Users[code].Password
 	if err := svc.UpdateUser(ctx, code, models.UpdateUserRequest{Username: strptr("budi2")}); err != nil {
 		t.Fatalf("partial update: %v", err)
@@ -179,7 +194,7 @@ func TestUpdateUser_Partial(t *testing.T) {
 func TestDeleteUser_Success(t *testing.T) {
 	svc, repo, _ := newTestService(t)
 	ctx := context.Background()
-	code, _ := svc.CreateUser(ctx, "budi", "budi@example.com", "password123")
+	code, _ := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", "")
 	if err := svc.DeleteUser(ctx, code); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -194,7 +209,7 @@ func TestDeleteUser_Success(t *testing.T) {
 func TestRefresh_RotatesAndInvalidatesOld(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123"); err != nil {
+	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", ""); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	_, refresh, _ := svc.Login(ctx, "budi", "password123")
@@ -213,7 +228,7 @@ func TestRefresh_RotatesAndInvalidatesOld(t *testing.T) {
 func TestRefresh_Expired(t *testing.T) {
 	svc, _, refreshRepo := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123"); err != nil {
+	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", ""); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	_, refresh, _ := svc.Login(ctx, "budi", "password123")
@@ -229,7 +244,7 @@ func TestRefresh_Expired(t *testing.T) {
 func TestLogout(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123"); err != nil {
+	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", ""); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	_, refresh, _ := svc.Login(ctx, "budi", "password123")
