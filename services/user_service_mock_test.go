@@ -11,14 +11,13 @@ import (
 
 type MockUserRepository struct {
 	mu        sync.Mutex
-	Users     map[int]*models.User
-	NextID    int
+	Users     map[string]*models.User // keyed by CODE
 	GetAllErr error
 	CreateErr error
 }
 
 func NewMockUserRepository() *MockUserRepository {
-	return &MockUserRepository{Users: make(map[int]*models.User), NextID: 1}
+	return &MockUserRepository{Users: make(map[string]*models.User)}
 }
 
 func (m *MockUserRepository) List(ctx context.Context, limit, offset int) ([]models.User, error) {
@@ -27,14 +26,14 @@ func (m *MockUserRepository) List(ctx context.Context, limit, offset int) ([]mod
 	if m.GetAllErr != nil {
 		return nil, m.GetAllErr
 	}
-	ids := make([]int, 0, len(m.Users))
-	for id := range m.Users {
-		ids = append(ids, id)
+	codes := make([]string, 0, len(m.Users))
+	for code := range m.Users {
+		codes = append(codes, code)
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(ids)))
+	sort.Sort(sort.Reverse(sort.StringSlice(codes)))
 	var users []models.User
-	for i := offset; i < len(ids) && len(users) < limitOrDefault(limit); i++ {
-		u := *m.Users[ids[i]]
+	for i := offset; i < len(codes) && len(users) < limitOrDefault(limit); i++ {
+		u := *m.Users[codes[i]]
 		u.Password = ""
 		users = append(users, u)
 	}
@@ -51,10 +50,10 @@ func limitOrDefault(limit int) int {
 	return limit
 }
 
-func (m *MockUserRepository) GetByID(ctx context.Context, id int) (*models.User, error) {
+func (m *MockUserRepository) GetByCode(ctx context.Context, code string) (*models.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	user, ok := m.Users[id]
+	user, ok := m.Users[code]
 	if !ok {
 		return nil, sql.ErrNoRows
 	}
@@ -86,45 +85,46 @@ func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*mod
 	return nil, sql.ErrNoRows
 }
 
-func (m *MockUserRepository) Create(ctx context.Context, user *models.User) (int, error) {
+func (m *MockUserRepository) Create(ctx context.Context, user *models.User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.CreateErr != nil {
-		return 0, m.CreateErr
+		return m.CreateErr
 	}
 	for _, u := range m.Users {
 		if u.Username == user.Username {
-			return 0, errUsernameConstraint
+			return errUsernameConstraint
 		}
 		if u.Email == user.Email {
-			return 0, errEmailConstraint
+			return errEmailConstraint
+		}
+		if u.Code == user.Code {
+			return errCodeConstraint
 		}
 	}
-	user.ID = m.NextID
 	cp := *user
-	m.Users[user.ID] = &cp
-	m.NextID++
-	return user.ID, nil
+	m.Users[user.Code] = &cp
+	return nil
 }
 
 func (m *MockUserRepository) Update(ctx context.Context, user *models.User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.Users[user.ID]; !ok {
+	if _, ok := m.Users[user.Code]; !ok {
 		return sql.ErrNoRows
 	}
 	cp := *user
-	m.Users[user.ID] = &cp
+	m.Users[user.Code] = &cp
 	return nil
 }
 
-func (m *MockUserRepository) Delete(ctx context.Context, id int) error {
+func (m *MockUserRepository) Delete(ctx context.Context, code string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.Users[id]; !ok {
+	if _, ok := m.Users[code]; !ok {
 		return sql.ErrNoRows
 	}
-	delete(m.Users, id)
+	delete(m.Users, code)
 	return nil
 }
 
@@ -166,11 +166,11 @@ func (m *MockRefreshTokenRepository) DeleteByTokenHash(ctx context.Context, hash
 	return true, nil
 }
 
-func (m *MockRefreshTokenRepository) DeleteByUserID(ctx context.Context, userID int) error {
+func (m *MockRefreshTokenRepository) DeleteByUserCode(ctx context.Context, userCode string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for k, v := range m.Tokens {
-		if v.UserID == userID {
+		if v.UserCode == userCode {
 			delete(m.Tokens, k)
 		}
 	}
@@ -181,25 +181,25 @@ func (m *MockRefreshTokenRepository) DeleteExpired(ctx context.Context) (int64, 
 	return 0, nil
 }
 
-func (m *MockRefreshTokenRepository) CountByUserID(ctx context.Context, userID int) (int, error) {
+func (m *MockRefreshTokenRepository) CountByUserCode(ctx context.Context, userCode string) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	count := 0
 	for _, v := range m.Tokens {
-		if v.UserID == userID {
+		if v.UserCode == userCode {
 			count++
 		}
 	}
 	return count, nil
 }
 
-func (m *MockRefreshTokenRepository) DeleteOldestByUserID(ctx context.Context, userID int) error {
+func (m *MockRefreshTokenRepository) DeleteOldestByUserCode(ctx context.Context, userCode string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var oldest string
 	oldestTime := int64(1<<63 - 1)
 	for k, v := range m.Tokens {
-		if v.UserID == userID {
+		if v.UserCode == userCode {
 			t := v.CreatedAt.UnixNano()
 			if t == 0 {
 				t = v.ExpiresAt.UnixNano()
@@ -214,4 +214,29 @@ func (m *MockRefreshTokenRepository) DeleteOldestByUserID(ctx context.Context, u
 		delete(m.Tokens, oldest)
 	}
 	return nil
+}
+
+type MockRoleRepository struct {
+	Roles []models.Role
+}
+
+func NewMockRoleRepository() *MockRoleRepository {
+	return &MockRoleRepository{Roles: []models.Role{
+		{Code: models.RoleAdmin, Name: "Administrator"},
+		{Code: models.RoleUser, Name: "Pengguna"},
+	}}
+}
+
+func (m *MockRoleRepository) List(ctx context.Context) ([]models.Role, error) {
+	return m.Roles, nil
+}
+
+func (m *MockRoleRepository) GetByCode(ctx context.Context, code string) (*models.Role, error) {
+	for _, r := range m.Roles {
+		if r.Code == code {
+			cp := r
+			return &cp, nil
+		}
+	}
+	return nil, sql.ErrNoRows
 }
