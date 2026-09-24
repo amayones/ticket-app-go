@@ -42,7 +42,7 @@ func (h *Handler) handleServiceError(w http.ResponseWriter, err error) {
 }
 
 // requireSelfOrPerm allows the owner, or anyone holding the permission
-// (e.g. admin with USER_UPDATE can edit other users).
+// (e.g. admin with MENU_USERS can edit other users).
 func requireSelfOrPerm(h *Handler, w http.ResponseWriter, r *http.Request, code, perm string) bool {
 	callerCode, ok := middleware.GetUserCode(r)
 	if !ok {
@@ -95,12 +95,12 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
-	// Hanya pemegang USER_ROLE_ASSIGN boleh menentukan role non-default.
+	// Hanya pemegang MenuUsers boleh menentukan role non-default.
 	roleCode := models.DefaultRoleCode
 	if strings.TrimSpace(req.RoleCode) != "" &&
 		!strings.EqualFold(strings.TrimSpace(req.RoleCode), models.DefaultRoleCode) {
 		caller, _ := middleware.GetUserCode(r)
-		if err := h.Perms.CheckPermission(r.Context(), caller, models.PermUserRoleAssign); err != nil {
+		if err := h.Perms.CheckPermission(r.Context(), caller, models.MenuUsers); err != nil {
 			web.WriteError(w, http.StatusForbidden, services.ErrForbidden.Error())
 			return
 		}
@@ -125,7 +125,7 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelfOrPerm(h, w, r, code, models.PermUserUpdate) {
+	if !requireSelfOrPerm(h, w, r, code, models.MenuUsers) {
 		return
 	}
 	var req models.UpdateUserRequest
@@ -147,7 +147,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelfOrPerm(h, w, r, code, models.PermUserDelete) {
+	if !requireSelfOrPerm(h, w, r, code, models.MenuUsers) {
 		return
 	}
 	if err := h.Service.DeleteUser(r.Context(), code); err != nil {
@@ -215,7 +215,7 @@ func (h *Handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelfOrPerm(h, w, r, code, models.PermSessionManage) {
+	if !requireSelfOrPerm(h, w, r, code, models.MenuUsers) {
 		return
 	}
 	if err := h.Service.LogoutAll(r.Context(), code); err != nil {
@@ -227,4 +227,25 @@ func (h *Handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "Logged out from all devices"})
 }
 
-
+func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
+	code, _ := middleware.GetUserCode(r)
+	user, err := h.Service.GetUserByCode(r.Context(), code)
+	if err != nil {
+		h.handleServiceError(w, err)
+		return
+	}
+	perms, err := h.Perms.GetRolePermissions(r.Context(), user.RoleCode)
+	if err != nil {
+		h.handleServiceError(w, err)
+		return
+	}
+	resp := models.MeResponse{
+		Code:        user.Code,
+		Username:    user.Username,
+		Email:       user.Email,
+		RoleCode:    user.RoleCode,
+		RoleName:    user.RoleName,
+		Permissions: perms,
+	}
+	web.WriteJSON(w, http.StatusOK, resp)
+}
