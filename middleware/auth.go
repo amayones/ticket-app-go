@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -11,13 +12,16 @@ import (
 )
 
 // Private context key type prevents collisions with other packages.
-type ctxKey struct{}
+type ctxKey string
 
-var userIDKey = ctxKey{}
+const (
+	userIDKey   ctxKey = "user_code"
+	userRoleKey ctxKey = "user_role"
+)
 
 var (
-	ErrMissingClaim = errors.New("missing user_id claim")
-	ErrInvalidClaim = errors.New("invalid user_id claim")
+	ErrMissingClaim = errors.New("missing user_code claim")
+	ErrInvalidClaim = errors.New("invalid user_code claim")
 )
 
 // NewAuth returns auth middleware bound to the configured JWT secret.
@@ -40,13 +44,16 @@ func NewAuth(jwtSecret string) func(http.Handler) http.Handler {
 				writeAuthError(w, "Invalid or expired token")
 				return
 			}
-			userID, err := parseUserIDClaim(claims)
-			if err != nil {
-				writeAuthError(w, "Invalid token claims")
-				return
-			}
-			ctx := context.WithValue(r.Context(), userIDKey, userID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+		userCode, err := parseUserCodeClaim(claims)
+		if err != nil {
+			writeAuthError(w, "Invalid token claims")
+			return
+		}
+		ctx := context.WithValue(r.Context(), userIDKey, userCode)
+		if role, ok := claims["role"].(string); ok {
+			ctx = context.WithValue(ctx, userRoleKey, role)
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -57,42 +64,50 @@ func writeAuthError(w http.ResponseWriter, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-func parseUserIDClaim(claims map[string]interface{}) (int, error) {
-	raw, ok := claims["user_id"]
-	if !ok {
-		return 0, ErrMissingClaim
+// parseUserCodeClaim accepts the current string code and the legacy
+// numeric user_id (tokens issued before the CODE migration).
+func parseUserCodeClaim(claims map[string]interface{}) (string, error) {
+	if raw, ok := claims["user_code"]; ok {
+		if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s), nil
+		}
+		return "", ErrInvalidClaim
 	}
-	switch v := raw.(type) {
-	case float64:
-		if v <= 0 || v != float64(int(v)) {
-			return 0, ErrInvalidClaim
+	if raw, ok := claims["user_id"]; ok {
+		switch v := raw.(type) {
+		case float64:
+			if v <= 0 || v != float64(int(v)) {
+				return "", ErrInvalidClaim
+			}
+			return fmt.Sprintf("LEGACY-%d", int(v)), nil
+		case json.Number:
+			n, err := v.Int64()
+			if err != nil || n <= 0 {
+				return "", ErrInvalidClaim
+			}
+			return fmt.Sprintf("LEGACY-%d", n), nil
+		case string:
+			if strings.TrimSpace(v) == "" {
+				return "", ErrInvalidClaim
+			}
+			return strings.TrimSpace(v), nil
 		}
-		return int(v), nil
-	case json.Number:
-		n, err := v.Int64()
-		if err != nil || n <= 0 {
-			return 0, ErrInvalidClaim
-		}
-		return int(n), nil
-	case string:
-		// Some issuers encode IDs as strings.
-		var n json.Number = json.Number(strings.TrimSpace(v))
-		i, err := n.Int64()
-		if err != nil || i <= 0 {
-			return 0, ErrInvalidClaim
-		}
-		return int(i), nil
-	default:
-		return 0, ErrInvalidClaim
 	}
+	return "", ErrMissingClaim
 }
 
-// GetUserID extracts the authenticated user ID from context.
-func GetUserID(r *http.Request) (int, bool) {
+// GetUserCode extracts the authenticated user CODE from context.
+func GetUserCode(r *http.Request) (string, bool) {
 	v := r.Context().Value(userIDKey)
 	if v == nil {
-		return 0, false
+		return "", false
 	}
-	id, ok := v.(int)
-	return id, ok
+	code, ok := v.(string)
+	return code, ok && code != ""
+}
+
+// GetUserRole extracts the role claim (empty when absent).
+func GetUserRole(r *http.Request) string {
+	role, _ := r.Context().Value(userRoleKey).(string)
+	return role
 }
