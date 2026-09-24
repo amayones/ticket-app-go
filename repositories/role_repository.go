@@ -21,18 +21,23 @@ type RoleRepositoryInterface interface {
 }
 
 type RoleRepository struct {
-	db *sql.DB
+	db      *sql.DB
+	dialect Dialect
 }
 
-func NewRoleRepository(db *sql.DB) RoleRepositoryInterface {
-	return &RoleRepository{db: db}
+func NewRoleRepository(db *sql.DB, dialect Dialect) RoleRepositoryInterface {
+	return &RoleRepository{db: db, dialect: dialect}
 }
+
+func (r *RoleRepository) roleTable() string { return r.dialect.Table("CPROLE") }
+func (r *RoleRepository) permTable() string { return r.dialect.Table("CPPERMISSION") }
+func (r *RoleRepository) mapTable() string  { return r.dialect.Table("CPROLEPERMISSION") }
 
 func (r *RoleRepository) List(ctx context.Context) ([]models.Role, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT ID, CODE, NAME, CREATED_AT, UPDATED_AT FROM dbo.CPROLE ORDER BY CODE ASC`)
+		`SELECT ID, CODE, NAME, CREATED_AT, UPDATED_AT FROM `+r.roleTable()+` ORDER BY CODE ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -55,8 +60,8 @@ func (r *RoleRepository) GetByCode(ctx context.Context, code string) (*models.Ro
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	var role models.Role
-	err := r.db.QueryRowContext(ctx,
-		`SELECT ID, CODE, NAME, CREATED_AT, UPDATED_AT FROM dbo.CPROLE WHERE CODE = @p1`, code,
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
+		`SELECT ID, CODE, NAME, CREATED_AT, UPDATED_AT FROM `+r.roleTable()+` WHERE CODE = ?`), code,
 	).Scan(&role.ID, &role.Code, &role.Name, &role.CreatedAt, &role.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -67,15 +72,16 @@ func (r *RoleRepository) GetByCode(ctx context.Context, code string) (*models.Ro
 func (r *RoleRepository) Create(ctx context.Context, role *models.Role) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO dbo.CPROLE (CODE, NAME) VALUES (@p1, @p2)`, role.Code, role.Name)
+	_, err := r.db.ExecContext(ctx, r.dialect.Bind(
+		`INSERT INTO `+r.roleTable()+` (CODE, NAME) VALUES (?, ?)`), role.Code, role.Name)
 	return err
 }
 
 func (r *RoleRepository) Delete(ctx context.Context, code string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx, `DELETE FROM dbo.CPROLE WHERE CODE = @p1`, code)
+	res, err := r.db.ExecContext(ctx,
+		r.dialect.Bind(`DELETE FROM `+r.roleTable()+` WHERE CODE = ?`), code)
 	if err != nil {
 		return err
 	}
@@ -93,7 +99,8 @@ func (r *RoleRepository) Count(ctx context.Context) (int, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	var n int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dbo.CPROLE`).Scan(&n)
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM `+r.roleTable()).Scan(&n)
 	return n, err
 }
 
@@ -101,7 +108,7 @@ func (r *RoleRepository) ListPermissions(ctx context.Context) ([]models.Permissi
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT ID, CODE, NAME, PERMGROUP, DESCRIPTION, CREATED_AT FROM dbo.CPPERMISSION ORDER BY PERMGROUP ASC, CODE ASC`)
+		`SELECT ID, CODE, NAME, PERMGROUP, DESCRIPTION, CREATED_AT FROM `+r.permTable()+` ORDER BY PERMGROUP ASC, CODE ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +132,8 @@ func (r *RoleRepository) ListPermissions(ctx context.Context) ([]models.Permissi
 func (r *RoleRepository) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT PERMISSION_CODE FROM dbo.CPROLEPERMISSION WHERE ROLE_CODE = @p1 ORDER BY PERMISSION_CODE ASC`, roleCode)
+	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(
+		`SELECT PERMISSION_CODE FROM `+r.mapTable()+` WHERE ROLE_CODE = ? ORDER BY PERMISSION_CODE ASC`), roleCode)
 	if err != nil {
 		return nil, err
 	}
@@ -154,12 +161,14 @@ func (r *RoleRepository) SetRolePermissions(ctx context.Context, roleCode string
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM dbo.CPROLEPERMISSION WHERE ROLE_CODE = @p1`, roleCode); err != nil {
+	if _, err := tx.ExecContext(ctx, r.dialect.Bind(
+		`DELETE FROM `+r.mapTable()+` WHERE ROLE_CODE = ?`), roleCode); err != nil {
 		return err
 	}
 	for _, pc := range permCodes {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO dbo.CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE) VALUES (@p1, @p2)`, roleCode, pc); err != nil {
+		if _, err := tx.ExecContext(ctx, r.dialect.Bind(
+			`INSERT INTO `+r.mapTable()+` (ROLE_CODE, PERMISSION_CODE) VALUES (?, ?)`),
+			roleCode, pc); err != nil {
 			return err
 		}
 	}
@@ -170,8 +179,8 @@ func (r *RoleRepository) HasPermission(ctx context.Context, roleCode, permCode s
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	var n int
-	err := r.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM dbo.CPROLEPERMISSION WHERE ROLE_CODE = @p1 AND PERMISSION_CODE = @p2`,
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
+		`SELECT COUNT(*) FROM `+r.mapTable()+` WHERE ROLE_CODE = ? AND PERMISSION_CODE = ?`),
 		roleCode, permCode).Scan(&n)
 	if err != nil {
 		return false, err
