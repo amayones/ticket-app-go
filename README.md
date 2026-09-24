@@ -204,8 +204,7 @@ halaman ini fokus untuk login saja).
 
 ### 0.3b Dashboard (halaman pertama setelah login)
 
-- **Kartu profil**: avatar, `@username`, kode, badge role, status backend.
-- **Sesi saya**: jumlah perangkat login + tombol cabut semua sesi.
+- **Kartu profil**: avatar, `@username`, kode, badge role.
 - **Keamanan akun**: form ganti password sendiri (isi 2x untuk konfirmasi).
 - **Admin** juga melihat: ringkasan sistem (pengguna, sesi, role, error)
   + jalan pintas ke menu, di atas kartu yang sama.
@@ -245,7 +244,7 @@ atas (layar HP). Menu yang tampil tergantung role:
 | **Dashboard** | semua | Halaman pertama (lihat 0.3b). USER **hanya** melihat ini. |
 | **User Account** | ADMIN | Kartu user + avatar + badge role (lihat 0.4). Tombol **Tambah User** (username, email, password awal + role) dan dropdown Role di dialog Edit. Admin bisa edit/cabut-sesi/hapus akun lain. |
 | **Role & Permission** | ADMIN | Pilih role (tombol kiri) → centang permission per grup di matriks → **Simpan permission**. **Role baru** (kode huruf besar, mis. `EDITOR`) → atur permission-nya → user bisa dipindah ke role itu. Role `ADMIN`/`USER` bawaan tidak bisa dihapus; role yang masih dipakai user tidak bisa dihapus. |
-| **Sesi & Auth** | ADMIN | Tab **Sesi saya**: daftar perangkat login + tombol sampah untuk mencabut satu sesi + tombol cabut semua. Tab **Semua sesi**: semua user + pagination. (USER mengelola sesinya dari Dashboard.) |
+| **Sesi & Auth** | ADMIN | Tab **Sesi saya**: daftar perangkat login + tombol sampah untuk mencabut satu sesi + tombol cabut semua. Tab **Semua sesi**: semua user + pagination. |
 | **Audit Log** | ADMIN | Tabel siapa–apa–kapan–IP. Filter: aksi (LOGIN, DELETE_USER, …), entitas, kode pelaku + tombol Filter/Reset + pagination. |
 | **Security Center** | ADMIN | 6 kartu ringkasan (user, role, sesi aktif, audit 24 jam, error 24 jam, status), aktivitas terkini, dan daftar kebijakan keamanan aktif. |
 | **System Log** | ADMIN | Filter level SEMUA/ERROR/WARN/INFO + tabel + tombol **Bersihkan lama** (hapus log > N hari, tercatat di audit). |
