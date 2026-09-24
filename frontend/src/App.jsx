@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, onSessionExpired } from './api/client.js'
 import { Badge, Button, Icon, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
-import { menusForRole } from './menus/registry.js'
+import { menusForPermissions } from './menus/registry.js'
 import { LoginForm } from './pages/Auth.jsx'
 
 // Shell aplikasi: sidebar/topbar dibangun OTOMATIS dari registry menu
@@ -32,7 +32,7 @@ function Shell() {
   const [permissions, setPermissions] = useState([])
   const me = api.currentUser() || (sessionExpired ? lastMe : null)
   const isAdmin = me?.role === 'ADMIN'
-  const visibleMenus = menusForRole(me?.role, permissions)
+  const visibleMenus = menusForPermissions(permissions)
   const activeMenu = visibleMenus.find((m) => m.key === view) || visibleMenus[0] || null
   const Active = activeMenu?.Component || null
 
