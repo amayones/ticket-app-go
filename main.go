@@ -16,11 +16,16 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"golang-backend/config"
-	"golang-backend/handlers"
+	faudit "golang-backend/features/audit"
+	fnotif "golang-backend/features/notifications"
+	froles "golang-backend/features/roles"
+	fsecurity "golang-backend/features/security"
+	fsessions "golang-backend/features/sessions"
+	fsyslog "golang-backend/features/syslog"
+	fusers "golang-backend/features/users"
 	"golang-backend/internal/pidfile"
 	"golang-backend/repositories"
 	"golang-backend/routes"
-	"golang-backend/services"
 )
 
 //go:embed all:frontend/dist
@@ -60,25 +65,39 @@ func main() {
 	}
 	defer db.Close()
 
+	// Wiring per menu: repo -> service -> handler (features/<menu>).
+	// Tambah menu backend = tambah 1 blok di sini + 1 field routes.Deps.
 	dialect := repositories.ParseDialect(cfg.DBConnection)
-	userRepository := repositories.NewUserRepository(db, dialect)
-	refreshTokenRepository := repositories.NewRefreshTokenRepository(db, dialect)
-	roleRepository := repositories.NewRoleRepository(db, dialect)
-	auditRepository := repositories.NewAuditRepository(db, dialect)
-	syslogRepository := repositories.NewSyslogRepository(db, dialect)
-	notifRepository := repositories.NewNotificationRepository(db, dialect)
-	userService, err := services.NewUserService(userRepository, refreshTokenRepository, roleRepository, cfg.JWTSecret)
+	userRepo := fusers.NewRepository(db, dialect)
+	sessionRepo := fsessions.NewRepository(db, dialect)
+	roleRepo := froles.NewRepository(db, dialect)
+	auditRepo := faudit.NewRepository(db, dialect)
+	syslogRepo := fsyslog.NewRepository(db, dialect)
+	notifRepo := fnotif.NewRepository(db, dialect)
+
+	userSvc, err := fusers.NewService(userRepo, sessionRepo, roleRepo, cfg.JWTSecret)
 	if err != nil {
 		fail("service init failed", err)
 	}
-	auditService := services.NewAuditService(auditRepository)
-	syslogService := services.NewSyslogService(syslogRepository)
-	notifService := services.NewNotificationService(notifRepository)
-	userHandler := handlers.NewUserHandler(userService, auditService, syslogService)
-	adminHandler := handlers.NewAdminHandler(userService, auditService, syslogService, notifService)
+	roleSvc := froles.NewService(roleRepo, userRepo)
+	sessionSvc := fsessions.NewService(sessionRepo)
+	auditSvc := faudit.NewService(auditRepo)
+	syslogSvc := fsyslog.NewService(syslogRepo)
+	notifSvc := fnotif.NewService(notifRepo)
+	securitySvc := fsecurity.NewService(userSvc, roleSvc, sessionSvc, auditSvc, syslogSvc, notifSvc)
+
+	deps := routes.Deps{
+		Users:         fusers.NewHandler(userSvc, roleSvc, auditSvc, syslogSvc),
+		Roles:         froles.NewHandler(roleSvc, auditSvc),
+		Sessions:      fsessions.NewHandler(sessionSvc, roleSvc, auditSvc),
+		Audit:         faudit.NewHandler(auditSvc),
+		Security:      fsecurity.NewHandler(securitySvc),
+		Syslog:        fsyslog.NewHandler(syslogSvc, auditSvc),
+		Notifications: fnotif.NewHandler(notifSvc, auditSvc),
+	}
 
 	routeCfg := routes.DefaultRouteConfig(cfg.JWTSecret)
-	r := routes.SetupRoutesWithConfig(userHandler, adminHandler, routeCfg)
+	r := routes.SetupRoutesWithConfig(deps, routeCfg)
 	if err := attachEmbeddedSPA(r); err != nil {
 		slog.Warn("frontend/dist missing; API only", "err", err)
 	}
@@ -89,7 +108,7 @@ func main() {
 		defer t.Stop()
 		for range t.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			if n, err := userService.CleanupExpiredTokens(ctx); err != nil {
+			if n, err := sessionSvc.CleanupExpiredTokens(ctx); err != nil {
 				slog.Warn("cleanup expired tokens failed", "err", err)
 			} else if n > 0 {
 				slog.Info("cleaned expired tokens", "count", n)
