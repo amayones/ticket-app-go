@@ -62,7 +62,8 @@ func main() {
 
 	userRepository := repositories.NewUserRepository(db)
 	refreshTokenRepository := repositories.NewRefreshTokenRepository(db)
-	userService, err := services.NewUserService(userRepository, refreshTokenRepository, cfg.JWTSecret)
+	roleRepository := repositories.NewRoleRepository(db)
+	userService, err := services.NewUserService(userRepository, refreshTokenRepository, roleRepository, cfg.JWTSecret)
 	if err != nil {
 		fail("service init failed", err)
 	}
