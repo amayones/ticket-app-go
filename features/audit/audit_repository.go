@@ -1,4 +1,4 @@
-package repositories
+package audit
 
 import (
 	"context"
@@ -6,56 +6,50 @@ import (
 	"time"
 
 	"golang-backend/models"
+	"golang-backend/repositories"
 )
 
-// AuditRepositoryInterface persists and reads CPAUDITLOG.
-type AuditRepositoryInterface interface {
+// RepositoryInterface persists and reads CPAUDITLOG.
+type RepositoryInterface interface {
 	Create(ctx context.Context, log *models.AuditLog) error
 	List(ctx context.Context, f models.AuditFilter) ([]models.AuditLog, error)
 	CountSince(ctx context.Context, hours int) (int, error)
 }
 
-type AuditRepository struct {
+type Repository struct {
 	db      *sql.DB
-	dialect Dialect
+	dialect repositories.Dialect
 }
 
-func NewAuditRepository(db *sql.DB, dialect Dialect) AuditRepositoryInterface {
-	return &AuditRepository{db: db, dialect: dialect}
+func NewRepository(db *sql.DB, dialect repositories.Dialect) RepositoryInterface {
+	return &Repository{db: db, dialect: dialect}
 }
 
-func (r *AuditRepository) table() string { return r.dialect.Table("CPAUDITLOG") }
+func (r *Repository) table() string { return r.dialect.Table("CPAUDITLOG") }
 
-func (r *AuditRepository) Create(ctx context.Context, log *models.AuditLog) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Create(ctx context.Context, log *models.AuditLog) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	_, err := r.db.ExecContext(ctx, r.dialect.Bind(`
 		INSERT INTO `+r.table()+` (CODE, ACTOR_CODE, ACTION, ENTITY, ENTITY_CODE, DETAIL, IP_ADDRESS)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`),
-		log.Code, nullStr(log.ActorCode), log.Action, log.Entity,
-		nullStr(log.EntityCode), nullStr(log.Detail), nullStr(log.IPAddress))
+		log.Code, repositories.NullStr(log.ActorCode), log.Action, log.Entity,
+		repositories.NullStr(log.EntityCode), repositories.NullStr(log.Detail), repositories.NullStr(log.IPAddress))
 	return err
 }
 
-func nullStr(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-func (r *AuditRepository) List(ctx context.Context, f models.AuditFilter) ([]models.AuditLog, error) {
+func (r *Repository) List(ctx context.Context, f models.AuditFilter) ([]models.AuditLog, error) {
 	limit := f.Limit
 	if limit <= 0 {
-		limit = DefaultListLimit
+		limit = repositories.DefaultListLimit
 	}
-	if limit > MaxListLimit {
-		limit = MaxListLimit
+	if limit > repositories.MaxListLimit {
+		limit = repositories.MaxListLimit
 	}
 	if f.Offset < 0 {
 		f.Offset = 0
 	}
-	ctx, cancel := withTimeout(ctx)
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `
 		SELECT CODE, ACTOR_CODE, ACTION, ENTITY, ENTITY_CODE, DETAIL, IP_ADDRESS, CREATED_AT
@@ -65,11 +59,11 @@ func (r *AuditRepository) List(ctx context.Context, f models.AuditFilter) ([]mod
 		  AND (? = '' OR ACTOR_CODE = ?)
 		ORDER BY ID DESC `
 	var args []any
-	if r.dialect == DialectMSSQL {
-		query += pageMSSQL()
+	if r.dialect == repositories.DialectMSSQL {
+		query += repositories.PageMSSQL()
 		args = []any{f.Action, f.Action, f.Entity, f.Entity, f.Actor, f.Actor, f.Offset, limit}
 	} else {
-		query += pageStd()
+		query += repositories.PageStd()
 		args = []any{f.Action, f.Action, f.Entity, f.Entity, f.Actor, f.Actor, limit, f.Offset}
 	}
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), args...)
@@ -96,8 +90,8 @@ func (r *AuditRepository) List(ctx context.Context, f models.AuditFilter) ([]mod
 	return out, nil
 }
 
-func (r *AuditRepository) CountSince(ctx context.Context, hours int) (int, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) CountSince(ctx context.Context, hours int) (int, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
