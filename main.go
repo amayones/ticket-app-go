@@ -60,12 +60,13 @@ func main() {
 	}
 	defer db.Close()
 
-	userRepository := repositories.NewUserRepository(db)
-	refreshTokenRepository := repositories.NewRefreshTokenRepository(db)
-	roleRepository := repositories.NewRoleRepository(db)
-	auditRepository := repositories.NewAuditRepository(db)
-	syslogRepository := repositories.NewSyslogRepository(db)
-	notifRepository := repositories.NewNotificationRepository(db)
+	dialect := repositories.ParseDialect(cfg.DBConnection)
+	userRepository := repositories.NewUserRepository(db, dialect)
+	refreshTokenRepository := repositories.NewRefreshTokenRepository(db, dialect)
+	roleRepository := repositories.NewRoleRepository(db, dialect)
+	auditRepository := repositories.NewAuditRepository(db, dialect)
+	syslogRepository := repositories.NewSyslogRepository(db, dialect)
+	notifRepository := repositories.NewNotificationRepository(db, dialect)
 	userService, err := services.NewUserService(userRepository, refreshTokenRepository, roleRepository, cfg.JWTSecret)
 	if err != nil {
 		fail("service init failed", err)
