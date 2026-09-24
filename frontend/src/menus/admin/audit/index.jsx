@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client.js'
+import { listAudit } from './api.js'
+
+export const meta = { label: 'Audit Log', icon: 'list', order: 4 }
 import {
   Alert,
   Badge,
@@ -11,7 +13,7 @@ import {
   Pagination,
   SkeletonRows,
   useSmoothLoading,
-} from '../components'
+} from '../../../components'
 
 const PAGE_SIZE = 20
 const ACTIONS = [
@@ -69,7 +71,7 @@ export default function Audit() {
     setLoading(true)
     setError('')
     try {
-      setLogs(await api.listAudit({ action, entity, actor, limit: PAGE_SIZE, offset }))
+      setLogs(await listAudit({ action, entity, actor, limit: PAGE_SIZE, offset }))
     } catch (err) {
       setError(err.message)
     } finally {
