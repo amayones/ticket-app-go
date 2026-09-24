@@ -9,6 +9,13 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Supported database engines (DB_CONNECTION).
+const (
+	DBSQLServer = "sqlserver"
+	DBPostgres  = "postgres"
+	DBSQLite    = "sqlite"
+)
+
 // Config holds all runtime configuration in one place.
 // Load once at startup and inject where needed (no global os.Getenv scattering).
 type Config struct {
@@ -16,11 +23,15 @@ type Config struct {
 	AppEnv  string
 	AppPort string
 
-	DBHost     string
-	DBPort     string
-	DBDatabase string
-	DBUsername string
-	DBPassword string
+	// DBConnection selects the engine: sqlserver (default), postgres, sqlite.
+	// sqlite memakai DBDatabase sebagai path file (mis. ./data/go-core.db)
+	// dan mengabaikan host/port/username/password.
+	DBConnection string
+	DBHost       string
+	DBPort       string
+	DBDatabase   string
+	DBUsername   string
+	DBPassword   string
 
 	JWTSecret string
 
@@ -40,6 +51,7 @@ func Load() (Config, error) {
 		AppName:        getEnvDefault("APP_NAME", "GoBackend"),
 		AppEnv:         getEnvDefault("APP_ENV", "development"),
 		AppPort:        getEnvDefault("APP_PORT", "1067"),
+		DBConnection:   normalizeDriver(getEnvDefault("DB_CONNECTION", DBSQLServer)),
 		DBHost:         strings.TrimSpace(os.Getenv("DB_HOST")),
 		DBPort:         strings.TrimSpace(os.Getenv("DB_PORT")),
 		DBDatabase:     strings.TrimSpace(os.Getenv("DB_DATABASE")),
@@ -51,14 +63,19 @@ func Load() (Config, error) {
 	}
 
 	var missing []string
-	for _, kv := range [][2]string{
-		{"DB_HOST", cfg.DBHost},
-		{"DB_PORT", cfg.DBPort},
+	required := [][2]string{
 		{"DB_DATABASE", cfg.DBDatabase},
-		{"DB_USERNAME", cfg.DBUsername},
-		{"DB_PASSWORD", cfg.DBPassword},
 		{"JWT_SECRET", cfg.JWTSecret},
-	} {
+	}
+	if cfg.DBConnection != DBSQLite {
+		required = append(required,
+			[2]string{"DB_HOST", cfg.DBHost},
+			[2]string{"DB_PORT", cfg.DBPort},
+			[2]string{"DB_USERNAME", cfg.DBUsername},
+			[2]string{"DB_PASSWORD", cfg.DBPassword},
+		)
+	}
+	for _, kv := range required {
 		if strings.TrimSpace(kv[1]) == "" {
 			missing = append(missing, kv[0])
 		}
@@ -66,13 +83,30 @@ func Load() (Config, error) {
 	if len(missing) > 0 {
 		return Config{}, fmt.Errorf("missing required env: %s", strings.Join(missing, ", "))
 	}
-	if _, err := strconv.Atoi(cfg.DBPort); err != nil {
-		return Config{}, fmt.Errorf("invalid DB_PORT %q: must be numeric", cfg.DBPort)
+	if cfg.DBConnection != DBSQLite {
+		if _, err := strconv.Atoi(cfg.DBPort); err != nil {
+			return Config{}, fmt.Errorf("invalid DB_PORT %q: must be numeric", cfg.DBPort)
+		}
 	}
 	if len(cfg.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
 	return cfg, nil
+}
+
+// normalizeDriver menerima alias umum (mssql, postgresql) dan menolak
+// engine yang belum didukung dengan fallback aman ke sqlserver.
+func normalizeDriver(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case DBPostgres, "postgresql", "pg":
+		return DBPostgres
+	case DBSQLite, "sqlite3":
+		return DBSQLite
+	case DBSQLServer, "mssql", "":
+		return DBSQLServer
+	default:
+		return DBSQLServer
+	}
 }
 
 func getEnvDefault(key, fallback string) string {
