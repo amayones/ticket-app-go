@@ -77,8 +77,6 @@ halaman ini fokus untuk login saja).
 - **Keamanan akun**: form ganti password sendiri (isi 2x untuk konfirmasi).
 - **Admin** juga melihat: ringkasan sistem (pengguna, sesi, role, error)
   + jalan pintas ke menu, di atas kartu yang sama.
-- **Modul aplikasi — segera hadir**: slot kosong untuk modul inti begitu
-  arah aplikasi ditentukan (saat ini 3 placeholder).
 
 ### 0.4 Halaman Daftar Pengguna (Users, khusus ADMIN)
 
@@ -236,6 +234,15 @@ CREATE TABLE CPREFRESHTOKEN (
 > tabel `CPPERMISSION` (18 permission seed) + `CPROLEPERMISSION` (ADMIN=semua,
 > USER=hak dasar) + `CPAUDITLOG` + `CPSYSLOG` + `CPNOTIFTEMPLATE` (3 template
 > bawaan) + `CPNOTIFLOG`. Aman diulang (idempotent).
+>
+> **Bukan SQL Server?** Ganti engine tanpa ubah kode — semua query ditulis
+> netral (`?` + dialect layer di `repositories/dialect.go`) dan teruji di
+> SQLite:
+> - **PostgreSQL**: buat DB kosong → `psql -h … -U … -d … -f scripts/schema.postgres.sql`
+>   → set `DB_CONNECTION=postgres` (+ host/port/database/username/password).
+> - **SQLite**: `sqlite3 ./data/go-core.db < scripts/schema.sqlite.sql`
+>   (atau file dibuat otomatis saat connect) → set `DB_CONNECTION=sqlite`
+>   + `DB_DATABASE=./data/go-core.db`. Tanpa server, tanpa instalasi.
 
 ### Langkah 4 — Jalankan mode development (1 perintah)
 
@@ -393,7 +400,7 @@ frontend/
 │   └── pages/
 │       ├── Auth.jsx        # LoginForm (tanpa registrasi; fokus login)
 │       ├── Dashboard.jsx   # beranda semua role (profil, sesi, password,
-│       │                   # ringkasan admin, slot modul M* persiapan)
+│       │                   # ringkasan + pintasan admin)
 │       ├── Users.jsx       # User Account Management (kartu, role badge,
 │       │                   # pagination, edit/logout-all/hapus)
 │       ├── EditUserModal.jsx # dialog edit + dropdown role (khusus admin)
@@ -613,7 +620,8 @@ Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 |----------|-------|---------|------------|
 | `APP_NAME` / `APP_ENV` | tidak | `GoBackend` / `development` | Label saja |
 | `APP_PORT` | tidak | `1067` | Port HTTP; Vite proxy ikut otomatis |
-| `DB_HOST` / `DB_PORT` / `DB_DATABASE` | ya | — | Contoh: `localhost` / `1433` / `Go` |
+| `DB_CONNECTION` | tidak | `sqlserver` | Jenis DB: `sqlserver` / `postgres` / `sqlite` (alias `mssql`, `postgresql`, `sqlite3` diterima) |
+| `DB_HOST` / `DB_PORT` / `DB_DATABASE` | ya* | — | Contoh: `localhost` / `1433` / `Go`. *sqlite: cukup `DB_DATABASE` sebagai path file (mis. `./data/go-core.db`), sisanya diabaikan |
 | `DB_USERNAME` / `DB_PASSWORD` | ya | — | Kredensial SQL Server |
 | `DB_MAX_OPEN_CONNS` / `DB_MAX_IDLE_CONNS` | tidak | `25` / `10` | Tuning pool koneksi |
 | `JWT_SECRET` | ya | — | **≥32 karakter acak** (`openssl rand -hex 32`) |
