@@ -104,9 +104,20 @@ func (s *UserService) DeleteRole(ctx context.Context, code string) error {
 		}
 		return fmt.Errorf("get role: %w", err)
 	}
+	// Portabel lintas engine: cek pemakaian eksplisit (beberapa engine
+	// tidak menegakkan FK, mis. sqlite tanpa pragma foreign_keys).
+	used, err := s.users.CountByRole(ctx, code)
+	if err != nil {
+		return fmt.Errorf("check role usage: %w", err)
+	}
+	if used > 0 {
+		return errors.New("role is still assigned to users")
+	}
 	if err := s.roles.Delete(ctx, code); err != nil {
-		// FK dari CPUSER: tolak bila masih dipakai user.
-		if strings.Contains(err.Error(), "FK_") || strings.Contains(err.Error(), "547") {
+		// FK dari CPUSER sebagai backstop (mssql 547, pg foreign key, sqlite FK).
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "fk_") || strings.Contains(msg, "547") ||
+			strings.Contains(msg, "foreign key") {
 			return errors.New("role is still assigned to users")
 		}
 		return fmt.Errorf("delete role: %w", err)
