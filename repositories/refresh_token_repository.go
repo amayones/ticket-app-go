@@ -8,16 +8,16 @@ import (
 )
 
 // RefreshTokenRepositoryInterface works with SHA-256 hashes
-// (plaintext tokens never touch the DB).
+// (plaintext tokens never touch the DB). Owner link is USER_CODE.
 type RefreshTokenRepositoryInterface interface {
 	Create(ctx context.Context, token *models.RefreshToken) error
 	GetByTokenHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
 	// DeleteByTokenHash returns true when a row was actually removed.
 	DeleteByTokenHash(ctx context.Context, tokenHash string) (bool, error)
-	DeleteByUserID(ctx context.Context, userID int) error
+	DeleteByUserCode(ctx context.Context, userCode string) error
 	DeleteExpired(ctx context.Context) (int64, error)
-	CountByUserID(ctx context.Context, userID int) (int, error)
-	DeleteOldestByUserID(ctx context.Context, userID int) error
+	CountByUserCode(ctx context.Context, userCode string) (int, error)
+	DeleteOldestByUserCode(ctx context.Context, userCode string) error
 }
 
 type RefreshTokenRepository struct {
@@ -32,10 +32,10 @@ func (r *RefreshTokenRepository) Create(ctx context.Context, token *models.Refre
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		INSERT INTO refresh_tokens (user_id, token, expires_at)
+		INSERT INTO dbo.CPREFRESHTOKEN (USER_CODE, TOKEN, EXPIRES_AT)
 		VALUES (@p1, @p2, @p3)
 	`
-	_, err := r.db.ExecContext(ctx, query, token.UserID, token.Token, token.ExpiresAt)
+	_, err := r.db.ExecContext(ctx, query, token.UserCode, token.Token, token.ExpiresAt)
 	return err
 }
 
@@ -43,14 +43,14 @@ func (r *RefreshTokenRepository) GetByTokenHash(ctx context.Context, tokenHash s
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		SELECT id, user_id, token, expires_at, created_at
-		FROM refresh_tokens
-		WHERE token = @p1
+		SELECT ID, USER_CODE, TOKEN, EXPIRES_AT, CREATED_AT
+		FROM dbo.CPREFRESHTOKEN
+		WHERE TOKEN = @p1
 	`
 	var rt models.RefreshToken
 	err := r.db.QueryRowContext(ctx, query, tokenHash).Scan(
 		&rt.ID,
-		&rt.UserID,
+		&rt.UserCode,
 		&rt.Token,
 		&rt.ExpiresAt,
 		&rt.CreatedAt,
@@ -64,7 +64,7 @@ func (r *RefreshTokenRepository) GetByTokenHash(ctx context.Context, tokenHash s
 func (r *RefreshTokenRepository) DeleteByTokenHash(ctx context.Context, tokenHash string) (bool, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx, `DELETE FROM refresh_tokens WHERE token = @p1`, tokenHash)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM dbo.CPREFRESHTOKEN WHERE TOKEN = @p1`, tokenHash)
 	if err != nil {
 		return false, err
 	}
@@ -75,10 +75,10 @@ func (r *RefreshTokenRepository) DeleteByTokenHash(ctx context.Context, tokenHas
 	return n > 0, nil
 }
 
-func (r *RefreshTokenRepository) DeleteByUserID(ctx context.Context, userID int) error {
+func (r *RefreshTokenRepository) DeleteByUserCode(ctx context.Context, userCode string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	_, err := r.db.ExecContext(ctx, `DELETE FROM refresh_tokens WHERE user_id = @p1`, userID)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM dbo.CPREFRESHTOKEN WHERE USER_CODE = @p1`, userCode)
 	return err
 }
 
@@ -87,36 +87,36 @@ func (r *RefreshTokenRepository) DeleteByUserID(ctx context.Context, userID int)
 func (r *RefreshTokenRepository) DeleteExpired(ctx context.Context) (int64, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx, `DELETE FROM refresh_tokens WHERE expires_at < GETDATE()`)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM dbo.CPREFRESHTOKEN WHERE EXPIRES_AT < GETDATE()`)
 	if err != nil {
 		return 0, err
 	}
 	return res.RowsAffected()
 }
 
-func (r *RefreshTokenRepository) CountByUserID(ctx context.Context, userID int) (int, error) {
+func (r *RefreshTokenRepository) CountByUserCode(ctx context.Context, userCode string) (int, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM refresh_tokens WHERE user_id = @p1`, userID).Scan(&count)
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dbo.CPREFRESHTOKEN WHERE USER_CODE = @p1`, userCode).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-// DeleteOldestByUserID evicts one row. NOTE: Count+DeleteOldest+Create is
+// DeleteOldestByUserCode evicts one row. NOTE: Count+DeleteOldest+Create is
 // still non-atomic under concurrency; DB-level cap (trigger/proc) is the
 // full fix. This keeps sessions bounded in the common case.
-func (r *RefreshTokenRepository) DeleteOldestByUserID(ctx context.Context, userID int) error {
+func (r *RefreshTokenRepository) DeleteOldestByUserCode(ctx context.Context, userCode string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
-		DELETE FROM refresh_tokens
-		WHERE id = (
-			SELECT TOP 1 id FROM refresh_tokens WHERE user_id = @p1 ORDER BY created_at ASC, id ASC
+		DELETE FROM dbo.CPREFRESHTOKEN
+		WHERE ID = (
+			SELECT TOP 1 ID FROM dbo.CPREFRESHTOKEN WHERE USER_CODE = @p1 ORDER BY CREATED_AT ASC, ID ASC
 		)
 	`
-	_, err := r.db.ExecContext(ctx, query, userID)
+	_, err := r.db.ExecContext(ctx, query, userCode)
 	return err
 }
