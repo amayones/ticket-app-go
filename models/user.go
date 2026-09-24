@@ -30,6 +30,16 @@ func (u User) ToResponse() UserResponse {
 	}
 }
 
+// MeResponse adalah response GET /api/users/me: user + permission codes miliknya.
+type MeResponse struct {
+	Code        string   `json:"code"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email"`
+	RoleCode    string   `json:"role"`
+	RoleName    string   `json:"role_name,omitempty"`
+	Permissions []string `json:"permissions"`
+}
+
 // UserResponse is the API DTO. Keep separate from User so DB schema
 // changes don't silently become API breaking changes.
 type UserResponse struct {
