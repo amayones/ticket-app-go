@@ -67,7 +67,7 @@ func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	caller, _ := middleware.GetUserCode(r)
-	manageAll := h.Perms.CheckPermission(r.Context(), caller, models.PermSessionManage) == nil
+	manageAll := h.Perms.CheckPermission(r.Context(), caller, models.MenuSessions) == nil
 	if err := h.Service.RevokeSession(r.Context(), caller, id, manageAll); err != nil {
 		if err == services.ErrForbidden {
 			web.WriteError(w, http.StatusForbidden, err.Error())
