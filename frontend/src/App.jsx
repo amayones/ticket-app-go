@@ -87,7 +87,7 @@ function Shell() {
       {/* Sidebar (desktop) — bisa dilipat via tombol chevron.
           Hanya lebar yang ditransisikan (bukan all) agar tidak bergetar. */}
       <aside
-        className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden border-r border-zinc-200 bg-white transition-[width,padding] duration-200 ease-out md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
+        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white transition-[width,padding] duration-200 ease-out md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
           collapsed ? 'w-[76px] p-2' : 'w-60 p-3'
         }`}
       >
