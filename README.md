@@ -157,12 +157,13 @@ frontend/src/menus/user/laporan/
 
 Contoh: `menus/admin/laporan/index.jsx` hanya tampil untuk ADMIN;
 `menus/user/laporan/` tampil hanya untuk role yang diberi permission
-`MENU_LAPORAN`. Permission ini juga dipakai sebagai proteksi endpoint
-backend, sehingga menu yang tidak diberikan akses akan disembunyikan
- dan request langsungnya mendapat `403`. Detail langkah-demi-langkah
-+ checkpoint tiap langkah ada di `tutorial/README.md` (Kasus A untuk
-admin, Kasus B untuk semua role). Daftar ikon valid: lihat
-`components/icons.jsx` (`PATHS`).
+`MENU_LAPORAN`. **Satu permission menu memberi akses ke seluruh fungsi
+di menu tersebut** (tambah, ubah, hapus, kirim, dan lainnya); tidak ada
+permission per fungsi. Permission yang sama dipakai sebagai proteksi
+endpoint backend, sehingga request langsung tanpa akses mendapat `403`.
+Detail langkah-demi-langkah + checkpoint ada di `tutorial/README.md`
+(Kasus A untuk admin, Kasus B untuk semua role). Daftar ikon valid:
+lihat `components/icons.jsx` (`PATHS`).
 
 **Backend** — tambah 1 folder + 1 baris registrasi:
 
@@ -728,7 +729,7 @@ Base URL prod: `http://localhost:1067/` (keduanya satu origin).
 | POST | `/api/refresh` | — | 30/mnt | `{refresh_token}` | `200 {access_token, refresh_token}` (lama hangus) |
 | POST | `/api/logout` | — | 30/mnt | `{refresh_token}` | `200 {message}` |
 | GET | `/api/roles` | Bearer | — | — | `200 [{code,name,...}]` (master `CPROLE`) |
-| GET | `/api/users/me` | Bearer | — | — | `200 {code,username,email,role,permissions[]}` |
+| GET | `/api/users/me` | Bearer | — | — | `200 {code,username,email,role,role_code,permissions[]}` |
 | GET | `/api/users?limit=&offset=` | Bearer + `MENU_USERS` | — | — | `200 [...]` (array item `{code,username,email,role_code,...}`, `[]` jika kosong) |
 | GET | `/api/users/{code}` | Bearer | — | — | `200 {code,username,email,role_code,...}` |
 | PUT | `/api/users/{code}` | Bearer + owner/`MENU_USERS` | — | partial `{username?, email?, password?}` | `200 {message}` |
