@@ -3,7 +3,7 @@
 //
 // Aturan modular: file ini HANYA berisi infrastruktur (request) + fungsi
 // inti (auth, sesi JWT, health). Fungsi tiap menu tinggal di
-// menus/<role>/<menu>/api.js dan memakai apiRequest dari sini.
+// menus/admin|user/<menu>/api.js dan memakai apiRequest dari sini.
 const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 const store = {
@@ -104,7 +104,7 @@ function parseJwt(token) {
   }
 }
 
-// Low-level request untuk dipakai api.js tiap menu (menus/<role>/<menu>/api.js).
+// Low-level request untuk dipakai api.js tiap menu (menus/admin|user/<menu>/api.js).
 export const apiRequest = request
 
 export const api = {
@@ -114,6 +114,11 @@ export const api = {
     const claims = parseJwt(store.access)
     if (!claims || !claims.user_code) return null
     return { code: claims.user_code, username: claims.username || '', role: claims.role || '' }
+  },
+  // Ambil user + permission-nya dari backend (GET /api/users/me).
+  // Dipakai saat login untuk mengetahui menu mana yang boleh ditampilkan.
+  async getMe() {
+    return request('/api/users/me', { auth: true })
   },
   async login(username, password) {
     const data = await request('/api/login', { method: 'POST', body: { username, password } })
