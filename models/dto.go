@@ -8,7 +8,7 @@ type CreateUserRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
-	// RoleCode opsional (hanya dipakai bila penelepon pegang USER_ROLE_ASSIGN).
+	// RoleCode opsional (hanya dipakai bila penelepon pegang MENU_USERS).
 	RoleCode string `json:"role_code"`
 }
 
