@@ -10,8 +10,11 @@ import {
   ConfirmDialog,
   EmptyState,
   Icon,
+  Modal,
   Pagination,
+  PasswordInput,
   SkeletonRows,
+  TextField,
   useToast,
 } from '../components'
 import EditUserModal from './EditUserModal.jsx'
@@ -21,6 +24,7 @@ const PAGE_SIZE = 10
 export default function UsersList({ onAccountDeleted }) {
   const toast = useToast()
   const me = api.currentUser()
+  const isAdmin = me?.role === 'ADMIN'
   const [users, setUsers] = useState([])
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -28,6 +32,14 @@ export default function UsersList({ onAccountDeleted }) {
   const [editing, setEditing] = useState(null)
   const [confirm, setConfirm] = useState(null) // { type: 'delete'|'logoutAll', user }
   const [acting, setActing] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
+  const [roles, setRoles] = useState([])
+  const [cUsername, setCUsername] = useState('')
+  const [cEmail, setCEmail] = useState('')
+  const [cPassword, setCPassword] = useState('')
+  const [cRole, setCRole] = useState('USER')
+  const [cError, setCError] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const load = useCallback(async (nextOffset) => {
     setLoading(true)
@@ -50,6 +62,36 @@ export default function UsersList({ onAccountDeleted }) {
   function changePage(next) {
     if (next < 0) return
     setOffset(next)
+  }
+
+  function openCreate() {
+    setCUsername('')
+    setCEmail('')
+    setCPassword('')
+    setCRole('USER')
+    setCError('')
+    api.listRoles().then(setRoles).catch(() => setRoles([]))
+    setShowCreate(true)
+  }
+
+  async function create() {
+    setCError('')
+    if (!cUsername.trim() || !cEmail.trim() || !cPassword) {
+      setCError('Username, email, dan password wajib diisi.')
+      return
+    }
+    setCreating(true)
+    try {
+      const res = await api.createUser(cUsername.trim(), cEmail.trim().toLowerCase(), cPassword, cRole)
+      toast.success(`Akun @${cUsername.trim()} dibuat (${res.code}).`, { title: 'User dibuat' })
+      setShowCreate(false)
+      setOffset(0)
+      load(0)
+    } catch (err) {
+      setCError(err.message)
+    } finally {
+      setCreating(false)
+    }
   }
 
   async function runConfirm() {
@@ -83,10 +125,18 @@ export default function UsersList({ onAccountDeleted }) {
           <CardTitle description="Kelola akun yang terdaftar. Anda hanya dapat mengubah akun milik sendiri.">
             Daftar Pengguna
           </CardTitle>
-          <Button variant="secondary" size="sm" onClick={() => load(offset)} loading={loading}>
-            <Icon name="refresh" className="h-4 w-4" />
-            Muat ulang
-          </Button>
+          <div className="flex gap-2">
+            {isAdmin && (
+              <Button size="sm" onClick={openCreate}>
+                <Icon name="plus" className="h-4 w-4" />
+                Tambah User
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => load(offset)} loading={loading}>
+              <Icon name="refresh" className="h-4 w-4" />
+              Muat ulang
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -203,6 +253,69 @@ export default function UsersList({ onAccountDeleted }) {
         onConfirm={runConfirm}
         onCancel={() => !acting && setConfirm(null)}
       />
+
+      <Modal
+        open={showCreate}
+        onClose={creating ? undefined : () => setShowCreate(false)}
+        title="Tambah user baru"
+        size="sm"
+        closeOnBackdrop={!creating}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowCreate(false)} disabled={creating}>
+              Batal
+            </Button>
+            <Button onClick={create} loading={creating}>
+              Buat akun
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {cError && (
+            <Alert tone="error" closable>
+              {cError}
+            </Alert>
+          )}
+          <TextField
+            label="Username"
+            value={cUsername}
+            onChange={(e) => setCUsername(e.target.value)}
+            autoComplete="off"
+            placeholder="min. 3 karakter"
+          />
+          <TextField
+            label="Email"
+            type="email"
+            value={cEmail}
+            onChange={(e) => setCEmail(e.target.value)}
+            autoComplete="off"
+            placeholder="nama@email.com"
+          />
+          <PasswordInput
+            label="Password awal"
+            value={cPassword}
+            onChange={(e) => setCPassword(e.target.value)}
+            autoComplete="new-password"
+            placeholder="min. 8 karakter"
+            hint="Beritahu password ini ke user; ia bisa menggantinya via Edit profil."
+          />
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Role awal</span>
+            <select
+              value={cRole}
+              onChange={(e) => setCRole(e.target.value)}
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            >
+              {(roles.length > 0 ? roles : [{ code: 'USER', name: '' }]).map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.code}{r.name ? ` — ${r.name}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </Modal>
     </div>
   )
 }
