@@ -41,9 +41,9 @@ func (h *Handler) handleServiceError(w http.ResponseWriter, err error) {
 	}
 }
 
-// requireSelfOrPerm allows the owner, or anyone holding the permission
+// requireMenuOrSelf allows the owner, or anyone holding the menu permission
 // (e.g. admin with MENU_USERS can edit other users).
-func requireSelfOrPerm(h *Handler, w http.ResponseWriter, r *http.Request, code, perm string) bool {
+func requireMenuOrSelf(h *Handler, w http.ResponseWriter, r *http.Request, code, menuPermission string) bool {
 	callerCode, ok := middleware.GetUserCode(r)
 	if !ok {
 		web.WriteError(w, http.StatusForbidden, services.ErrForbidden.Error())
@@ -52,7 +52,7 @@ func requireSelfOrPerm(h *Handler, w http.ResponseWriter, r *http.Request, code,
 	if callerCode == code {
 		return true
 	}
-	if err := h.Perms.CheckPermission(r.Context(), callerCode, perm); err != nil {
+	if err := h.Perms.CheckPermission(r.Context(), callerCode, menuPermission); err != nil {
 		web.WriteError(w, http.StatusForbidden, services.ErrForbidden.Error())
 		return false
 	}
@@ -125,7 +125,7 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelfOrPerm(h, w, r, code, models.MenuUsers) {
+	if !requireMenuOrSelf(h, w, r, code, models.MenuUsers) {
 		return
 	}
 	var req models.UpdateUserRequest
@@ -147,7 +147,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelfOrPerm(h, w, r, code, models.MenuUsers) {
+	if !requireMenuOrSelf(h, w, r, code, models.MenuUsers) {
 		return
 	}
 	if err := h.Service.DeleteUser(r.Context(), code); err != nil {
@@ -215,7 +215,7 @@ func (h *Handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelfOrPerm(h, w, r, code, models.MenuUsers) {
+	if !requireMenuOrSelf(h, w, r, code, models.MenuUsers) {
 		return
 	}
 	if err := h.Service.LogoutAll(r.Context(), code); err != nil {
@@ -243,6 +243,7 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		Code:        user.Code,
 		Username:    user.Username,
 		Email:       user.Email,
+		Role:        user.RoleCode,
 		RoleCode:    user.RoleCode,
 		RoleName:    user.RoleName,
 		Permissions: perms,
