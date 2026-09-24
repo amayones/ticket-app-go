@@ -47,14 +47,14 @@ CREATE TABLE IF NOT EXISTS CPPERMISSION (
   CREATED_AT DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 INSERT INTO CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION) VALUES
-  ('MENU_DASHBOARD', 'Akses menu Dashboard', 'MENU', 'Seluruh fungsi dashboard untuk role ini'),
-  ('MENU_USERS', 'Akses menu User Account', 'MENU', 'Seluruh fungsi pengelolaan pengguna'),
-  ('MENU_ROLES', 'Akses menu Role & Permission', 'MENU', 'Seluruh fungsi pengelolaan role'),
-  ('MENU_SESSIONS', 'Akses menu Sesi', 'MENU', 'Seluruh fungsi pengelolaan sesi'),
-  ('MENU_AUDIT', 'Akses menu Audit Log', 'MENU', 'Seluruh fungsi audit log'),
-  ('MENU_SECURITY', 'Akses menu Security Center', 'MENU', 'Seluruh fungsi security center'),
-  ('MENU_SYSLOG', 'Akses menu System Log', 'MENU', 'Seluruh fungsi system log'),
-  ('MENU_NOTIFICATIONS', 'Akses menu Notifikasi', 'MENU', 'Seluruh fungsi notifikasi')
+  ('MENU_DASHBOARD', 'Akses menu Dashboard', 'ACCOUNT', 'Seluruh fungsi dashboard untuk role ini'),
+  ('MENU_USERS', 'Akses menu User Account', 'SYSTEM', 'Seluruh fungsi pengelolaan pengguna'),
+  ('MENU_ROLES', 'Akses menu Role & Permission', 'SYSTEM', 'Seluruh fungsi pengelolaan role'),
+  ('MENU_SESSIONS', 'Akses menu Sesi', 'SYSTEM', 'Seluruh fungsi pengelolaan sesi'),
+  ('MENU_AUDIT', 'Akses menu Audit Log', 'SYSTEM', 'Seluruh fungsi audit log'),
+  ('MENU_SECURITY', 'Akses menu Security Center', 'SYSTEM', 'Seluruh fungsi security center'),
+  ('MENU_SYSLOG', 'Akses menu System Log', 'SYSTEM', 'Seluruh fungsi system log'),
+  ('MENU_NOTIFICATIONS', 'Akses menu Notifikasi', 'SYSTEM', 'Seluruh fungsi notifikasi')
 ON CONFLICT(CODE) DO UPDATE SET NAME=excluded.NAME, PERMGROUP=excluded.PERMGROUP, DESCRIPTION=excluded.DESCRIPTION;
 
 CREATE TABLE IF NOT EXISTS CPROLEPERMISSION (
