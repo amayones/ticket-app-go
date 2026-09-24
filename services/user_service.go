@@ -27,9 +27,6 @@ var (
 	ErrForbidden        = errors.New("forbidden")
 )
 
-// ErrUsernameRequired kept as alias for backward compatibility.
-var ErrUsernameRequired = ErrInputRequired
-
 const (
 	MaxRefreshTokensPerUser = 5
 	codeGenRetries          = 5
