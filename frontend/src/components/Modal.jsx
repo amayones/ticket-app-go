@@ -10,6 +10,8 @@ const SIZES = {
 
 // Dialog modal: tutup via ESC, klik backdrop, atau tombol ×.
 // <Modal open title="…" onClose footer={<…/>}>isi…</Modal>
+// Set showClose={false} + closeOnBackdrop={false} + onClose={undefined}
+// untuk dialog wajib (misal sesi habis) yang tidak boleh di-skip.
 export default function Modal({
   open,
   onClose,
@@ -18,9 +20,10 @@ export default function Modal({
   footer,
   size = 'md',
   closeOnBackdrop = true,
+  showClose = true,
 }) {
   useEffect(() => {
-    if (!open) return
+    if (!open || !onClose) return
     function onKey(e) {
       if (e.key === 'Escape') onClose?.()
     }
@@ -50,14 +53,16 @@ export default function Modal({
       >
         <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
           <h3 className="truncate text-base font-semibold text-zinc-900 dark:text-zinc-50">{title}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Tutup dialog"
-            className="shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-          >
-            <Icon name="x" className="h-5 w-5" />
-          </button>
+          {showClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Tutup dialog"
+              className="shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <Icon name="x" className="h-5 w-5" />
+            </button>
+          )}
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-5 py-4 text-sm text-zinc-600 dark:text-zinc-300">
           {children}
