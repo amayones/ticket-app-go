@@ -137,7 +137,7 @@ func processName(pid int) (name string, ok bool) {
 // isOurBinary allowlists what stop.exe may signal (exact basename match).
 func isOurBinary(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
-	for _, ok := range []string{"app.exe", "go-core.exe", "go.exe", "main.exe", "app", "go-core", "go", "main", "exe"} {
+	for _, ok := range []string{"app.exe", "go-core.exe", "golang-backend.exe", "go.exe", "main.exe", "app", "go-core", "golang-backend", "go", "main", "exe"} {
 		if n == ok {
 			return true
 		}
