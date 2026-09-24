@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../api/client.js'
-import { getUser, logoutAll, updateUser } from '../../admin/users/api.js'
-import { listMySessions } from '../../admin/sessions/api.js'
+import { getUser, updateUser } from '../../admin/users/api.js'
 import { securitySummary } from '../../admin/security/api.js'
 
 export const meta = { label: 'Dashboard', icon: 'home', order: 0 }
@@ -20,18 +19,14 @@ import {
 } from '../../../components'
 
 // Dashboard: satu-satunya halaman untuk role USER; beranda untuk ADMIN.
-// Berisi profil, status backend, sesi sendiri, ganti password, dan area
-// persiapan modul inti (arah aplikasi belum ditentukan).
+// Berisi profil, ganti password, dan ringkasan + pintasan (khusus admin).
 export default function Dashboard({ onNavigate }) {
   const toast = useToast()
   // Dibaca sekali saat mount agar referensi stabil (hindari fetch berulang).
   const [me] = useState(() => api.currentUser())
   const isAdmin = me?.role === 'ADMIN'
   const [profile, setProfile] = useState(null)
-  const [sessionCount, setSessionCount] = useState(0)
   const [summary, setSummary] = useState(null)
-  // Status backend 3 state: null = masih mengecek, true = online, false = bermasalah.
-  const [backendOk, setBackendOk] = useState(null)
   const [loading, setLoading] = useState(true)
   const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
@@ -40,25 +35,12 @@ export default function Dashboard({ onNavigate }) {
   const [passError, setPassError] = useState('')
   const [savingPass, setSavingPass] = useState(false)
 
-  // Cek backend dipisah agar kegagalan data lain tak mengaburkan statusnya.
-  const checkBackend = useCallback(async () => {
-    try {
-      await api.health()
-      setBackendOk(true)
-    } catch {
-      setBackendOk(false)
-    }
-  }, [])
-
   const load = useCallback(async () => {
     if (!me) return
     setLoading(true)
     setError('')
-    checkBackend()
     try {
-      const [user, sessions] = await Promise.all([getUser(me.code), listMySessions()])
-      setProfile(user)
-      setSessionCount(Array.isArray(sessions) ? sessions.length : 0)
+      setProfile(await getUser(me.code))
       if (isAdmin) {
         setSummary(await securitySummary().catch(() => null))
       }
@@ -67,21 +49,11 @@ export default function Dashboard({ onNavigate }) {
     } finally {
       setLoading(false)
     }
-  }, [isAdmin, me, checkBackend])
+  }, [isAdmin, me])
 
   useEffect(() => {
     load()
   }, [load])
-
-  async function logoutAll() {
-    try {
-      await logoutAll(me.code)
-      toast.warning('Semua sesi Anda dicabut. Muat ulang bila perlu login lagi.')
-      load()
-    } catch (err) {
-      toast.error(err.message)
-    }
-  }
 
   async function changePassword(e) {
     e.preventDefault()
@@ -126,9 +98,6 @@ export default function Dashboard({ onNavigate }) {
             <p className="flex flex-wrap items-center gap-2 text-base font-bold text-zinc-900 dark:text-zinc-50">
               <span className="truncate">@{profile?.username || me?.username}</span>
               <Badge tone={isAdmin ? 'danger' : 'brand'}>{profile?.role_code || me?.role}</Badge>
-              <Badge tone={backendOk === true ? 'success' : backendOk === false ? 'danger' : 'neutral'}>
-                {backendOk === true ? 'Backend online' : backendOk === false ? 'Backend bermasalah' : 'Mengecek backend…'}
-              </Badge>
             </p>
             <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
               <span className="font-mono">{profile?.code || me?.code}</span>
@@ -142,24 +111,10 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardTitle description="Perangkat/browser yang sedang login sebagai Anda.">
-            Sesi saya ({sessionCount})
-          </CardTitle>
-          <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-300">
-            Cabut semua sesi bila ada perangkat yang tidak dikenal.
-          </p>
-          <Button variant="secondary" size="sm" onClick={logoutAll}>
-            <Icon name="logout" className="h-4 w-4" />
-            Cabut semua sesi saya
-          </Button>
-        </Card>
-
-        <Card>
-          <CardTitle description="Ganti password akun sendiri.">
-            Keamanan akun
-          </CardTitle>
+      <Card>
+        <CardTitle description="Ganti password akun sendiri.">
+          Keamanan akun
+        </CardTitle>
           <form onSubmit={changePassword} className="flex flex-col gap-3">
             {passError && (
               <Alert tone="error" closable>
@@ -186,8 +141,7 @@ export default function Dashboard({ onNavigate }) {
               </Button>
             </div>
           </form>
-        </Card>
-      </div>
+      </Card>
 
       {isAdmin && summary && (
         <Card>
