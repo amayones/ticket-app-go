@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client.js'
+import { api } from '../../../api/client.js'
+import {
+  createTemplate,
+  deleteTemplate,
+  listNotifLogs,
+  listTemplates,
+  sendNotification,
+  updateTemplate,
+} from './api.js'
+
+export const meta = { label: 'Notifikasi', icon: 'bell', order: 7 }
 import {
   Alert,
   Badge,
@@ -15,7 +25,7 @@ import {
   TextField,
   useSmoothLoading,
   useToast,
-} from '../components'
+} from '../../../components'
 
 const PAGE_SIZE = 15
 const CHANNELS = ['EMAIL', 'PUSH', 'INAPP']
@@ -102,9 +112,9 @@ export default function Notifications() {
     setError('')
     try {
       if (tab === 'logs') {
-        setLogs(await api.listNotifLogs(PAGE_SIZE, offset))
+        setLogs(await listNotifLogs(PAGE_SIZE, offset))
       } else {
-        setTemplates(await api.listTemplates())
+        setTemplates(await listTemplates())
       }
     } catch (err) {
       setError(err.message)
@@ -125,10 +135,10 @@ export default function Notifications() {
     setSaving(true)
     try {
       if (editing === 'new') {
-        await api.createTemplate(payload)
+        await createTemplate(payload)
         toast.success('Template dibuat.')
       } else {
-        await api.updateTemplate(editing.code, payload)
+        await updateTemplate(editing.code, payload)
         toast.success('Template diperbarui.')
       }
       setEditing(null)
@@ -143,7 +153,7 @@ export default function Notifications() {
   async function remove() {
     if (!deleting) return
     try {
-      await api.deleteTemplate(deleting.code)
+      await deleteTemplate(deleting.code)
       toast.success(`Template ${deleting.name} dihapus.`)
       setDeleting(null)
       load()
@@ -160,7 +170,7 @@ export default function Notifications() {
     setSending(true)
     try {
       const me = api.currentUser()
-      await api.sendNotification({
+      await sendNotification({
         template_code: sendTpl,
         recipient: recipient.trim(),
         variables: { nama: varNama || me?.username || '', kode: me?.code || '', role: me?.role || '', detail: varDetail },
