@@ -3,28 +3,28 @@
 // tutorial/backend di tutorial/README.md (atau pakai endpoint yang sudah ada).
 import { apiRequest as request } from '../../../api/client.js'
 
-// GET /api/admin/<menu>?limit=&offset=  -> selalu kembalikan array.
+// GET /api/<menu>?limit=&offset= -> selalu kembalikan array.
 export async function listItems(limit = 20, offset = 0) {
-  const data = await request(`/api/admin/<menu>?limit=${limit}&offset=${offset}`, { auth: true })
+  const data = await request(`/api/<menu>?limit=${limit}&offset=${offset}`, { auth: true })
   return Array.isArray(data) ? data : []
 }
 
 // GET satu item.
 export async function getItem(code) {
-  return request(`/api/admin/<menu>/${code}`, { auth: true })
+  return request(`/api/<menu>/${code}`, { auth: true })
 }
 
 // POST tambah item.
 export async function createItem(payload) {
-  return request('/api/admin/<menu>', { method: 'POST', body: payload, auth: true })
+  return request('/api/<menu>', { method: 'POST', body: payload, auth: true })
 }
 
 // PUT ubah item (kirim hanya field yang berubah).
 export async function updateItem(code, patch) {
-  return request(`/api/admin/<menu>/${code}`, { method: 'PUT', body: patch, auth: true })
+  return request(`/api/<menu>/${code}`, { method: 'PUT', body: patch, auth: true })
 }
 
 // DELETE hapus item.
 export async function deleteItem(code) {
-  return request(`/api/admin/<menu>/${code}`, { method: 'DELETE', auth: true })
+  return request(`/api/<menu>/${code}`, { method: 'DELETE', auth: true })
 }
