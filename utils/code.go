@@ -5,26 +5,35 @@ import (
 	"strings"
 )
 
-// Format kode publik: USR-XXXXXXXX (ID numerik tidak diekspos ke luar).
+// Format kode publik: PREFIX-XXXXXXXX (ID numerik tidak diekspos ke luar).
 const (
-	UserCodePrefix  = "USR-"
-	userCodeRandLen = 8
+	UserCodePrefix     = "USR-"
+	AuditCodePrefix    = "AUD-"
+	SyslogCodePrefix   = "SYS-"
+	NotifLogPrefix     = "NTF-"
+	NotifTemplatePrefix = "NTM-"
+	codeRandLen        = 8
 )
 
 // codeAlphabet menghindari karakter ambigu (0/O, 1/I/L).
 var codeAlphabet = []rune("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 
-// GenerateUserCode membuat kode user acak (crypto/rand).
+// GenerateCode membuat kode acak berprefix (crypto/rand).
 // Penelepon wajib menangani tabrakan unique (coba lagi).
-func GenerateUserCode() (string, error) {
-	b := make([]byte, userCodeRandLen)
+func GenerateCode(prefix string) (string, error) {
+	b := make([]byte, codeRandLen)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	var sb strings.Builder
-	sb.WriteString(UserCodePrefix)
+	sb.WriteString(prefix)
 	for _, v := range b {
 		sb.WriteRune(codeAlphabet[int(v)%len(codeAlphabet)])
 	}
 	return sb.String(), nil
+}
+
+// GenerateUserCode membuat kode user acak (USR-XXXXXXXX).
+func GenerateUserCode() (string, error) {
+	return GenerateCode(UserCodePrefix)
 }
