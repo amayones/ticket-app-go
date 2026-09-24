@@ -103,7 +103,22 @@ Halaman ini menampilkan semua akun dalam bentuk **kartu modern**:
 Klik tombol **Logout** di header → sesi berakhir, muncul toast "Anda telah
 keluar", dan kembali ke halaman Login.
 
-### 0.6 Hal-hal modern yang bisa dicoba
+### 0.6 Menu-menu admin (setelah login)
+
+Setelah login Anda masuk ke aplikasi **sidebar** (layar lebar) atau navigasi
+atas (layar HP). Menu yang tampil tergantung role:
+
+| Menu | Untuk | Isi & cara pakai |
+|------|-------|------------------|
+| **User Account** | semua | Kartu user + avatar + badge role (lihat 0.4). Admin bisa mengganti role lewat dialog Edit (dropdown Role). |
+| **Role & Permission** | ADMIN | Pilih role (tombol kiri) → centang permission per grup di matriks → **Simpan permission**. **Role baru** (kode huruf besar, mis. `EDITOR`) → atur permission-nya → user bisa dipindah ke role itu. Role `ADMIN`/`USER` bawaan tidak bisa dihapus; role yang masih dipakai user tidak bisa dihapus. |
+| **Sesi & Auth** | semua | Tab **Sesi saya**: daftar perangkat login + tombol sampah untuk mencabut satu sesi + tombol cabut semua. Tab **Semua sesi** (ADMIN): semua user + pagination. |
+| **Audit Log** | ADMIN | Tabel siapa–apa–kapan–IP. Filter: aksi (LOGIN, DELETE_USER, …), entitas, kode pelaku + tombol Filter/Reset + pagination. |
+| **Security Center** | ADMIN | 6 kartu ringkasan (user, role, sesi aktif, audit 24 jam, error 24 jam, status), aktivitas terkini, dan daftar kebijakan keamanan aktif. |
+| **System Log** | ADMIN | Filter level SEMUA/ERROR/WARN/INFO + tabel + tombol **Bersihkan lama** (hapus log > N hari, tercatat di audit). |
+| **Notifikasi** | ADMIN | Tab **Template**: buat/edit/nonaktifkan/hapus template (channel EMAIL/PUSH/INAPP, variabel `{{nama}}` `{{kode}}` `{{role}}` `{{detail}}`). Tombol **Kirim/Test**: pilih template + penerima + isi variabel → tercatat di tab **Riwayat kirim**. |
+
+### 0.7 Hal-hal modern yang bisa dicoba
 
 - **Toast** bisa ditutup manual (tombol ×) atau biarkan hilang otomatis
   (ada garis progres di bawahnya).
@@ -206,8 +221,14 @@ CREATE TABLE CPREFRESHTOKEN (
 > migrasi otomatis yang memindahkan data + membuat kode + menghapus tabel lama:
 > `task migrate` (butuh `sqlcmd`) atau
 > `sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate.sql`.
-> Jadikan user pertama sebagai admin: 
+> Jadikan user pertama sebagai admin:
 > `UPDATE CPUSER SET ROLE_CODE='ADMIN' WHERE USERNAME='budi';`
+> (lalu login ulang agar klaim `role` di JWT terbarui).
+>
+> Migrasi lanjutan (`scripts/migrate2_rbac.sql`, otomatis ikut via `task migrate`):
+> tabel `CPPERMISSION` (18 permission seed) + `CPROLEPERMISSION` (ADMIN=semua,
+> USER=hak dasar) + `CPAUDITLOG` + `CPSYSLOG` + `CPNOTIFTEMPLATE` (3 template
+> bawaan) + `CPNOTIFLOG`. Aman diulang (idempotent).
 
 ### Langkah 4 — Jalankan mode development (2 terminal)
 
@@ -327,8 +348,11 @@ Peran tiap folder:
 | Folder | Isi file | Tugasnya dalam bahasa sederhana |
 |--------|----------|----------------------------------|
 | `config/` | `env.go`, `database.go` | Baca `.env` **sekali** saat start (`Load()` → struct `Config`), validasi (JWT ≥32 char, port numerik), buka koneksi DB dengan timeout. Tidak pernah `log.Fatal` — selalu kembalikan `error`. |
-| `models/` | `user.go`, `refresh_token.go`, `role.go`, `dto.go` | `User` = baris `CPUSER` (identitas luar = `Code`, `ID` disembunyikan dari JSON); `Role` = baris `CPROLE`; `UserResponse` = versi aman untuk API (tanpa hash/ID); `dto.go` = bentuk JSON request (partial via pointer). |
-| `repositories/` | `user_repository.go`, `refresh_token_repository.go`, `role_repository.go` | Satu-satunya tempat berisi SQL (tabel `CPUSER`, `CPREFRESHTOKEN`, `CPROLE`; relasi via `CODE`). Semua query pakai parameter (`@p1`, bukan string concat → anti SQL injection), pakai `context` timeout 5 detik, `List` paginated (anti OOM). Token di DB selalu **hash SHA-256**, bukan token asli. |
+| `models/` | `user.go`, `refresh_token.go`, `role.go`, `permission.go`, `audit.go`, `syslog.go`, `notification.go`, `session.go`, `dto.go` | `User` = baris `CPUSER`; `Role`/`Permission`/`RoleDetail` (matriks RBAC); `AuditLog`+`AuditFilter`; `SysLog`; `NotifTemplate`/`NotifLog`/`NotifSendRequest`; `Session`+`SecuritySummary`. `ID` selalu disembunyikan dari JSON. |
+| `repositories/` | `user/refresh_token/role/audit/syslog/notification_repository.go` | Satu-satunya tempat berisi SQL (`CPUSER`, `CPREFRESHTOKEN`, `CPROLE`, `CPPERMISSION`, `CPROLEPERMISSION`, `CPAUDITLOG`, `CPSYSLOG`, `CPNOTIF*`; relasi via `CODE`). Query parameterized, timeout 5 detik, paginated. Token = **hash SHA-256**. |
+| `services/` | `user_service.go` + `rbac/session/audit/syslog/notification_service.go` | RBAC (`CheckPermission`, role CRUD, matriks permission, `UpdateUserRole`), sesi (list/revoke), audit & syslog (best-effort), notifikasi (render `{{var}}` + catat log). |
+| `handlers/` | `user_handler.go`, `admin_handler.go`, `deps.go` | User: audit otomatis (register/login/update/delete/sesi) + syslog untuk error 500 + `requireSelfOrPerm` (pemilik atau pemegang permission). Admin: 20 endpoint menu (role, sesi, audit, security, syslog, notifikasi). |
+| `middleware/` | `auth.go`, `ratelimit.go`, `rbac.go` | `RequirePermission(...)` → 403 JSON `forbidden: missing X` bila role tak punya permission (ADMIN selalu lolos). |
 | `services/` | `user_service.go` (+ `*_test.go`) | Otak aplikasi: normalisasi email (`trim+lowercase`), validasi, bcrypt, buat kode `USR-XXXXXXXX` + role default `USER`, buat/cek JWT (`user_code` + `role`), rotasi refresh token, batasi 5 sesi/user, petakan error DB ke error bermakna (`ErrUsernameTaken`, …). Punya unit test (`go test ./services/`). |
 | `handlers/` | `user_handler.go` | Penerjemah HTTP↔service: batasi body 1 MB, tolak field asing, parse `code`, cek "hanya pemilik data" (`requireSelf` bandingkan `user_code` JWT), tulis sukses/error **selalu JSON** `{...}` / `{error: ...}`. |
 | `middleware/` | `auth.go`, `ratelimit.go` | `NewAuth(secret)` = satpam JWT (cek `Bearer`, pin HS256, cek `iss/aud/exp`); `RateLimiter` = pembatas request/menit per IP (anti-spoof XFF, kirim header `Retry-After`). |
@@ -364,11 +388,18 @@ frontend/
 │   │   │                   # progress bar, skeleton shimmer
 │   │   └── index.js        # `import { Button, Modal } from '../components'`
 │   └── pages/
-│       ├── Auth.jsx        # LoginForm, RegisterForm (TextField + Button +
-│       │                   # Alert + toast)
-│       ├── Users.jsx       # UsersList: kartu user, pagination 10/halaman,
-│       │                   # skeleton, empty state, aksi edit/logout-all/hapus
-│       └── EditUserModal.jsx # dialog edit (kirim hanya field yang berubah)
+│       ├── Auth.jsx        # LoginForm, RegisterForm
+│       ├── Users.jsx       # User Account Management (kartu, role badge,
+│       │                   # pagination, edit/logout-all/hapus)
+│       ├── EditUserModal.jsx # dialog edit + dropdown role (khusus admin)
+│       ├── Roles.jsx       # Role & Permission: matriks checkbox per grup,
+│       │                   # buat/hapus role, simpan permission
+│       ├── Sessions.jsx    # tab Sesi saya / Semua sesi + revoke per sesi
+│       ├── Audit.jsx       # filter aksi/entitas/pelaku + tabel + pagination
+│       ├── Security.jsx    # 6 kartu ringkasan + aktivitas + kebijakan aktif
+│       ├── Syslog.jsx      # filter level + tabel + bersihkan log lama
+│       └── Notifications.jsx # tab Template (CRUD + variabel) / Kirim-Test /
+│                             # Riwayat kirim
 └── dist/                   # HASIL build (di-ignore, jangan edit manual)
     └── .gitignore          # placeholder agar go:embed tetap compile di fresh clone
 ```
@@ -519,6 +550,23 @@ Base URL prod: `http://localhost:1067/` (keduanya satu origin).
 | PUT | `/api/users/{code}` | Bearer + owner | — | partial `{username?, email?, password?}` | `200 {message}` |
 | DELETE | `/api/users/{code}` | Bearer + owner | — | — | `200 {message}` (+ sesi dibersihkan via CASCADE) |
 | POST | `/api/users/{code}/logout-all` | Bearer + owner | — | — | `200 {message}` |
+| PUT | `/api/users/{code}/role` | Bearer + `USER_ROLE_ASSIGN` | — | `{role_code}` | `200 {message}` |
+| POST | `/api/admin/roles` | Bearer + `ROLE_MANAGE` | — | `{code, name}` | `201 role` |
+| GET | `/api/admin/roles/{code}` | Bearer + `ROLE_READ` | — | — | `200 {role, permissions[]}` (matriks) |
+| DELETE | `/api/admin/roles/{code}` | Bearer + `ROLE_MANAGE` | — | — | `200` (gagal bila role dipakai user) |
+| GET | `/api/admin/permissions` | Bearer + `ROLE_READ` | — | — | `200 [...]` (18 permission per grup) |
+| PUT | `/api/admin/roles/{code}/permissions` | Bearer + `PERMISSION_ASSIGN` | — | `{permissions:[...]}` | `200` (replace atomik) |
+| GET | `/api/admin/sessions` | Bearer | — | — | sesi login milik sendiri |
+| GET | `/api/admin/sessions/all?limit=&offset=` | Bearer + `SESSION_MANAGE` | — | — | semua sesi aktif |
+| DELETE | `/api/admin/sessions/{id}` | Bearer (pemilik/`SESSION_MANAGE`) | — | — | `200` |
+| GET | `/api/admin/audit?action=&entity=&actor=` | Bearer + `AUDIT_READ` | — | — | jejak aksi + IP |
+| GET | `/api/admin/security/summary` | Bearer + `SECURITY_READ` | — | — | 6 angka ringkasan |
+| GET | `/api/admin/syslogs?level=` | Bearer + `SYSLOG_READ` | — | — | `ERROR/WARN/INFO` |
+| DELETE | `/api/admin/syslogs?days=` | Bearer + `SYSLOG_MANAGE` | — | — | `{deleted}` |
+| GET | `/api/admin/notifications/templates` | Bearer + `NOTIF_READ` | — | — | template + `{{var}}` |
+| POST/PUT/DELETE | `/api/admin/notifications/templates…` | Bearer + `NOTIF_MANAGE` | — | `{name,channel,subject,body,is_active}` | CRUD template |
+| POST | `/api/admin/notifications/send` | Bearer + `NOTIF_SEND` | — | `{template_code,recipient,variables}` | `201` + tercatat di log |
+| GET | `/api/admin/notifications/logs` | Bearer + `NOTIF_READ` | — | — | riwayat kirim |
 
 Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 (maks 254, disimpan lowercase), password 8–72 byte. Semua error: JSON
@@ -539,7 +587,7 @@ Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 | `task tray` | Build + jalan background (`--hide`) | Pakai harian di Windows |
 | `task stop` | Hentikan app background | — |
 | `task watch` | Auto-rebuild tiap ada file berubah | Demo / iterasi prod-like |
-| `task migrate` | Terapkan `scripts/migrate.sql` ke SQL Server | Setelah pull / untuk DB lama (`users` → `CPUSER` + seed `CPROLE`) |
+| `task migrate` | Terapkan `scripts/migrate.sql` + `migrate2_rbac.sql` berurutan | Setelah pull / untuk DB lama (CP* + RBAC + audit + notif seed) |
 | `task test` | `go vet` + `go test -race ./...` | Sebelum commit |
 | `task lint-frontend` | `oxlint` | Sebelum commit |
 | `task install` | `npm ci` di frontend | Sinkron dep frontend |
