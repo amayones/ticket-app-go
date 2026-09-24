@@ -70,10 +70,6 @@ export default function Roles() {
   }, [selected])
 
   const grouped = useMemo(() => groupPermissions(perms), [perms])
-  const dirty = useMemo(() => {
-    // Bandingkan sederhana via join terurut (cukup untuk UI).
-    return false
-  }, [])
 
   async function save() {
     setSaving(true)
@@ -249,7 +245,7 @@ export default function Roles() {
             )
           })}
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Tercatat {checked.length} dari {perms.length} permission. {dirty ? '' : ''}
+            Tercatat {checked.length} dari {perms.length} permission.
           </p>
         </Card>
       )}
