@@ -77,7 +77,7 @@
   animation: ui-shimmer 1.4s ease infinite;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .skeleton-shimmer {
     background: linear-gradient(
       90deg,
