@@ -10,7 +10,7 @@ export async function getUser(code) {
   return request(`/api/users/${code}`, { auth: true })
 }
 
-// Tambah user hanya oleh admin (butuh USER_CREATE). Tanpa registrasi publik.
+// Tambah user dari menu User Account. Akses menu diberikan oleh permission.
 export async function createUser(username, email, password, roleCode) {
   const body = { username, email, password }
   if (roleCode) body.role_code = roleCode
