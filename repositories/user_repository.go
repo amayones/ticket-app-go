@@ -23,7 +23,9 @@ type UserRepositoryInterface interface {
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	Create(ctx context.Context, user *models.User) error
 	Update(ctx context.Context, user *models.User) error
+	UpdateRole(ctx context.Context, code, roleCode string) error
 	Delete(ctx context.Context, code string) error
+	Count(ctx context.Context) (int, error)
 }
 
 type UserRepository struct {
@@ -126,6 +128,32 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (r *UserRepository) UpdateRole(ctx context.Context, code, roleCode string) error {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE dbo.CPUSER SET ROLE_CODE = @p1, UPDATED_AT = GETDATE() WHERE CODE = @p2`, roleCode, code)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (r *UserRepository) Count(ctx context.Context) (int, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dbo.CPUSER`).Scan(&n)
+	return n, err
 }
 
 func (r *UserRepository) Delete(ctx context.Context, code string) error {
