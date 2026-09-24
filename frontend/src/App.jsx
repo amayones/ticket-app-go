@@ -71,7 +71,7 @@ function Shell() {
   // Halaman login fokus: tanpa navbar, kartu di tengah layar.
   if (!loggedIn) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-zinc-100 px-4 py-10 dark:bg-zinc-950">
+      <div className="anim-boot flex min-h-screen w-full items-center justify-center bg-zinc-100 px-4 py-10 dark:bg-zinc-950">
         <div className="w-full max-w-sm">
           <LoginForm onDone={handleAuth} />
           <p className="mt-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
@@ -83,15 +83,16 @@ function Shell() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      {/* Sidebar (desktop) — bisa dilipat via tombol chevron */}
+    <div className="anim-boot flex min-h-screen w-full bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      {/* Sidebar (desktop) — bisa dilipat via tombol chevron.
+          Hanya lebar yang ditransisikan (bukan all) agar tidak bergetar. */}
       <aside
-        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white p-3 transition-all duration-200 md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
+        className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden border-r border-zinc-200 bg-white p-3 transition-[width] duration-200 ease-out md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
           collapsed ? 'w-[76px]' : 'w-60'
         }`}
       >
-        <div className="flex items-center gap-1 px-1 pb-4">
-          <span className="flex flex-1 items-center gap-2 text-base font-bold tracking-tight">
+        <div className={`flex pb-4 ${collapsed ? 'flex-col items-center gap-2 px-0' : 'items-center gap-1 px-1'}`}>
+          <span className={`flex items-center gap-2 text-base font-bold tracking-tight ${collapsed ? '' : 'flex-1'}`}>
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 text-sm text-white">
               G
             </span>
@@ -102,7 +103,7 @@ function Shell() {
             onClick={toggleSidebar}
             title={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
             aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-            className="shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            className="shrink-0 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
           >
             <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} className="h-5 w-5" />
           </button>
@@ -114,7 +115,7 @@ function Shell() {
               type="button"
               title={n.label}
               onClick={() => setView(n.key)}
-              className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+              className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                 collapsed ? 'justify-center' : ''
               } ${
                 activeNav === n.key
@@ -194,14 +195,17 @@ function Shell() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-5xl flex-1 px-3 py-4 transition-all duration-200 sm:px-4 sm:py-6">
-          {activeNav === 'users' && <UsersList onAccountDeleted={handleAccountDeleted} />}
-          {activeNav === 'roles' && isAdmin && <Roles />}
-          {activeNav === 'sessions' && <Sessions />}
-          {activeNav === 'audit' && isAdmin && <Audit />}
-          {activeNav === 'security' && isAdmin && <Security />}
-          {activeNav === 'syslog' && isAdmin && <Syslog />}
-          {activeNav === 'notif' && isAdmin && <Notifications />}
+        <main className="mx-auto w-full max-w-5xl flex-1 px-3 py-4 sm:px-4 sm:py-6">
+          {/* key memicu animasi masuk yang halus tiap ganti menu */}
+          <div key={activeNav} className="anim-page-in">
+            {activeNav === 'users' && <UsersList onAccountDeleted={handleAccountDeleted} />}
+            {activeNav === 'roles' && isAdmin && <Roles />}
+            {activeNav === 'sessions' && <Sessions />}
+            {activeNav === 'audit' && isAdmin && <Audit />}
+            {activeNav === 'security' && isAdmin && <Security />}
+            {activeNav === 'syslog' && isAdmin && <Syslog />}
+            {activeNav === 'notif' && isAdmin && <Notifications />}
+          </div>
         </main>
         <footer className="border-t border-zinc-200 py-3 text-center text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
           Go Core — Go + React dalam satu binary
