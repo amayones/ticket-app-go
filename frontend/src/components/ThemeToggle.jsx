@@ -15,7 +15,6 @@ export default function ThemeToggle({ className = '' }) {
     <button
       type="button"
       onClick={toggle}
-      title={dark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
       aria-label={dark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
       className={`rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 ${className}`}
     >
