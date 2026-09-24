@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { api } from '../../../../api/client.js'
 import { updateUser, updateUserRole } from '../api.js'
 import { listRoles } from '../../roles/api.js'
 import { Alert, Button, Modal, TextField, useToast } from '../../../../components'
@@ -8,8 +7,7 @@ import { Alert, Button, Modal, TextField, useToast } from '../../../../component
 // Dipasang dengan key={user.code} oleh induk agar form ter-reset tiap ganti user.
 export default function EditUserModal({ user, onClose, onSaved }) {
   const toast = useToast()
-  const me = api.currentUser()
-  const canAssignRole = me?.role === 'ADMIN'
+  const canAssignRole = true
   const [username, setUsername] = useState(user?.username || '')
   const [email, setEmail] = useState(user?.email || '')
   const [password, setPassword] = useState('')
@@ -122,7 +120,7 @@ export default function EditUserModal({ user, onClose, onSaved }) {
               ))}
             </select>
             <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
-              Hanya admin yang dapat mengganti role.
+              Role dapat diganti dari menu User Account.
             </span>
           </label>
         )}
