@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { api } from './api/client.js'
-import { Badge, Button, Icon, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
+import { useEffect, useState } from 'react'
+import { api, onSessionExpired } from './api/client.js'
+import { Alert, Badge, Button, Icon, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
 import { menusForRole } from './menus/registry.js'
 import { LoginForm } from './pages/Auth.jsx'
 
@@ -19,26 +19,65 @@ function Shell() {
   const [view, setView] = useState(api.isLoggedIn() ? 'dashboard' : 'login')
   const [loggedIn, setLoggedIn] = useState(api.isLoggedIn())
   const [collapsed, setCollapsed] = useState(sidebarPref)
-  const me = api.currentUser()
+  // Popup login ulang saat sesi habis: tampil di atas halaman terakhir,
+  // tanpa pindah ke halaman login. sessionTick memaksa Active remount
+  // agar data dimuat ulang dengan token baru setelah login sukses.
+  const [sessionExpired, setSessionExpired] = useState(false)
+  const [sessionTick, setSessionTick] = useState(0)
+  // Cache identitas terakhir agar sidebar/halaman tidak lompat saat token
+  // sudah dibersihkan (api.currentUser() -> null) tapi popup belum ditutup.
+  const [lastMe, setLastMe] = useState(() => api.currentUser())
+  const me = api.currentUser() || (sessionExpired ? lastMe : null)
   const isAdmin = me?.role === 'ADMIN'
   const visibleMenus = menusForRole(me?.role)
   const activeMenu = visibleMenus.find((m) => m.key === view) || visibleMenus[0] || null
   const Active = activeMenu?.Component || null
 
+  useEffect(() => {
+    if (!loggedIn) return
+    return onSessionExpired(() => {
+      setSessionExpired(true)
+      toast.warning('Sesi Anda telah berakhir. Silakan login kembali.', { title: 'Sesi habis' })
+    })
+  }, [loggedIn, toast])
+
   async function logout() {
     await api.logout()
+    setSessionExpired(false)
+    setLastMe(null)
     setLoggedIn(false)
     setView('login')
     toast.info('Anda telah keluar. Sampai jumpa!')
   }
 
   function handleAuth() {
+    setLastMe(api.currentUser())
     setLoggedIn(true)
     setView('dashboard')
     toast.success('Selamat datang kembali!')
   }
 
+  // Login ulang dari popup sesi-habis: tetap di halaman terakhir (view
+  // tidak diubah), cukup tutup popup + muat ulang konten dengan token baru.
+  function handleRelogin() {
+    setLastMe(api.currentUser())
+    setSessionExpired(false)
+    setLoggedIn(true)
+    setSessionTick((t) => t + 1)
+    toast.success('Sesi dipulihkan. Selamat melanjutkan!')
+  }
+
+  // Keluar penuh dari popup (misal ingin ganti akun): kembali ke halaman login.
+  function handleSwitchAccount() {
+    setSessionExpired(false)
+    setLastMe(null)
+    setLoggedIn(false)
+    setView('login')
+  }
+
   function handleAccountDeleted() {
+    setSessionExpired(false)
+    setLastMe(null)
     setLoggedIn(false)
     setView('login')
     toast.warning('Akun Anda telah dihapus.', { title: 'Akun dihapus' })
@@ -221,8 +260,9 @@ function Shell() {
         </header>
 
         <main className="mx-auto w-full max-w-5xl flex-1 px-3 py-4 sm:px-4 sm:py-6">
-          {/* key memicu animasi masuk yang halus tiap ganti menu */}
-          <div key={activeMenu?.key || 'empty'} className="anim-page-in">
+          {/* key memicu animasi masuk yang halus tiap ganti menu;
+              sessionTick memaksa muat ulang setelah login dari popup sesi-habis */}
+          <div key={`${activeMenu?.key || 'empty'}-${sessionTick}`} className="anim-page-in">
             {Active && (
               <Active onNavigate={setView} onAccountDeleted={handleAccountDeleted} />
             )}
@@ -232,6 +272,28 @@ function Shell() {
           Go Core — Go + React dalam satu binary
         </footer>
       </div>
+
+      {/* Popup wajib saat sesi habis: tetap di halaman terakhir, tidak boleh
+          di-skip (tanpa × / backdrop / ESC). Login sukses -> lanjut di tempat. */}
+      <Modal
+        open={sessionExpired}
+        title="Sesi berakhir — login lagi"
+        size="sm"
+        showClose={false}
+        closeOnBackdrop={false}
+        footer={
+          <Button variant="secondary" size="sm" onClick={handleSwitchAccount}>
+            Ganti akun
+          </Button>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Alert tone="warning" title="Sesi habis">
+            Sesi Anda telah berakhir. Login kembali untuk melanjutkan tanpa kehilangan halaman ini.
+          </Alert>
+          <LoginForm onDone={handleRelogin} />
+        </div>
+      </Modal>
     </div>
   )
 }
