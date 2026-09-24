@@ -75,8 +75,8 @@ export const api = {
   currentUser() {
     if (!store.access) return null
     const claims = parseJwt(store.access)
-    if (!claims || !claims.user_id) return null
-    return { id: claims.user_id, username: claims.username || '' }
+    if (!claims || !claims.user_code) return null
+    return { code: claims.user_code, username: claims.username || '', role: claims.role || '' }
   },
   async register(username, email, password) {
     return request('/api/users', { method: 'POST', body: { username, email, password } })
@@ -99,18 +99,21 @@ export const api = {
     const data = await request(`/api/users?limit=${limit}&offset=${offset}`, { auth: true })
     return Array.isArray(data) ? data : []
   },
-  async getUser(id) {
-    return request(`/api/users/${id}`, { auth: true })
+  async getUser(code) {
+    return request(`/api/users/${code}`, { auth: true })
   },
   // Patch parsial: kirim hanya field yang berubah { username?, email?, password? }.
-  async updateUser(id, patch) {
-    return request(`/api/users/${id}`, { method: 'PUT', body: patch, auth: true })
+  async updateUser(code, patch) {
+    return request(`/api/users/${code}`, { method: 'PUT', body: patch, auth: true })
   },
-  async deleteUser(id) {
-    return request(`/api/users/${id}`, { method: 'DELETE', auth: true })
+  async deleteUser(code) {
+    return request(`/api/users/${code}`, { method: 'DELETE', auth: true })
   },
-  async logoutAll(id) {
-    return request(`/api/users/${id}/logout-all`, { method: 'POST', auth: true })
+  async logoutAll(code) {
+    return request(`/api/users/${code}/logout-all`, { method: 'POST', auth: true })
+  },
+  async listRoles() {
+    return request('/api/roles', { auth: true })
   },
   async health() {
     return request('/healthz')
