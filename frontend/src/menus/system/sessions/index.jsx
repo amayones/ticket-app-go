@@ -32,7 +32,7 @@ function formatTime(iso) {
 export default function Sessions() {
   const toast = useToast()
   const me = api.currentUser()
-  const isAdmin = me?.role === 'ADMIN'
+  const canViewAll = true
   const [tab, setTab] = useState('mine')
   const [sessions, setSessions] = useState([])
   const [offset, setOffset] = useState(0)
@@ -45,7 +45,7 @@ export default function Sessions() {
     setLoading(true)
     setError('')
     try {
-      if (tab === 'all' && isAdmin) {
+      if (tab === 'all' && canViewAll) {
         setSessions(await listAllSessions(PAGE_SIZE, offset))
       } else {
         setSessions(await listMySessions())
@@ -55,7 +55,7 @@ export default function Sessions() {
     } finally {
       setLoading(false)
     }
-  }, [tab, offset, isAdmin])
+  }, [tab, offset, canViewAll])
 
   useEffect(() => {
     load()
@@ -102,7 +102,7 @@ export default function Sessions() {
         </div>
 
         <div className="mb-4 flex gap-1.5 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
-          {['mine', ...(isAdmin ? ['all'] : [])].map((t) => (
+           {['mine', ...(canViewAll ? ['all'] : [])].map((t) => (
             <button
               key={t}
               type="button"
