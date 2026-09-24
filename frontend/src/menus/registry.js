@@ -3,7 +3,7 @@
 //
 // | Folder | Dilihat oleh |
 // |--------|--------------|
-// | `menus/admin/<menu>/` | role `ADMIN` saja (difilter oleh permission) |
+// | `menus/admin/<menu>/` | role `ADMIN` saja |
 // | `menus/user/<menu>/`  | Semua role yang memiliki permission menunya |
 //
 // Meta opsional di index.jsx: export const meta = { label, icon, order }.
