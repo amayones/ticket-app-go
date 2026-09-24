@@ -46,7 +46,7 @@ const (
 type UserServiceInterface interface {
 	ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error)
 	GetUserByCode(ctx context.Context, code string) (*models.User, error)
-	CreateUser(ctx context.Context, username, email, password string) (string, error)
+	CreateUser(ctx context.Context, username, email, password, roleCode string) (string, error)
 	UpdateUser(ctx context.Context, code string, input models.UpdateUserRequest) error
 	DeleteUser(ctx context.Context, code string) error
 	Login(ctx context.Context, username, password string) (accessToken, refreshToken string, err error)
@@ -177,11 +177,20 @@ func (s *UserService) GetUserByCode(ctx context.Context, code string) (*models.U
 	return user, nil
 }
 
-func (s *UserService) CreateUser(ctx context.Context, username, email, password string) (string, error) {
+func (s *UserService) CreateUser(ctx context.Context, username, email, password, roleCode string) (string, error) {
 	username = utils.NormalizeUsername(username)
 	email = utils.NormalizeEmail(email)
 	if err := s.validateUserInput(username, email, password); err != nil {
 		return "", err
+	}
+	roleCode = strings.ToUpper(strings.TrimSpace(roleCode))
+	if roleCode == "" {
+		roleCode = models.DefaultRoleCode
+	} else if _, err := s.roles.GetByCode(ctx, roleCode); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", errors.New("role not found")
+		}
+		return "", fmt.Errorf("check role: %w", err)
 	}
 	// Pre-check for friendlier errors (DB constraint remains source of truth).
 	if _, err := s.users.GetByUsername(ctx, username); err == nil {
@@ -207,7 +216,7 @@ func (s *UserService) CreateUser(ctx context.Context, username, email, password 
 		Username: username,
 		Email:    email,
 		Password: hashed,
-		RoleCode: models.DefaultRoleCode,
+		RoleCode: roleCode,
 	}
 	if err := s.users.Create(ctx, user); err != nil {
 		return "", s.mapDBError(err)
