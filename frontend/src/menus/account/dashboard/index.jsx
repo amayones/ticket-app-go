@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../api/client.js'
-import { updateUser } from '../../admin/users/api.js'
-import { securitySummary } from '../../admin/security/api.js'
+import { updateUser } from '../../system/users/api.js'
+import { securitySummary } from '../../system/security/api.js'
 
 export const meta = { label: 'Dashboard', icon: 'home', order: 0 }
 import {
