@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -228,25 +229,34 @@ func (h *Handler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
-	code, _ := middleware.GetUserCode(r)
-	user, err := h.Service.GetUserByCode(r.Context(), code)
-	if err != nil {
-		h.handleServiceError(w, err)
+	code, ok := middleware.GetUserCode(r)
+	if !ok {
+		web.WriteError(w, http.StatusUnauthorized, "Missing user code")
 		return
 	}
-	perms, err := h.Perms.GetRolePermissions(r.Context(), user.RoleCode)
-	if err != nil {
-		h.handleServiceError(w, err)
-		return
-	}
+	roleCode := middleware.GetUserRole(r)
 	resp := models.MeResponse{
-		Code:        user.Code,
-		Username:    user.Username,
-		Email:       user.Email,
-		Role:        user.RoleCode,
-		RoleCode:    user.RoleCode,
-		RoleName:    user.RoleName,
-		Permissions: perms,
+		Code:     code,
+		Role:     roleCode,
+		RoleCode: roleCode,
 	}
+	user, err := h.Service.GetUserByCode(r.Context(), code)
+	if err != nil && !errors.Is(err, services.ErrUserNotFound) {
+		h.handleServiceError(w, err)
+		return
+	}
+	if user != nil {
+		resp.Username = user.Username
+		resp.Email = user.Email
+		resp.Role = user.RoleCode
+		resp.RoleCode = user.RoleCode
+		resp.RoleName = user.RoleName
+	}
+	perms, err := h.Perms.GetRolePermissions(r.Context(), resp.RoleCode)
+	if err != nil {
+		h.handleServiceError(w, err)
+		return
+	}
+	resp.Permissions = perms
 	web.WriteJSON(w, http.StatusOK, resp)
 }
