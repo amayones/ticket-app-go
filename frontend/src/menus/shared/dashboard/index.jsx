@@ -30,7 +30,8 @@ export default function Dashboard({ onNavigate }) {
   const [profile, setProfile] = useState(null)
   const [sessionCount, setSessionCount] = useState(0)
   const [summary, setSummary] = useState(null)
-  const [backendOk, setBackendOk] = useState(false)
+  // Status backend 3 state: null = masih mengecek, true = online, false = bermasalah.
+  const [backendOk, setBackendOk] = useState(null)
   const [loading, setLoading] = useState(true)
   const showLoading = useSmoothLoading(loading)
   const [error, setError] = useState('')
@@ -39,19 +40,25 @@ export default function Dashboard({ onNavigate }) {
   const [passError, setPassError] = useState('')
   const [savingPass, setSavingPass] = useState(false)
 
+  // Cek backend dipisah agar kegagalan data lain tak mengaburkan statusnya.
+  const checkBackend = useCallback(async () => {
+    try {
+      await api.health()
+      setBackendOk(true)
+    } catch {
+      setBackendOk(false)
+    }
+  }, [])
+
   const load = useCallback(async () => {
     if (!me) return
     setLoading(true)
     setError('')
+    checkBackend()
     try {
-      const [user, sessions, health] = await Promise.all([
-        getUser(me.code),
-        listMySessions(),
-        api.health().catch(() => null),
-      ])
+      const [user, sessions] = await Promise.all([getUser(me.code), listMySessions()])
       setProfile(user)
       setSessionCount(Array.isArray(sessions) ? sessions.length : 0)
-      setBackendOk(!!health)
       if (isAdmin) {
         setSummary(await securitySummary().catch(() => null))
       }
@@ -60,7 +67,7 @@ export default function Dashboard({ onNavigate }) {
     } finally {
       setLoading(false)
     }
-  }, [isAdmin, me])
+  }, [isAdmin, me, checkBackend])
 
   useEffect(() => {
     load()
@@ -119,8 +126,8 @@ export default function Dashboard({ onNavigate }) {
             <p className="flex flex-wrap items-center gap-2 text-base font-bold text-zinc-900 dark:text-zinc-50">
               <span className="truncate">@{profile?.username || me?.username}</span>
               <Badge tone={isAdmin ? 'danger' : 'brand'}>{profile?.role_code || me?.role}</Badge>
-              <Badge tone={backendOk ? 'success' : 'neutral'}>
-                {backendOk ? 'Backend online' : 'Backend?'}
+              <Badge tone={backendOk === true ? 'success' : backendOk === false ? 'danger' : 'neutral'}>
+                {backendOk === true ? 'Backend online' : backendOk === false ? 'Backend bermasalah' : 'Mengecek backend…'}
               </Badge>
             </p>
             <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
