@@ -92,9 +92,9 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 		r.With(auth).Get("/roles", d.Roles.ListRoles)
 		r.Route("/users", func(r chi.Router) {
 			r.With(auth).Get("/me", d.Users.GetMe)
-			r.With(auth, need(models.MenuUsers)).Post("/", d.Users.CreateUser)
-			r.With(auth).Get("/", d.Users.GetUsers)
-			r.With(auth).Get("/{code}", d.Users.GetUserByCode)
+			r.With(auth, adminOnly, need(models.MenuUsers)).Post("/", d.Users.CreateUser)
+			r.With(auth, adminOnly, need(models.MenuUsers)).Get("/", d.Users.GetUsers)
+			r.With(auth, adminOnly, need(models.MenuUsers)).Get("/{code}", d.Users.GetUserByCode)
 			r.With(auth).Put("/{code}", d.Users.UpdateUser)
 			r.With(auth).Delete("/{code}", d.Users.DeleteUser)
 			r.With(auth).Post("/{code}/logout-all", d.Users.LogoutAll)
@@ -109,9 +109,9 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 			r.With(auth, adminOnly, need(models.MenuRoles)).Get("/permissions", d.Roles.ListPermissions)
 			r.With(auth, adminOnly, need(models.MenuRoles)).Put("/roles/{code}/permissions", d.Roles.SetRolePermissions)
 			// Menu: sessions.
-			r.With(auth, adminOnly).Get("/sessions", d.Sessions.ListMySessions)
+			r.With(auth, adminOnly, need(models.MenuSessions)).Get("/sessions", d.Sessions.ListMySessions)
 			r.With(auth, adminOnly, need(models.MenuSessions)).Get("/sessions/all", d.Sessions.ListAllSessions)
-			r.With(auth, adminOnly).Delete("/sessions/{id}", d.Sessions.RevokeSession)
+			r.With(auth, adminOnly, need(models.MenuSessions)).Delete("/sessions/{id}", d.Sessions.RevokeSession)
 			// Menu: audit.
 			r.With(auth, adminOnly, need(models.MenuAudit)).Get("/audit", d.Audit.ListAudit)
 			// Menu: security.
