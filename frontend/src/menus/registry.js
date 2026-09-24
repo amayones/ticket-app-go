@@ -48,7 +48,8 @@ export function allMenus() {
 
 // Menu untuk satu role + permission:
 // - ADMIN: melihat semua menu.
-// - Role lain: hanya menu yang permission-nya diberikan.
+// - Role lain: hanya menu yang permission-nya diberikan; satu permission
+//   memberi akses ke seluruh fungsi menu tersebut.
 export function menusForRole(role, permissions = []) {
   if ((role || '').toUpperCase() === 'ADMIN') return ALL_MENUS
 
