@@ -1,22 +1,16 @@
-package repositories
+package users
 
 import (
 	"context"
 	"database/sql"
-	"time"
 
 	"golang-backend/models"
+	"golang-backend/repositories"
 )
 
-const (
-	DefaultListLimit = 50
-	MaxListLimit     = 200
-	queryTimeout     = 5 * time.Second
-)
-
-// UserRepositoryInterface is the contract services depend on (mockable).
+// RepositoryInterface is the contract services depend on (mockable).
 // Identity is the public CODE (CPUSER.CODE); numeric IDs never leave the DB.
-type UserRepositoryInterface interface {
+type RepositoryInterface interface {
 	List(ctx context.Context, limit, offset int) ([]models.User, error)
 	GetByCode(ctx context.Context, code string) (*models.User, error)
 	GetByUsername(ctx context.Context, username string) (*models.User, error)
@@ -29,22 +23,18 @@ type UserRepositoryInterface interface {
 	CountByRole(ctx context.Context, roleCode string) (int, error)
 }
 
-type UserRepository struct {
+type Repository struct {
 	db      *sql.DB
-	dialect Dialect
+	dialect repositories.Dialect
 }
 
-func NewUserRepository(db *sql.DB, dialect Dialect) UserRepositoryInterface {
-	return &UserRepository{db: db, dialect: dialect}
-}
-
-func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(ctx, queryTimeout)
+func NewRepository(db *sql.DB, dialect repositories.Dialect) RepositoryInterface {
+	return &Repository{db: db, dialect: dialect}
 }
 
 const userColumns = `u.CODE, u.USERNAME, u.EMAIL, u.PASSWORD, u.ROLE_CODE, r.NAME, u.CREATED_AT, u.UPDATED_AT`
 
-func (r *UserRepository) userFrom() string {
+func (r *Repository) userFrom() string {
 	return `FROM ` + r.dialect.Table("CPUSER") + ` u JOIN ` +
 		r.dialect.Table("CPROLE") + ` r ON r.CODE = u.ROLE_CODE`
 }
@@ -65,25 +55,25 @@ func scanUser(row interface {
 }
 
 // List returns users without password hashes, paginated (DoS-safe).
-func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]models.User, error) {
+func (r *Repository) List(ctx context.Context, limit, offset int) ([]models.User, error) {
 	if limit <= 0 {
-		limit = DefaultListLimit
+		limit = repositories.DefaultListLimit
 	}
-	if limit > MaxListLimit {
-		limit = MaxListLimit
+	if limit > repositories.MaxListLimit {
+		limit = repositories.MaxListLimit
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	ctx, cancel := withTimeout(ctx)
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `SELECT ` + userColumns + ` ` + r.userFrom() + ` ORDER BY u.ID DESC `
 	var args []any
-	if r.dialect == DialectMSSQL {
-		query += pageMSSQL()
+	if r.dialect == repositories.DialectMSSQL {
+		query += repositories.PageMSSQL()
 		args = []any{offset, limit}
 	} else {
-		query += pageStd()
+		query += repositories.PageStd()
 		args = []any{limit, offset}
 	}
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), args...)
@@ -106,8 +96,8 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]models.
 	return users, nil
 }
 
-func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Create(ctx context.Context, user *models.User) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `INSERT INTO ` + r.dialect.Table("CPUSER") + `
 		(CODE, USERNAME, EMAIL, PASSWORD, ROLE_CODE)
@@ -117,8 +107,8 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	return err
 }
 
-func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Update(ctx context.Context, user *models.User) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `UPDATE ` + r.dialect.Table("CPUSER") + `
 		SET USERNAME = ?, EMAIL = ?, PASSWORD = ?, UPDATED_AT = ` + r.dialect.Now() + `
@@ -138,8 +128,8 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return nil
 }
 
-func (r *UserRepository) UpdateRole(ctx context.Context, code, roleCode string) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) UpdateRole(ctx context.Context, code, roleCode string) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `UPDATE ` + r.dialect.Table("CPUSER") + ` SET ROLE_CODE = ?, UPDATED_AT = ` +
 		r.dialect.Now() + ` WHERE CODE = ?`
@@ -157,8 +147,8 @@ func (r *UserRepository) UpdateRole(ctx context.Context, code, roleCode string) 
 	return nil
 }
 
-func (r *UserRepository) Delete(ctx context.Context, code string) error {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Delete(ctx context.Context, code string) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `DELETE FROM ` + r.dialect.Table("CPUSER") + ` WHERE CODE = ?`
 	res, err := r.db.ExecContext(ctx, r.dialect.Bind(query), code)
@@ -175,8 +165,8 @@ func (r *UserRepository) Delete(ctx context.Context, code string) error {
 	return nil
 }
 
-func (r *UserRepository) userBy(ctx context.Context, where string, arg any) (*models.User, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) userBy(ctx context.Context, where string, arg any) (*models.User, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `SELECT ` + userColumns + ` ` + r.userFrom() + ` WHERE ` + where
 	var user models.User
@@ -186,20 +176,20 @@ func (r *UserRepository) userBy(ctx context.Context, where string, arg any) (*mo
 	return &user, nil
 }
 
-func (r *UserRepository) GetByCode(ctx context.Context, code string) (*models.User, error) {
+func (r *Repository) GetByCode(ctx context.Context, code string) (*models.User, error) {
 	return r.userBy(ctx, `u.CODE = ?`, code)
 }
 
-func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+func (r *Repository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
 	return r.userBy(ctx, `u.USERNAME = ?`, username)
 }
 
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
+func (r *Repository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	return r.userBy(ctx, `u.EMAIL = ?`, email)
 }
 
-func (r *UserRepository) Count(ctx context.Context) (int, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) Count(ctx context.Context) (int, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx,
@@ -207,8 +197,8 @@ func (r *UserRepository) Count(ctx context.Context) (int, error) {
 	return n, err
 }
 
-func (r *UserRepository) CountByRole(ctx context.Context, roleCode string) (int, error) {
-	ctx, cancel := withTimeout(ctx)
+func (r *Repository) CountByRole(ctx context.Context, roleCode string) (int, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
