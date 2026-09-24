@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from './api/client.js'
-import { Badge, Button, Icon, ThemeToggle, ToastProvider, useToast } from './components'
+import { Badge, Button, Icon, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
 import { LoginForm } from './pages/Auth.jsx'
 import Audit from './pages/Audit.jsx'
 import Notifications from './pages/Notifications.jsx'
@@ -87,46 +87,58 @@ function Shell() {
       {/* Sidebar (desktop) — bisa dilipat via tombol chevron.
           Hanya lebar yang ditransisikan (bukan all) agar tidak bergetar. */}
       <aside
-        className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden border-r border-zinc-200 bg-white p-3 transition-[width] duration-200 ease-out md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
-          collapsed ? 'w-[76px]' : 'w-60'
+        className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden border-r border-zinc-200 bg-white transition-[width,padding] duration-200 ease-out md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
+          collapsed ? 'w-[76px] p-2' : 'w-60 p-3'
         }`}
       >
-        <div className={`flex pb-4 ${collapsed ? 'flex-col items-center gap-2 px-0' : 'items-center gap-1 px-1'}`}>
-          <span className={`flex items-center gap-2 text-base font-bold tracking-tight ${collapsed ? '' : 'flex-1'}`}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 text-sm text-white">
+        {/* Header selalu sebaris: logo + tombol di kanannya, muat di 76px. */}
+        <div className={`flex items-center pb-4 ${collapsed ? 'gap-1 px-0' : 'gap-1 px-1'}`}>
+          <span className={`flex items-center gap-2 text-sm font-bold tracking-tight ${collapsed ? '' : 'flex-1'}`}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
               G
             </span>
             {!collapsed && <span className="truncate">Go Core</span>}
           </span>
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            title={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-            aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-            className="shrink-0 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-          >
-            <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} className="h-5 w-5" />
-          </button>
-        </div>
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
-          {visibleNav.map((n) => (
+          <Tooltip label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'} position="right">
             <button
-              key={n.key}
               type="button"
-              title={n.label}
-              onClick={() => setView(n.key)}
-              className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                collapsed ? 'justify-center' : ''
-              } ${
-                activeNav === n.key
-                  ? 'bg-violet-600 text-white shadow-sm'
-                  : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
+              onClick={toggleSidebar}
+              aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+              className={`shrink-0 rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 ${
+                collapsed ? 'p-1' : 'p-1.5'
               }`}
             >
-              <Icon name={n.icon} className="h-5 w-5 shrink-0" />
-              {!collapsed && <span className="truncate">{n.label}</span>}
+              <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} className={collapsed ? 'h-4 w-4' : 'h-5 w-5'} />
             </button>
-          ))}
+          </Tooltip>
+        </div>
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
+          {visibleNav.map((n) => {
+            const btn = (
+              <button
+                key={n.key}
+                type="button"
+                onClick={() => setView(n.key)}
+                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-colors ${
+                  collapsed ? 'justify-center' : ''
+                } ${
+                  activeNav === n.key
+                    ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+                    : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
+                }`}
+              >
+                <Icon name={n.icon} className="h-5 w-5 shrink-0" />
+                {!collapsed && <span className="truncate">{n.label}</span>}
+              </button>
+            )
+            return collapsed ? (
+              <Tooltip key={n.key} label={n.label} position="right">
+                {btn}
+              </Tooltip>
+            ) : (
+              btn
+            )
+          })}
         </nav>
         <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
           {!collapsed && (
@@ -140,22 +152,25 @@ function Shell() {
           )}
           <div className={`flex items-center gap-1.5 ${collapsed ? 'flex-col' : ''}`}>
             {collapsed ? (
-              <button
-                type="button"
-                onClick={logout}
-                title="Logout"
-                aria-label="Logout"
-                className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-              >
-                <Icon name="logout" className="h-5 w-5" />
-              </button>
+              <Tooltip label="Logout" position="right">
+                <button
+                  type="button"
+                  onClick={logout}
+                  aria-label="Logout"
+                  className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                >
+                  <Icon name="logout" className="h-5 w-5" />
+                </button>
+              </Tooltip>
             ) : (
               <Button variant="secondary" size="sm" fullWidth onClick={logout}>
                 <Icon name="logout" className="h-4 w-4" />
                 Logout
               </Button>
             )}
-            <ThemeToggle />
+            <Tooltip label="Ganti tema" position="right">
+              <ThemeToggle />
+            </Tooltip>
           </div>
         </div>
       </aside>
