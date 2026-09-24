@@ -12,22 +12,6 @@ type PermissionChecker interface {
 	CheckPermission(ctx context.Context, userCode, permCode string) error
 }
 
-// RequireRole membatasi request berdasarkan role pada JWT (403 JSON).
-// Dipasang setelah NewAuth agar role tersedia di context.
-func RequireRole(role string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if GetUserRole(r) != role {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				_ = json.NewEncoder(w).Encode(map[string]string{"error": "forbidden: role " + role + " required"})
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // Dipasang setelah NewAuth agar user_code sudah ada di context.
 func RequirePermission(checker PermissionChecker, permCodes ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
