@@ -20,8 +20,8 @@ func newFakeRoleRepo() *fakeRoleRepo {
 			models.RoleUser:  {Code: models.RoleUser, Name: "Pengguna"},
 		},
 		perms: map[string][]string{
-			models.RoleAdmin: {models.PermUserRead},
-			models.RoleUser:  {models.PermUserRead},
+			models.RoleAdmin: {models.MenuDashboard, models.MenuUsers, models.MenuRoles, models.MenuSessions, models.MenuAudit, models.MenuSecurity, models.MenuSyslog, models.MenuNotifications},
+			models.RoleUser:  {models.MenuDashboard},
 		},
 	}
 }
@@ -60,7 +60,7 @@ func (f *fakeRoleRepo) Delete(ctx context.Context, code string) error {
 func (f *fakeRoleRepo) Count(ctx context.Context) (int, error) { return len(f.roles), nil }
 
 func (f *fakeRoleRepo) ListPermissions(ctx context.Context) ([]models.Permission, error) {
-	return []models.Permission{{Code: models.PermUserRead, Name: "Lihat user", Group: "USER"}}, nil
+	return []models.Permission{{Code: models.MenuDashboard, Name: "Lihat dashboard", Group: "MENU"}}, nil
 }
 
 func (f *fakeRoleRepo) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
@@ -123,10 +123,10 @@ func TestCheckPermission(t *testing.T) {
 	if err := svc.CheckPermission(ctx, "USR-ADMIN", "NGAWUR"); err != nil {
 		t.Fatalf("admin must pass all: %v", err)
 	}
-	if err := svc.CheckPermission(ctx, "USR-00001", models.PermUserRead); err != nil {
+	if err := svc.CheckPermission(ctx, "USR-00001", models.MenuDashboard); err != nil {
 		t.Fatalf("user read: %v", err)
 	}
-	if err := svc.CheckPermission(ctx, "USR-00001", models.PermAuditRead); err == nil {
+	if err := svc.CheckPermission(ctx, "USR-00001", models.MenuAudit); err == nil {
 		t.Fatal("expected forbidden for missing permission")
 	}
 }
@@ -137,7 +137,7 @@ func TestRoleLifecycle(t *testing.T) {
 	if _, err := svc.CreateRole(ctx, "editor", "Editor"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := svc.SetRolePermissions(ctx, "EDITOR", []string{models.PermUserRead}); err != nil {
+	if err := svc.SetRolePermissions(ctx, "EDITOR", []string{models.MenuDashboard}); err != nil {
 		t.Fatalf("set perms: %v", err)
 	}
 	if err := svc.UpdateUserRole(ctx, "USR-00001", "EDITOR"); err != nil {
