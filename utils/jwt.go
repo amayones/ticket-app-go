@@ -27,20 +27,22 @@ func ValidateSecret(secret string) error {
 	return nil
 }
 
-// GenerateAccessToken signs HS256 with iss/aud claims. Secret is injected
+// GenerateAccessToken signs HS256 with iss/aud claims. Identity is the
+// public user CODE (never the numeric ID). Secret is injected
 // (no utils->config import) so the package stays pure and testable.
-func GenerateAccessToken(secret string, userID int, username string) (string, error) {
+func GenerateAccessToken(secret, userCode, username, roleCode string) (string, error) {
 	if err := ValidateSecret(secret); err != nil {
 		return "", err
 	}
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"user_id":  userID,
-		"username": username,
-		"iss":      TokenIssuer,
-		"aud":      TokenIssuer,
-		"iat":      now.Unix(),
-		"exp":      now.Add(AccessTokenTTL).Unix(),
+		"user_code": userCode,
+		"username":  username,
+		"role":      roleCode,
+		"iss":       TokenIssuer,
+		"aud":       TokenIssuer,
+		"iat":       now.Unix(),
+		"exp":       now.Add(AccessTokenTTL).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
