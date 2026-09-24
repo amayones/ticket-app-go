@@ -77,14 +77,14 @@ SET p.NAME = v.NAME, p.PERMGROUP = v.PERMGROUP, p.DESCRIPTION = v.DESCRIPTION
 FROM dbo.CPPERMISSION p
 INNER JOIN @perms v ON v.CODE = p.CODE;
 
--- ADMIN = semua permission (tampil semua menu)
+-- ADMIN mendapat semua menu secara default.
 INSERT INTO dbo.CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
 SELECT N'ADMIN', CODE FROM dbo.CPPERMISSION
 WHERE NOT EXISTS (
   SELECT 1 FROM dbo.CPROLEPERMISSION x WHERE x.ROLE_CODE = N'ADMIN' AND x.PERMISSION_CODE = CPPERMISSION.CODE
 );
 
--- USER = hanya dashboard (tampil user/dashboard saja)
+-- USER mendapat Dashboard secara default; menu lain diberikan lewat matriks.
 INSERT INTO dbo.CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
 SELECT N'USER', CODE FROM (VALUES (N'MENU_DASHBOARD')) v(CODE)
 WHERE NOT EXISTS (
