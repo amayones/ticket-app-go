@@ -164,6 +164,9 @@ export default function UsersList({ onAccountDeleted }) {
           <ul className="flex flex-col gap-2.5">
             {users.map((u) => {
               const isMe = me?.code === u.code
+              // Admin boleh kelola semua akun; user biasa hanya akun sendiri
+              // (backend tetap menegakkan via requireSelfOrPerm).
+              const canAct = isMe || isAdmin
               return (
                 <li
                   key={u.code}
@@ -182,7 +185,7 @@ export default function UsersList({ onAccountDeleted }) {
                       <span className="font-mono">{u.code}</span> · {u.email}
                     </p>
                   </div>
-                  {isMe && (
+                  {canAct && (
                     <div className="flex shrink-0 items-center gap-1.5">
                       <Tooltip label="Edit profil">
                         <button
