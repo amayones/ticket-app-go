@@ -30,7 +30,7 @@ const PAGE_SIZE = 10
 export default function UsersList({ onAccountDeleted }) {
   const toast = useToast()
   const me = api.currentUser()
-  const isAdmin = me?.role === 'ADMIN'
+  const canManage = true
   const [users, setUsers] = useState([])
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -133,7 +133,7 @@ export default function UsersList({ onAccountDeleted }) {
             Daftar Pengguna
           </CardTitle>
           <div className="flex gap-2">
-            {isAdmin && (
+            {canManage && (
               <Button size="sm" onClick={openCreate}>
                 <Icon name="plus" className="h-4 w-4" />
                 Tambah User
@@ -168,9 +168,8 @@ export default function UsersList({ onAccountDeleted }) {
           <ul className="flex flex-col gap-2.5">
             {users.map((u) => {
               const isMe = me?.code === u.code
-              // Admin boleh kelola semua akun; user biasa hanya akun sendiri
-              // (backend tetap menegakkan via requireSelfOrPerm).
-              const canAct = isMe || isAdmin
+  // Menu ini sudah hanya tampil bila role memiliki MENU_USERS.
+  // Semua fungsi menu tersedia bagi role yang diberi akses.
               return (
                 <li
                   key={u.code}
@@ -189,7 +188,7 @@ export default function UsersList({ onAccountDeleted }) {
                       <span className="font-mono">{u.code}</span> · {u.email}
                     </p>
                   </div>
-                  {canAct && (
+                   {canManage && (
                     <div className="flex shrink-0 items-center gap-1.5">
                       <Tooltip label="Edit profil">
                         <button
