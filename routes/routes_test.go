@@ -79,7 +79,10 @@ func (s *stubRoles) GetRoleDetail(ctx context.Context, code string) (*models.Rol
 	return &models.RoleDetail{Role: models.Role{Code: code, Name: "Test"}, Permissions: []string{}}, nil
 }
 func (s *stubRoles) ListPermissions(ctx context.Context) ([]models.Permission, error) {
-	return []models.Permission{{Code: models.PermUserRead, Name: "Lihat user", Group: "USER"}}, nil
+	return []models.Permission{{Code: models.MenuDashboard, Name: "Lihat dashboard", Group: "MENU"}}, nil
+}
+func (s *stubRoles) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
+	return []string{models.MenuDashboard}, nil
 }
 func (s *stubRoles) SetRolePermissions(ctx context.Context, role string, perms []string) error {
 	return nil
@@ -261,11 +264,12 @@ func TestAdminRBAC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Own sessions: both roles may read.
-	for _, tok := range []string{adminTok, userTok} {
-		if rec := doReq(t, r, "GET", "/api/admin/sessions", "", tok); rec.Code != 200 {
-			t.Fatalf("own sessions must be 200, got %d (%s)", rec.Code, rec.Body.String())
-		}
+	// Sesi menu admin hanya bisa diakses role ADMIN.
+	if rec := doReq(t, r, "GET", "/api/admin/sessions", "", adminTok); rec.Code != 200 {
+		t.Fatalf("admin sessions must be 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if rec := doReq(t, r, "GET", "/api/admin/sessions", "", userTok); rec.Code != 403 {
+		t.Fatalf("user sessions must be 403, got %d", rec.Code)
 	}
 	adminPaths := []struct{ method, path, body string }{
 		{"GET", "/api/admin/permissions", ""},
@@ -278,7 +282,7 @@ func TestAdminRBAC(t *testing.T) {
 		{"GET", "/api/admin/notifications/logs", ""},
 		{"POST", "/api/users", `{"username":"budi","email":"b@x.com","password":"password123"}`},
 		{"POST", "/api/admin/roles", `{"code":"EDITOR","name":"Editor"}`},
-		{"PUT", "/api/admin/roles/EDITOR/permissions", `{"permissions":["USER_READ"]}`},
+		{"PUT", "/api/admin/roles/EDITOR/permissions", `{"permissions":["MENU_DASHBOARD"]}`},
 		{"POST", "/api/admin/notifications/send", `{"template_code":"NTM-1","recipient":"a@b.c"}`},
 	}
 	for _, p := range adminPaths {
