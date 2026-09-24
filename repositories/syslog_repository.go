@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"golang-backend/models"
 )
@@ -16,19 +17,22 @@ type SyslogRepositoryInterface interface {
 }
 
 type SyslogRepository struct {
-	db *sql.DB
+	db      *sql.DB
+	dialect Dialect
 }
 
-func NewSyslogRepository(db *sql.DB) SyslogRepositoryInterface {
-	return &SyslogRepository{db: db}
+func NewSyslogRepository(db *sql.DB, dialect Dialect) SyslogRepositoryInterface {
+	return &SyslogRepository{db: db, dialect: dialect}
 }
+
+func (r *SyslogRepository) table() string { return r.dialect.Table("CPSYSLOG") }
 
 func (r *SyslogRepository) Create(ctx context.Context, log *models.SysLog) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO dbo.CPSYSLOG (CODE, LEVEL, SOURCE, MESSAGE)
-		VALUES (@p1, @p2, @p3, @p4)`,
+	_, err := r.db.ExecContext(ctx, r.dialect.Bind(`
+		INSERT INTO `+r.table()+` (CODE, LEVEL, SOURCE, MESSAGE)
+		VALUES (?, ?, ?, ?)`),
 		log.Code, log.Level, log.Source, log.Message)
 	return err
 }
@@ -46,12 +50,20 @@ func (r *SyslogRepository) List(ctx context.Context, f models.SyslogFilter) ([]m
 	}
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	rows, err := r.db.QueryContext(ctx, `
+	query := `
 		SELECT CODE, LEVEL, SOURCE, MESSAGE, CREATED_AT
-		FROM dbo.CPSYSLOG
-		WHERE (@p1 = '' OR LEVEL = @p1)
-		ORDER BY ID DESC
-		OFFSET @p2 ROWS FETCH NEXT @p3 ROWS ONLY`, f.Level, f.Offset, limit)
+		FROM ` + r.table() + `
+		WHERE (? = '' OR LEVEL = ?)
+		ORDER BY ID DESC `
+	var args []any
+	if r.dialect == DialectMSSQL {
+		query += pageMSSQL()
+		args = []any{f.Level, f.Level, f.Offset, limit}
+	} else {
+		query += pageStd()
+		args = []any{f.Level, f.Level, limit, f.Offset}
+	}
+	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -74,18 +86,19 @@ func (r *SyslogRepository) CountSince(ctx context.Context, hours int, level stri
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	var n int
-	err := r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM dbo.CPSYSLOG
-		WHERE CREATED_AT >= DATEADD(HOUR, -@p1, GETDATE()) AND (@p2 = '' OR LEVEL = @p2)`,
-		hours, level).Scan(&n)
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(`
+		SELECT COUNT(*) FROM `+r.table()+`
+		WHERE CREATED_AT >= ? AND (? = '' OR LEVEL = ?)`),
+		time.Now().Add(-time.Duration(hours)*time.Hour), level, level).Scan(&n)
 	return n, err
 }
 
 func (r *SyslogRepository) PruneBefore(ctx context.Context, days int) (int64, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx,
-		`DELETE FROM dbo.CPSYSLOG WHERE CREATED_AT < DATEADD(DAY, -@p1, GETDATE())`, days)
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(
+		`DELETE FROM `+r.table()+` WHERE CREATED_AT < ?`),
+		time.Now().AddDate(0, 0, -days))
 	if err != nil {
 		return 0, err
 	}
