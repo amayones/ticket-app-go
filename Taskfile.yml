@@ -1,8 +1,8 @@
 version: '3'
 
+# Semua logika ada di scripts/*.sh (universal: bash/zsh/Git Bash).
+# Taskfile ini hanya alias tipis agar `task x` == `./scripts/x.sh`.
 vars:
-  APP_EXE: app.exe
-  STOP_EXE: stop.exe
   FRONTEND_DIR: frontend
 
 tasks:
@@ -22,12 +22,8 @@ tasks:
 
   build-frontend:
     desc: Build React frontend into frontend/dist
-    dir: '{{.FRONTEND_DIR}}'
     cmds:
-      - npm run build
-      # vite emptyOutDir wipes the embed placeholder; recreate it so
-      # //go:embed all:frontend/dist still compiles on fresh clones.
-      - powershell -NoProfile -Command "Set-Content -Path ./dist/.gitignore -Value '*','!.gitignore'"
+      - bash ./scripts/build-frontend.sh
     sources:
       - src/**/*.*
       - index.html
@@ -37,22 +33,14 @@ tasks:
       - dist/index.html
 
   build-backend:
-    desc: Vet + build app.exe and stop.exe with optimizations
+    desc: Vet + build backend binary with optimizations
     cmds:
-      - go vet ./...
-      - go build -trimpath -ldflags="-s -w -X main.version={{.VERSION | default "dev"}}" -o {{.APP_EXE}} .
-      - go build -trimpath -ldflags="-s -w" -o {{.STOP_EXE}} ./cmd/stop
-    vars:
-      VERSION:
-        sh: git rev-parse --short HEAD 2>/dev/null || echo dev
+      - bash ./scripts/build-backend.sh
     sources:
       - '**/*.go'
       - go.mod
       - go.sum
       - frontend/dist/index.html
-    generates:
-      - '{{.APP_EXE}}'
-      - '{{.STOP_EXE}}'
 
   build:
     desc: Full single-binary build (frontend + backend)
@@ -63,34 +51,32 @@ tasks:
   run:
     desc: Build and run in foreground
     cmds:
-      - task: build
-      - ./{{.APP_EXE}}
+      - bash ./scripts/run.sh
 
   tray:
-    desc: Build and run hidden in background (Windows)
+    desc: Build and run hidden in background (--hide)
     cmds:
-      - task: build
-      - ./{{.APP_EXE}} --hide
+      - bash ./scripts/run.sh --hide
 
   stop:
     desc: Stop hidden app gracefully via PID file
     cmds:
-      - ./{{.STOP_EXE}}
+      - bash ./scripts/stop.sh
 
   watch:
     desc: Auto rebuild on change (prod-like loop)
     cmds:
-      - powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/watch.ps1
+      - bash ./scripts/watch.sh
 
   dev:
-    desc: Open Vite HMR + go run in 2 windows (daily development)
+    desc: Vite HMR + go run in ONE terminal (daily development)
     cmds:
-      - powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1
+      - bash ./scripts/dev.sh
 
   start:
     desc: Run backend + Vite HMR in ONE terminal (Ctrl+C stops both)
     cmds:
-      - powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/start.ps1
+      - bash ./scripts/start.sh
 
   migrate:
     desc: Apply scripts/migrate*.sql in order to SQL Server (requires sqlcmd)
@@ -114,4 +100,4 @@ tasks:
   clean:
     desc: Remove binaries and frontend build output (cross-platform)
     cmds:
-      - powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue '{{.APP_EXE}}','{{.STOP_EXE}}'; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '{{.FRONTEND_DIR}}/dist/assets','{{.FRONTEND_DIR}}/dist/index.html'"
+      - bash ./scripts/clean.sh
