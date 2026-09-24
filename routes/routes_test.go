@@ -222,7 +222,7 @@ func TestAuditWiring(t *testing.T) {
 	if rec := doReq(t, r, "GET", "/api/users", "", ""); rec.Code != 401 {
 		t.Fatalf("protected without token must 401, got %d", rec.Code)
 	}
-	tok, err := utils.GenerateAccessToken(auditSecret, "USR-000001", "budi", models.RoleUser)
+	tok, err := utils.GenerateAccessToken(auditSecret, "USR-ADMIN", "budi", models.RoleAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
