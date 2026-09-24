@@ -19,6 +19,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        // /healthz juga milik backend Go (dipakai badge status Dashboard).
+        '/healthz': {
+          target: env.VITE_API_URL || `http://localhost:${appPort}`,
+          changeOrigin: true,
+          secure: false,
+        },
       },
     },
     preview: {
