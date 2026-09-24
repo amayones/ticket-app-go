@@ -57,14 +57,14 @@ export default function UsersList({ onAccountDeleted }) {
     setActing(true)
     try {
       if (confirm.type === 'delete') {
-        await api.deleteUser(confirm.user.id)
+        await api.deleteUser(confirm.user.code)
         toast.success(`Akun @${confirm.user.username} dihapus.`)
-        if (me?.id === confirm.user.id) {
+        if (me?.code === confirm.user.code) {
           onAccountDeleted()
           return
         }
       } else {
-        await api.logoutAll(confirm.user.id)
+        await api.logoutAll(confirm.user.code)
         toast.success('Semua sesi berhasil dikeluarkan. Silakan login kembali bila diperlukan.')
       }
       setConfirm(null)
@@ -110,10 +110,10 @@ export default function UsersList({ onAccountDeleted }) {
         ) : (
           <ul className="flex flex-col gap-2.5">
             {users.map((u) => {
-              const isMe = me?.id === u.id
+              const isMe = me?.code === u.code
               return (
                 <li
-                  key={u.id}
+                  key={u.code}
                   className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 transition hover:border-violet-200 hover:bg-violet-50/50 dark:border-zinc-800 dark:bg-zinc-900/40 dark:hover:border-violet-800"
                 >
                   <Avatar name={u.username} />
@@ -121,8 +121,13 @@ export default function UsersList({ onAccountDeleted }) {
                     <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                       <span className="truncate">@{u.username}</span>
                       {isMe && <Badge tone="brand">Anda</Badge>}
+                      {u.role_code && (
+                        <Badge tone={u.role_code === 'ADMIN' ? 'danger' : 'neutral'}>{u.role_code}</Badge>
+                      )}
                     </p>
-                    <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{u.email}</p>
+                    <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                      <span className="font-mono">{u.code}</span> · {u.email}
+                    </p>
                   </div>
                   {isMe && (
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -177,7 +182,7 @@ export default function UsersList({ onAccountDeleted }) {
 
       {editing && (
         <EditUserModal
-          key={editing.id}
+          key={editing.code}
           user={editing}
           onClose={() => setEditing(null)}
           onSaved={() => load(offset)}
