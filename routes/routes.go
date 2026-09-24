@@ -18,8 +18,6 @@ type RouteConfig struct {
 	JWTSecret      string
 	LoginLimit     int
 	LoginWindow    time.Duration
-	RegisterLimit  int
-	RegisterWindow time.Duration
 	RefreshLimit   int
 	RefreshWindow  time.Duration
 	TrustProxy     bool
@@ -31,8 +29,6 @@ func DefaultRouteConfig(jwtSecret string) RouteConfig {
 		JWTSecret:      jwtSecret,
 		LoginLimit:     5,
 		LoginWindow:    time.Minute,
-		RegisterLimit:  10,
-		RegisterWindow: time.Minute,
 		RefreshLimit:   30,
 		RefreshWindow:  time.Minute,
 		RequestTimeout: 10 * time.Second,
