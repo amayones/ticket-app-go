@@ -23,29 +23,34 @@ const auditSecret = "audit-secret-32-chars-minimum-xxxx"
 type stubService struct{}
 
 func (s *stubService) ListUsers(ctx context.Context, limit, offset int) ([]models.UserResponse, error) {
-	return []models.UserResponse{{ID: 1, Username: "budi", Email: "budi@x.com"}}, nil
+	return []models.UserResponse{{Code: "USR-000001", Username: "budi", Email: "budi@x.com", RoleCode: models.RoleUser}}, nil
 }
-func (s *stubService) GetUserByID(ctx context.Context, id int) (*models.User, error) {
-	return &models.User{ID: id, Username: "budi", Email: "budi@x.com"}, nil
+func (s *stubService) GetUserByCode(ctx context.Context, code string) (*models.User, error) {
+	return &models.User{Code: code, Username: "budi", Email: "budi@x.com", RoleCode: models.RoleUser}, nil
 }
-func (s *stubService) CreateUser(ctx context.Context, u, e, p string) (int, error) {
+func (s *stubService) CreateUser(ctx context.Context, u, e, p string) (string, error) {
 	if u == "" || e == "" || p == "" {
-		return 0, services.ErrInputRequired
+		return "", services.ErrInputRequired
 	}
-	return 7, nil
+	return "USR-000007", nil
 }
-func (s *stubService) UpdateUser(ctx context.Context, id int, in models.UpdateUserRequest) error {
+func (s *stubService) UpdateUser(ctx context.Context, code string, in models.UpdateUserRequest) error {
 	return nil
 }
-func (s *stubService) DeleteUser(ctx context.Context, id int) error { return nil }
+func (s *stubService) DeleteUser(ctx context.Context, code string) error { return nil }
 func (s *stubService) Login(ctx context.Context, u, p string) (string, string, error) {
 	return "", "", services.ErrInvalidLogin
 }
 func (s *stubService) RefreshAccessToken(ctx context.Context, t string) (string, string, error) {
 	return "", "", services.ErrInvalidRefresh
 }
-func (s *stubService) Logout(ctx context.Context, t string) error  { return nil }
-func (s *stubService) LogoutAll(ctx context.Context, id int) error { return nil }
+func (s *stubService) Logout(ctx context.Context, t string) error { return nil }
+func (s *stubService) LogoutAll(ctx context.Context, code string) error {
+	return nil
+}
+func (s *stubService) ListRoles(ctx context.Context) ([]models.Role, error) {
+	return []models.Role{{Code: models.RoleUser, Name: "Pengguna"}}, nil
+}
 func (s *stubService) CleanupExpiredTokens(ctx context.Context) (int64, error) {
 	return 0, nil
 }
@@ -94,15 +99,18 @@ func TestAuditWiring(t *testing.T) {
 	if rec := doReq(t, r, "GET", "/api/users", "", ""); rec.Code != 401 {
 		t.Fatalf("protected without token must 401, got %d", rec.Code)
 	}
-	tok, err := utils.GenerateAccessToken(auditSecret, 1, "budi")
+	tok, err := utils.GenerateAccessToken(auditSecret, "USR-000001", "budi", models.RoleUser)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rec := doReq(t, r, "GET", "/api/users", "", tok); rec.Code != 200 || !strings.Contains(rec.Body.String(), "budi") {
 		t.Fatalf("protected with token must 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	if rec := doReq(t, r, "GET", "/api/users/1", "", tok); rec.Code != 200 {
+	if rec := doReq(t, r, "GET", "/api/users/USR-000001", "", tok); rec.Code != 200 {
 		t.Fatalf("detail: got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if rec := doReq(t, r, "GET", "/api/roles", "", tok); rec.Code != 200 {
+		t.Fatalf("roles: got %d (%s)", rec.Code, rec.Body.String())
 	}
 	if rec := doReq(t, r, "GET", "/api/tidak-ada", "", ""); rec.Code != 404 || !strings.Contains(rec.Body.String(), "error") {
 		t.Fatalf("unknown api must be 404 JSON, got %d (%s)", rec.Code, rec.Body.String())
