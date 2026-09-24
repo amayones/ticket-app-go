@@ -96,8 +96,8 @@ sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -Q "SELECT TABLE_NAME FROM
 Harus tepat **9 tabel**: `CPAUDITLOG`, `CPNOTIFLOG`, `CPNOTIFTEMPLATE`,
 `CPPERMISSION`, `CPREFRESHTOKEN`, `CPROLE`, `CPROLEPERMISSION`, `CPSYSLOG`,
 `CPUSER` (tanpa sisa `users`/`refresh_tokens` lowercase). Seed wajib:
-`CPROLE` = `ADMIN`+`USER` (2), `CPPERMISSION` = 18, `CPROLEPERMISSION` = 23
-(ADMIN 18, USER 5), `CPNOTIFTEMPLATE` = 3 (`NTPL-WELCOME/RESET/ALERT`),
+`CPROLE` = `ADMIN`+`USER` (2), `CPPERMISSION` = 8, `CPROLEPERMISSION` = 9
+(ADMIN 8, USER 1), `CPNOTIFTEMPLATE` = 3 (`NTPL-WELCOME/RESET/ALERT`),
 `CPUSER` = 2 (`admin`/ADMIN, `user`/USER).
 
 ### 6. Jalankan
@@ -123,17 +123,19 @@ Buka `http://localhost:5173` → login `admin` / `admin` (atau `user` /
 
 ### Role baru (mis. `EDITOR`)
 
-Role baru **tidak butuh folder menu sendiri** — menu `user/` otomatis
-terlihat oleh semua role. Langkahnya:
+Role baru **tidak membutuhkan folder menu khusus**. Menu `user/` hanya
+ditampilkan jika role tersebut memiliki permission `MENU_<NAMA_MENU>`.
+Jadi role bisa memakai menu yang sama, tetapi hak akses tiap role
+diatur satu checkbox per menu di matriks RBAC.
 
 1. Buat role: menu Role & Permission → **Role baru** (kode huruf besar).
-2. Centang permission-nya di matriks → **Simpan**. (Tanpa UI: edit
-   `tutorial/templates/new-role.sql` lalu jalankan di DB — tiap langkah ada
-   checkpoint `SELECT`-nya di `tutorial/README.md` Kasus C.)
+2. Di matriks permission, centang menu yang boleh dibuka role tersebut,
+   lalu **Simpan**. Menu tanpa centang tidak tampil di sidebar.
 3. Pindahkan user: User Account → pensil → dropdown Role. Atau via SQL
    `UPDATE CPUSER SET ROLE_CODE='EDITOR' WHERE CODE='…'`.
-4. User tersebut **login ulang** agar klaim role di JWT terbarui.
-5. Cek: menu `user/` tampil, menu `admin/` tidak (kecuali role-nya ADMIN).
+4. User tersebut **login ulang** agar ROLE dan permission terbaru dimuat.
+5. Cek: menu `user/` yang diberi akses tampil; menu `admin/` tetap tidak
+   tampil untuk role non-ADMIN.
 
 ### Menu baru (langsung tampil di sidebar)
 
@@ -143,7 +145,7 @@ Hanya 2 tipe:
 | Folder | Dilihat oleh |
 |--------|--------------|
 | `frontend/src/menus/admin/<menu>/` | role `ADMIN` saja |
-| `frontend/src/menus/user/<menu>/` | SEMUA role |
+| `frontend/src/menus/user/<menu>/` | role yang memiliki permission menunya |
 
 ```
 frontend/src/menus/user/laporan/
@@ -153,12 +155,14 @@ frontend/src/menus/user/laporan/
 └── components/ # pecahan halaman (opsional)
 ```
 
-Contoh: `menus/admin/laporan/index.jsx` langsung tampil di sidebar admin
-tanpa sentuh file lain; `menus/user/laporan/` tampil di semua role dan
-batas antar-role non-ADMIN diatur via permission backend. Detail
-langkah-demi-langkah + checkpoint tiap langkah ada di `tutorial/README.md`
-(Kasus A untuk admin, Kasus B untuk semua role). Daftar ikon valid:
-lihat `components/icons.jsx` (`PATHS`).
+Contoh: `menus/admin/laporan/index.jsx` hanya tampil untuk ADMIN;
+`menus/user/laporan/` tampil hanya untuk role yang diberi permission
+`MENU_LAPORAN`. Permission ini juga dipakai sebagai proteksi endpoint
+backend, sehingga menu yang tidak diberikan akses akan disembunyikan
+ dan request langsungnya mendapat `403`. Detail langkah-demi-langkah
++ checkpoint tiap langkah ada di `tutorial/README.md` (Kasus A untuk
+admin, Kasus B untuk semua role). Daftar ikon valid: lihat
+`components/icons.jsx` (`PATHS`).
 
 **Backend** — tambah 1 folder + 1 baris registrasi:
 
@@ -260,7 +264,7 @@ atas (layar HP). Menu yang tampil tergantung role:
 |------|-------|------------------|
 | **Dashboard** | semua | Halaman pertama (lihat 0.3b). USER **hanya** melihat ini. |
 | **User Account** | ADMIN | Kartu user + avatar + badge role (lihat 0.4). Tombol **Tambah User** (username, email, password awal + role) dan dropdown Role di dialog Edit. Admin bisa edit/cabut-sesi/hapus akun lain. |
-| **Role & Permission** | ADMIN | Pilih role (tombol kiri) → centang permission per grup di matriks → **Simpan permission**. **Role baru** (kode huruf besar, mis. `EDITOR`) → atur permission-nya → user bisa dipindah ke role itu. Role `ADMIN`/`USER` bawaan tidak bisa dihapus; role yang masih dipakai user tidak bisa dihapus. |
+| **Role & Permission** | ADMIN | Daftar role tampil di sebelah kiri; matriks permission per menu tampil di sebelah kanan. Pilih role, centang menu yang boleh diakses, lalu **Simpan permission**. Role `ADMIN`/`USER` bawaan tidak bisa dihapus; role yang masih dipakai user tidak bisa dihapus. |
 | **Sesi & Auth** | ADMIN | Tab **Sesi saya**: daftar perangkat login + tombol sampah untuk mencabut satu sesi + tombol cabut semua. Tab **Semua sesi**: semua user + pagination. |
 | **Audit Log** | ADMIN | Tabel siapa–apa–kapan–IP. Filter: aksi (LOGIN, DELETE_USER, …), entitas, kode pelaku + tombol Filter/Reset + pagination. |
 | **Security Center** | ADMIN | 6 kartu ringkasan (user, role, sesi aktif, audit 24 jam, error 24 jam, status), aktivitas terkini, dan daftar kebijakan keamanan aktif. |
@@ -379,8 +383,8 @@ CREATE TABLE CPREFRESHTOKEN (
 > (lalu user tersebut login ulang agar klaim `role` di JWT terbarui).
 >
 > Migrasi lanjutan (`scripts/migrate2_rbac.sql`, otomatis ikut via `task migrate`):
-> tabel `CPPERMISSION` (18 permission seed) + `CPROLEPERMISSION` (ADMIN=semua,
-> USER=hak dasar) + `CPAUDITLOG` + `CPSYSLOG` + `CPNOTIFTEMPLATE` (3 template
+> tabel `CPPERMISSION` (satu permission per menu) + `CPROLEPERMISSION` (ADMIN=semua,
+> USER=dashboard) + `CPAUDITLOG` + `CPSYSLOG` + `CPNOTIFTEMPLATE` (3 template
 > bawaan) + `CPNOTIFLOG`. Aman diulang (idempotent).
 >
 > **Bukan SQL Server?** Ganti engine tanpa ubah kode — semua query ditulis
@@ -661,8 +665,10 @@ LOGIN
   UI simpan keduanya di localStorage.
 
 AKSES PRIVAT
+  UI ──GET /api/users/me + Header "Authorization: Bearer <access>"──► middleware cek JWT
+      ──► user + permission role; frontend hanya menampilkan menu yang diizinkan
   UI ──GET /api/users + Header "Authorization: Bearer <access>"──► middleware cek JWT
-      ──► 200 JSON / 401 {"error":...}
+      ──► 200 JSON / 401 {"error":...} / 403 bila menu tidak diizinkan
 
 TOKEN KEDALUWARSA (otomatis di client.js)
   401 ──► POST /api/refresh {refresh_token} ──► hapus token lama + terbitkan pasangan
@@ -717,33 +723,34 @@ Base URL prod: `http://localhost:1067/` (keduanya satu origin).
 | Method | Path | Auth | Rate-limit | Body | Sukses |
 |--------|------|------|------------|------|--------|
 | GET | `/healthz` | — | — | — | `{"status":"ok"}` |
-| POST | `/api/users` | Bearer + `USER_CREATE` | — | `{username, email, password, role_code?}` (tanpa registrasi publik; role default `USER`, role lain butuh `USER_ROLE_ASSIGN`) | `201 {"code","message"}` (`code` = `USR-XXXXXXXX`) |
+| POST | `/api/users` | Bearer + `MENU_USERS` | — | `{username, email, password, role_code?}` (tanpa registrasi publik; role default `USER`) | `201 {"code","message"}` (`code` = `USR-XXXXXXXX`) |
 | POST | `/api/login` | — | 5/mnt | `{username, password}` | `200 {access_token, refresh_token}` (JWT berisi `user_code` + `role`) |
 | POST | `/api/refresh` | — | 30/mnt | `{refresh_token}` | `200 {access_token, refresh_token}` (lama hangus) |
 | POST | `/api/logout` | — | 30/mnt | `{refresh_token}` | `200 {message}` |
 | GET | `/api/roles` | Bearer | — | — | `200 [{code,name,...}]` (master `CPROLE`) |
-| GET | `/api/users?limit=&offset=` | Bearer | — | — | `200 [...]` (array item `{code,username,email,role_code,...}`, `[]` jika kosong) |
+| GET | `/api/users/me` | Bearer | — | — | `200 {code,username,email,role,permissions[]}` |
+| GET | `/api/users?limit=&offset=` | Bearer + `MENU_USERS` | — | — | `200 [...]` (array item `{code,username,email,role_code,...}`, `[]` jika kosong) |
 | GET | `/api/users/{code}` | Bearer | — | — | `200 {code,username,email,role_code,...}` |
-| PUT | `/api/users/{code}` | Bearer + owner | — | partial `{username?, email?, password?}` | `200 {message}` |
-| DELETE | `/api/users/{code}` | Bearer + owner | — | — | `200 {message}` (+ sesi dibersihkan via CASCADE) |
-| POST | `/api/users/{code}/logout-all` | Bearer + owner | — | — | `200 {message}` |
-| PUT | `/api/users/{code}/role` | Bearer + `USER_ROLE_ASSIGN` | — | `{role_code}` | `200 {message}` |
-| POST | `/api/admin/roles` | Bearer + `ROLE_MANAGE` | — | `{code, name}` | `201 role` |
-| GET | `/api/admin/roles/{code}` | Bearer + `ROLE_READ` | — | — | `200 {role, permissions[]}` (matriks) |
-| DELETE | `/api/admin/roles/{code}` | Bearer + `ROLE_MANAGE` | — | — | `200` (gagal bila role dipakai user) |
-| GET | `/api/admin/permissions` | Bearer + `ROLE_READ` | — | — | `200 [...]` (18 permission per grup) |
-| PUT | `/api/admin/roles/{code}/permissions` | Bearer + `PERMISSION_ASSIGN` | — | `{permissions:[...]}` | `200` (replace atomik) |
+| PUT | `/api/users/{code}` | Bearer + owner/`MENU_USERS` | — | partial `{username?, email?, password?}` | `200 {message}` |
+| DELETE | `/api/users/{code}` | Bearer + owner/`MENU_USERS` | — | — | `200 {message}` (+ sesi dibersihkan via CASCADE) |
+| POST | `/api/users/{code}/logout-all` | Bearer + owner/`MENU_USERS` | — | — | `200 {message}` |
+| PUT | `/api/users/{code}/role` | Bearer + `MENU_USERS` | — | `{role_code}` | `200 {message}` |
+| POST | `/api/admin/roles` | Bearer + `MENU_ROLES` | — | `{code, name}` | `201 role` |
+| GET | `/api/admin/roles/{code}` | Bearer + `MENU_ROLES` | — | — | `200 {role, permissions[]}` (matriks) |
+| DELETE | `/api/admin/roles/{code}` | Bearer + `MENU_ROLES` | — | — | `200` (gagal bila role dipakai user) |
+| GET | `/api/admin/permissions` | Bearer + `MENU_ROLES` | — | — | `200 [...]` (permission per menu) |
+| PUT | `/api/admin/roles/{code}/permissions` | Bearer + `MENU_ROLES` | — | `{permissions:[...]}` | `200` (replace atomik) |
 | GET | `/api/admin/sessions` | Bearer | — | — | sesi login milik sendiri |
-| GET | `/api/admin/sessions/all?limit=&offset=` | Bearer + `SESSION_MANAGE` | — | — | semua sesi aktif |
-| DELETE | `/api/admin/sessions/{id}` | Bearer (pemilik/`SESSION_MANAGE`) | — | — | `200` |
-| GET | `/api/admin/audit?action=&entity=&actor=` | Bearer + `AUDIT_READ` | — | — | jejak aksi + IP |
-| GET | `/api/admin/security/summary` | Bearer + `SECURITY_READ` | — | — | 6 angka ringkasan |
-| GET | `/api/admin/syslogs?level=` | Bearer + `SYSLOG_READ` | — | — | `ERROR/WARN/INFO` |
-| DELETE | `/api/admin/syslogs?days=` | Bearer + `SYSLOG_MANAGE` | — | — | `{deleted}` |
-| GET | `/api/admin/notifications/templates` | Bearer + `NOTIF_READ` | — | — | template + `{{var}}` |
-| POST/PUT/DELETE | `/api/admin/notifications/templates…` | Bearer + `NOTIF_MANAGE` | — | `{name,channel,subject,body,is_active}` | CRUD template |
-| POST | `/api/admin/notifications/send` | Bearer + `NOTIF_SEND` | — | `{template_code,recipient,variables}` | `201` + tercatat di log |
-| GET | `/api/admin/notifications/logs` | Bearer + `NOTIF_READ` | — | — | riwayat kirim |
+| GET | `/api/admin/sessions/all?limit=&offset=` | Bearer + `MENU_SESSIONS` | — | — | semua sesi aktif |
+| DELETE | `/api/admin/sessions/{id}` | Bearer (pemilik/`MENU_SESSIONS`) | — | — | `200` |
+| GET | `/api/admin/audit?action=&entity=&actor=` | Bearer + `MENU_AUDIT` | — | — | jejak aksi + IP |
+| GET | `/api/admin/security/summary` | Bearer + `MENU_SECURITY` | — | — | 6 angka ringkasan |
+| GET | `/api/admin/syslogs?level=` | Bearer + `MENU_SYSLOG` | — | — | `ERROR/WARN/INFO` |
+| DELETE | `/api/admin/syslogs?days=` | Bearer + `MENU_SYSLOG` | — | — | `{deleted}` |
+| GET | `/api/admin/notifications/templates` | Bearer + `MENU_NOTIFICATIONS` | — | — | template + `{{var}}` |
+| POST/PUT/DELETE | `/api/admin/notifications/templates…` | Bearer + `MENU_NOTIFICATIONS` | — | `{name,channel,subject,body,is_active}` | CRUD template |
+| POST | `/api/admin/notifications/send` | Bearer + `MENU_NOTIFICATIONS` | — | `{template_code,recipient,variables}` | `201` + tercatat di log |
+| GET | `/api/admin/notifications/logs` | Bearer + `MENU_NOTIFICATIONS` | — | — | riwayat kirim |
 
 Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 (maks 254, disimpan lowercase), password 8–72 byte. Semua error: JSON
