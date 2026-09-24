@@ -10,13 +10,14 @@ Hanya ada **2 tipe folder menu** (dipindai otomatis oleh
 | Folder | Dilihat oleh |
 |--------|--------------|
 | `menus/admin/<menu>/` | role `ADMIN` saja |
-| `menus/user/<menu>/` | SEMUA role (`ADMIN`, `USER`, dan role custom apa pun) |
+| `menus/user/<menu>/` | semua role yang memiliki permission menunya |
 
-> Menu `user/` tampil di semua role — yang membedakan antar-role non-ADMIN
-> adalah **permission backend** (middleware `RequirePermission` di
-> `routes/routes.go`). Tanpa permission, backend menolak dengan `403`
-> dan halaman menampilkan pesan error, bukan data.
-> Contoh isi `user/`: `dashboard` (profil + ganti password untuk semua role).
+> Menu `user/` hanya tampil jika role memiliki permission
+> `MENU_<NAMA_MENU>`. Permission yang sama dipakai backend pada route
+> sebagai `RequirePermission`, sehingga menu tanpa akses tidak tampil
+> dan request langsungnya mendapat `403`.
+> Menu `admin/` tetap khusus role `ADMIN`, meskipun role tersebut
+> memiliki permission menu yang sama.
 
 Daftar ikon valid: `frontend/src/components/icons.jsx` (objek `PATHS`).
 
@@ -110,8 +111,8 @@ bundle setelah `npm run build` berikutnya.
 
 ## Kasus B — Menu baru untuk SEMUA role + permission (10 menit)
 
-Contoh: menu **Laporan** yang boleh dibuka semua role, tapi datanya
-dibatasi via permission `LAPORAN_READ`.
+Contoh: menu **Laporan** yang boleh dibuka semua role, tetapi setiap
+role hanya melihatnya bila diberi permission `MENU_LAPORAN`.
 
 ### B1. Copy template ke `menus/user/`
 
@@ -152,9 +153,10 @@ wajib diproteksi permission. Dua cara (pilih satu):
 
 **Cara 1 — via UI (tanpa SQL):**
 
-1. Login admin → **Role & Permission** → pilih role → centang permission
-   untuk menu ini (mis. `LAPORAN_READ`; tambah dulu di `models/permission.go`
-   + seed `CPPERMISSION` bila permission-nya belum ada) → **Simpan**.
+1. Login admin → **Role & Permission** → pilih role di sebelah kiri →
+   centang `MENU_LAPORAN` di matriks sebelah kanan → **Simpan**.
+   Tambahkan konstanta `MenuLaporan = "MENU_LAPORAN"` di
+   `models/permission.go` dan seed `CPPERMISSION` bila menu baru.
 2. Ulangi untuk setiap role yang boleh / tidak boleh akses.
 
 **Cara 2 — via SQL** (edit dulu `tutorial/templates/new-role.sql`
@@ -169,7 +171,7 @@ sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i tutorial/templates/new-
 
 ```sql
 SELECT ROLE_CODE, PERMISSION_CODE FROM CPROLEPERMISSION
-WHERE PERMISSION_CODE = 'LAPORAN_READ' ORDER BY ROLE_CODE;
+WHERE PERMISSION_CODE = 'MENU_LAPORAN' ORDER BY ROLE_CODE;
 -- harus tampil baris untuk role yang diberi hak, dan TIDAK ada
 -- baris untuk role yang tidak diberi hak
 ```
@@ -178,9 +180,9 @@ WHERE PERMISSION_CODE = 'LAPORAN_READ' ORDER BY ROLE_CODE;
 
 1. Login sebagai user yang **punya** permission → menu **Laporan** tampil
    dan data termuat.
-2. Login sebagai user yang **tidak punya** permission → menu tetap tampil,
-   tapi halaman menunjukkan error `forbidden` (backend menolak 403).
-   Itu **normal** — artinya proteksi bekerja.
+2. Login sebagai user yang **tidak punya** permission → menu **Laporan**
+   tidak tampil di sidebar. Request endpoint yang dipanggil langsung
+   tetap mendapat `403` dari backend.
 
 ✅ **Checkpoint B5** — via `curl` (ganti `<token>` dengan access token
 masing-masing user, lihat README utama Bagian 1 Langkah 5 cara login):
@@ -189,7 +191,7 @@ masing-masing user, lihat README utama Bagian 1 Langkah 5 cara login):
 curl http://localhost:1067/api/admin/laporan -H "Authorization: Bearer <token-punya-hak>"
 # -> 200 + data
 curl http://localhost:1067/api/admin/laporan -H "Authorization: Bearer <token-tanpa-hak>"
-# -> 403 {"error":"forbidden: missing LAPORAN_READ"}
+# -> 403 {"error":"forbidden: missing MENU_LAPORAN"}
 ```
 
 ---
@@ -409,7 +411,7 @@ grep -n "^package \|func NewHandler\|func (h \*Handler)" features/laporan/lapora
   batas antar-role bekerja (tambah permission dulu bila perlu di
   `models/permission.go` + seed `CPPERMISSION`):
   ```go
-  r.With(auth, need(models.PermLaporanRead)).Get("/laporan", deps.Laporan.ListLaporan)
+  r.With(auth, need(models.MenuLaporan)).Get("/laporan", deps.Laporan.ListLaporan)
   ```
   Untuk menu khusus admin, taruh di dalam blok `r.Route("/admin", …)`
   seperti endpoint admin yang sudah ada.
