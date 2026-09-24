@@ -1,20 +1,19 @@
 -- TEMPLATE role baru. Ganti EDITOR + permission sesuai kebutuhan, jalankan
 -- di database (sqlcmd / SSMS / psql / sqlite3 — sintaks di bawah standar).
--- Menu frontend untuk role ini: taruh di frontend/src/menus/user/ (otomatis
--- terlihat oleh SEMUA role); yang membedakan antar-role adalah permission
--- di bawah ini + RequirePermission di routes (lihat tutorial/README.md).
+-- Menu frontend untuk role ini: taruh di frontend/src/menus/user/;
+-- menu hanya tampil bila permission MENU_<NAMA_MENU> di bawah diberikan.
+-- Permission yang sama dipakai RequirePermission di routes.
 
 -- 1. Daftarkan role (kode huruf besar, maks 20 karakter):
 INSERT INTO CPROLE (CODE, NAME)
 SELECT 'EDITOR', 'Editor'
 WHERE NOT EXISTS (SELECT 1 FROM CPROLE WHERE CODE = 'EDITOR');
 
--- 2. Beri permission (contoh hak baca dasar; tambah sesuai kebutuhan):
+-- 2. Beri permission menu (contoh: dashboard dan sesi):
 INSERT INTO CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
 SELECT 'EDITOR', v.CODE FROM (VALUES
-  ('USER_READ'),
-  ('SESSION_READ'),
-  ('SESSION_REVOKE')
+  ('MENU_DASHBOARD'),
+  ('MENU_SESSIONS')
 ) v(CODE)
 WHERE NOT EXISTS (
   SELECT 1 FROM CPROLEPERMISSION x
