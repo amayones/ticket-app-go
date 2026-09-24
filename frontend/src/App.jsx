@@ -91,26 +91,30 @@ function Shell() {
           collapsed ? 'w-[76px] p-2' : 'w-60 p-3'
         }`}
       >
-        {/* Logo selalu sejajar ikon menu; tombol lipat mengambang menonjol
-            di tepi kanan sidebar (tetap di dalam area sidebar). */}
-        <div className={`flex items-center pb-4 ${collapsed ? 'justify-center px-0' : 'gap-2 px-1'}`}>
+        {/* Logo sejajar ikon menu; tombol lipat menonjol di kanan logo
+            (tengah-tengah tinggi baris logo). */}
+        <div className={`relative flex items-center pb-4 ${collapsed ? 'justify-center px-0' : 'gap-2 px-1'}`}>
           <span className="flex items-center gap-2 text-sm font-bold tracking-tight">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
               G
             </span>
             {!collapsed && <span className="truncate">Go Core</span>}
           </span>
-        </div>
-        <Tooltip label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'} position="right">
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-            className="absolute -right-3.5 top-3 z-10 shrink-0 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-md transition-all duration-200 hover:bg-zinc-50 hover:text-zinc-800 hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+          <Tooltip
+            label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+            position="right"
+            className="absolute -right-5 top-1/2 -translate-y-1/2"
           >
-            <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} className="h-4 w-4" />
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+              className="shrink-0 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-md transition-all duration-200 hover:bg-zinc-50 hover:text-zinc-800 hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+            >
+              <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
           {visibleNav.map((n) => {
             const btn = (

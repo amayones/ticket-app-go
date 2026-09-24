@@ -48,9 +48,13 @@ export default function Tooltip({ label, position = 'top', openDelay = 200, chil
     if (e.key === 'Escape') leave()
   }
 
+  // Bila pemanggil sudah memberi position sendiri (absolute/fixed/sticky),
+  // jangan timpa dengan relative agar tidak konflik.
+  const positioned = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className)
+
   return (
     <span
-      className={`relative inline-flex ${className}`}
+      className={`${positioned ? '' : 'relative '}inline-flex ${className}`}
       onMouseEnter={enter}
       onMouseLeave={leave}
       onFocus={focus}
