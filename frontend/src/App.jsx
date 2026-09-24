@@ -87,8 +87,8 @@ function Shell() {
       {/* Sidebar (desktop) — bisa dilipat via tombol chevron.
           Hanya lebar yang ditransisikan (bukan all) agar tidak bergetar. */}
       <aside
-        className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] transition-[width,padding] md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
-          collapsed ? 'w-[76px] p-2' : 'w-60 p-3'
+        className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white p-3 duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] transition-[width] md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
+          collapsed ? 'w-[84px]' : 'w-60'
         }`}
       >
         {/* Baris logo tanpa padding-bawah: tombol tepat sejajar tengah logo.
