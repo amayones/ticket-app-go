@@ -1,7 +1,8 @@
 -- TEMPLATE role baru. Ganti EDITOR + permission sesuai kebutuhan, jalankan
 -- di database (sqlcmd / SSMS / psql / sqlite3 — sintaks di bawah standar).
--- Menu frontend untuk role ini: taruh di frontend/src/menus/user/;
--- menu hanya tampil bila permission MENU_<NAMA_MENU> di bawah diberikan.
+-- Menu frontend untuk role ini: taruh di frontend/src/menus/system/ atau
+-- frontend/src/menus/account/ sesuai module; menu hanya tampil bila
+-- permission MENU_<NAMA_MENU> di bawah diberikan.
 -- Permission yang sama dipakai RequirePermission di routes.
 
 -- 1. Daftarkan role (kode huruf besar, maks 20 karakter):
