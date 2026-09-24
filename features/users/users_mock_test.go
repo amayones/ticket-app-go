@@ -331,11 +331,11 @@ func (m *MockRoleRepository) Count(ctx context.Context) (int, error) {
 }
 
 func (m *MockRoleRepository) ListPermissions(ctx context.Context) ([]models.Permission, error) {
-	return []models.Permission{{Code: models.PermUserRead, Name: "Lihat user", Group: "USER"}}, nil
+	return []models.Permission{{Code: models.MenuDashboard, Name: "Lihat dashboard", Group: "MENU"}}, nil
 }
 
 func (m *MockRoleRepository) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
-	return []string{models.PermUserRead}, nil
+	return []string{models.MenuDashboard}, nil
 }
 
 func (m *MockRoleRepository) SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error {
@@ -346,5 +346,5 @@ func (m *MockRoleRepository) HasPermission(ctx context.Context, roleCode, permCo
 	if roleCode == models.RoleAdmin {
 		return true, nil
 	}
-	return permCode == models.PermUserRead, nil
+	return permCode == models.MenuDashboard, nil
 }
