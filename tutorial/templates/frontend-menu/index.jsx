@@ -14,8 +14,8 @@ import {
 
 // TEMPLATE mainpage menu baru. Cara pakai:
 // 1. Copy folder ini ke menus/admin/<menu>/ (khusus ADMIN) ATAU
-//    menus/user/<menu>/ (SEMUA role; batas antar-role non-ADMIN diatur
-//    via permission backend, lihat tutorial/README.md Kasus A/B).
+//    menus/user/<menu>/ (semua role yang diberi permission menu; satu
+//    permission memberi akses ke seluruh fungsi menu, lihat tutorial/README.md).
 //    Contoh: menus/admin/laporan/ atau menus/user/laporan/
 // 2. Sesuaikan meta di bawah (label tampil di sidebar, icon lihat
 //    components/icons.jsx -> PATHS, order = urutan sidebar).
