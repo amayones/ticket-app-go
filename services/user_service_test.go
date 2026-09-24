@@ -12,8 +12,9 @@ import (
 )
 
 var sqlErrNoRows = sql.ErrNoRows
-var errUsernameConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_users_username'`)
-var errEmailConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_users_email'`)
+var errUsernameConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_CPUSER_USERNAME'`)
+var errEmailConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_CPUSER_EMAIL'`)
+var errCodeConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_CPUSER_CODE'`)
 
 const testJWTSecret = "test-secret-key-for-unit-tests-32-chars"
 
@@ -22,7 +23,8 @@ func newTestService(t *testing.T) (*UserService, *MockUserRepository, *MockRefre
 	t.Setenv("JWT_SECRET", testJWTSecret)
 	repo := NewMockUserRepository()
 	refreshRepo := NewMockRefreshTokenRepository()
-	svc, err := NewUserService(repo, refreshRepo, testJWTSecret)
+	roleRepo := NewMockRoleRepository()
+	svc, err := NewUserService(repo, refreshRepo, roleRepo, testJWTSecret)
 	if err != nil {
 		t.Fatalf("NewUserService: %v", err)
 	}
@@ -33,15 +35,21 @@ func strptr(s string) *string { return &s }
 
 func TestCreateUser_Success(t *testing.T) {
 	svc, repo, _ := newTestService(t)
-	id, err := svc.CreateUser(context.Background(), "budi", "budi@example.com", "password123")
+	code, err := svc.CreateUser(context.Background(), "budi", "budi@example.com", "password123")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if id == 0 {
-		t.Fatal("expected non-zero ID")
+	if code == "" {
+		t.Fatal("expected non-empty code")
+	}
+	if !strings.HasPrefix(code, "USR-") {
+		t.Fatalf("expected USR- prefixed code, got %q", code)
 	}
 	if len(repo.Users) != 1 {
 		t.Fatalf("expected 1 user in repo, got %d", len(repo.Users))
+	}
+	if repo.Users[code].RoleCode != models.DefaultRoleCode {
+		t.Fatalf("expected default role %q, got %q", models.DefaultRoleCode, repo.Users[code].RoleCode)
 	}
 }
 
@@ -72,10 +80,11 @@ func TestCreateUser_Table(t *testing.T) {
 
 func TestCreateUser_NormalizesEmail(t *testing.T) {
 	svc, repo, _ := newTestService(t)
-	if _, err := svc.CreateUser(context.Background(), "budi", "  Budi@Example.COM ", "password123"); err != nil {
+	code, err := svc.CreateUser(context.Background(), "budi", "  Budi@Example.COM ", "password123")
+	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	u := repo.Users[1]
+	u := repo.Users[code]
 	if u.Email != "budi@example.com" {
 		t.Fatalf("expected normalized email, got %q", u.Email)
 	}
@@ -115,7 +124,8 @@ func TestLogin(t *testing.T) {
 func TestLogin_EvictsBeyondCap(t *testing.T) {
 	svc, _, refreshRepo := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123"); err != nil {
+	code, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123")
+	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	for i := 0; i < MaxRefreshTokensPerUser+3; i++ {
@@ -123,34 +133,45 @@ func TestLogin_EvictsBeyondCap(t *testing.T) {
 			t.Fatalf("login %d: %v", i, err)
 		}
 	}
-	n, _ := refreshRepo.CountByUserID(ctx, 1)
+	n, _ := refreshRepo.CountByUserCode(ctx, code)
 	if n > MaxRefreshTokensPerUser {
 		t.Fatalf("expected at most %d tokens, got %d", MaxRefreshTokensPerUser, n)
 	}
 }
 
-func TestGetUserByID_NotFound(t *testing.T) {
+func TestGetUserByCode_NotFound(t *testing.T) {
 	svc, _, _ := newTestService(t)
-	if _, err := svc.GetUserByID(context.Background(), 999); !errors.Is(err, ErrUserNotFound) {
+	if _, err := svc.GetUserByCode(context.Background(), "USR-TIDAKADA"); !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestListRoles(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	roles, err := svc.ListRoles(context.Background())
+	if err != nil {
+		t.Fatalf("list roles: %v", err)
+	}
+	if len(roles) != 2 {
+		t.Fatalf("expected 2 seeded roles, got %d", len(roles))
 	}
 }
 
 func TestUpdateUser_Partial(t *testing.T) {
 	svc, repo, _ := newTestService(t)
 	ctx := context.Background()
-	id, _ := svc.CreateUser(ctx, "budi", "budi@example.com", "password123")
-	oldHash := repo.Users[id].Password
-	if err := svc.UpdateUser(ctx, id, models.UpdateUserRequest{Username: strptr("budi2")}); err != nil {
+	code, _ := svc.CreateUser(ctx, "budi", "budi@example.com", "password123")
+	oldHash := repo.Users[code].Password
+	if err := svc.UpdateUser(ctx, code, models.UpdateUserRequest{Username: strptr("budi2")}); err != nil {
 		t.Fatalf("partial update: %v", err)
 	}
-	if repo.Users[id].Username != "budi2" {
-		t.Fatalf("username not updated: %q", repo.Users[id].Username)
+	if repo.Users[code].Username != "budi2" {
+		t.Fatalf("username not updated: %q", repo.Users[code].Username)
 	}
-	if repo.Users[id].Password != oldHash {
+	if repo.Users[code].Password != oldHash {
 		t.Fatal("password hash must not change on profile-only update")
 	}
-	if err := svc.UpdateUser(ctx, 999, models.UpdateUserRequest{Username: strptr("x")}); !errors.Is(err, ErrUserNotFound) {
+	if err := svc.UpdateUser(ctx, "USR-TIDAKADA", models.UpdateUserRequest{Username: strptr("x")}); !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
 	}
 }
@@ -158,14 +179,14 @@ func TestUpdateUser_Partial(t *testing.T) {
 func TestDeleteUser_Success(t *testing.T) {
 	svc, repo, _ := newTestService(t)
 	ctx := context.Background()
-	id, _ := svc.CreateUser(ctx, "budi", "budi@example.com", "password123")
-	if err := svc.DeleteUser(ctx, id); err != nil {
+	code, _ := svc.CreateUser(ctx, "budi", "budi@example.com", "password123")
+	if err := svc.DeleteUser(ctx, code); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	if len(repo.Users) != 0 {
 		t.Fatalf("expected 0 users after delete, got %d", len(repo.Users))
 	}
-	if err := svc.DeleteUser(ctx, id); !errors.Is(err, ErrUserNotFound) {
+	if err := svc.DeleteUser(ctx, code); !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
 	}
 }
