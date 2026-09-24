@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client.js'
+import { api } from '../../../api/client.js'
+import { createUser, deleteUser, listUsers, logoutAll } from './api.js'
+import { listRoles } from '../roles/api.js'
+
+export const meta = { label: 'User Account', icon: 'users', order: 1 }
 import {
   Alert,
   Avatar,
@@ -18,8 +22,8 @@ import {
   Tooltip,
   useSmoothLoading,
   useToast,
-} from '../components'
-import EditUserModal from './EditUserModal.jsx'
+} from '../../../components'
+import EditUserModal from './components/EditUserModal.jsx'
 
 const PAGE_SIZE = 10
 
@@ -48,7 +52,7 @@ export default function UsersList({ onAccountDeleted }) {
     setLoading(true)
     setError('')
     try {
-      setUsers(await api.listUsers(PAGE_SIZE, nextOffset))
+      setUsers(await listUsers(PAGE_SIZE, nextOffset))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -73,7 +77,7 @@ export default function UsersList({ onAccountDeleted }) {
     setCPassword('')
     setCRole('USER')
     setCError('')
-    api.listRoles().then(setRoles).catch(() => setRoles([]))
+    listRoles().then(setRoles).catch(() => setRoles([]))
     setShowCreate(true)
   }
 
@@ -85,7 +89,7 @@ export default function UsersList({ onAccountDeleted }) {
     }
     setCreating(true)
     try {
-      const res = await api.createUser(cUsername.trim(), cEmail.trim().toLowerCase(), cPassword, cRole)
+      const res = await createUser(cUsername.trim(), cEmail.trim().toLowerCase(), cPassword, cRole)
       toast.success(`Akun @${cUsername.trim()} dibuat (${res.code}).`, { title: 'User dibuat' })
       setShowCreate(false)
       setOffset(0)
@@ -102,14 +106,14 @@ export default function UsersList({ onAccountDeleted }) {
     setActing(true)
     try {
       if (confirm.type === 'delete') {
-        await api.deleteUser(confirm.user.code)
+        await deleteUser(confirm.user.code)
         toast.success(`Akun @${confirm.user.username} dihapus.`)
         if (me?.code === confirm.user.code) {
           onAccountDeleted()
           return
         }
       } else {
-        await api.logoutAll(confirm.user.code)
+        await logoutAll(confirm.user.code)
         toast.success('Semua sesi berhasil dikeluarkan. Silakan login kembali bila diperlukan.')
       }
       setConfirm(null)
