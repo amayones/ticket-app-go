@@ -63,17 +63,29 @@ halaman ini fokus untuk login saja).
 1. Isi **Username** dan **Password** (minta ke admin bila belum punya akun).
    Klik **ikon mata** di kanan kolom password untuk mengintip ketikan.
 2. Klik **Login** (tombol menampilkan animasi loading saat diproses).
-3. **Berhasil** → toast hijau "Selamat datang kembali!" dan masuk ke aplikasi
-   **sidebar** (layar lebar) atau navigasi atas (layar HP).
+3. **Berhasil** → toast hijau "Selamat datang kembali!" dan masuk ke
+   **Dashboard** dalam aplikasi **sidebar** (layar lebar) atau navigasi
+   atas (layar HP). Role USER hanya melihat Dashboard; ADMIN melihat
+   semua menu (lihat 0.6).
 4. **Gagal** (salah password) → **kotak merah** "Login gagal" muncul di form
    dan bisa ditutup dengan tombol **×**.
 
-### 0.4 Halaman Daftar Pengguna (Users)
+### 0.3b Dashboard (halaman pertama setelah login)
+
+- **Kartu profil**: avatar, `@username`, kode, badge role, status backend.
+- **Sesi saya**: jumlah perangkat login + tombol cabut semua sesi.
+- **Keamanan akun**: form ganti password sendiri (isi 2x untuk konfirmasi).
+- **Admin** juga melihat: ringkasan sistem (pengguna, sesi, role, error)
+  + jalan pintas ke menu, di atas kartu yang sama.
+- **Modul aplikasi — segera hadir**: slot kosong untuk modul inti begitu
+  arah aplikasi ditentukan (saat ini 3 placeholder).
+
+### 0.4 Halaman Daftar Pengguna (Users, khusus ADMIN)
 
 Halaman ini menampilkan semua akun dalam bentuk **kartu modern**:
 
-- Setiap baris punya **avatar lingkaran** (inisial username, warna gradien
-  berbeda tiap nama), username dengan awalan `@`, dan email di bawahnya.
+- Setiap baris punya **avatar lingkaran** (inisial username), username
+  dengan awalan `@`, kode, badge role, dan email di bawahnya.
 - Baris milik **akun Anda sendiri** ditandai lencana ungu **"Anda"** dan punya
   3 tombol aksi di kanan:
   | Tombol | Fungsi |
@@ -100,9 +112,10 @@ atas (layar HP). Menu yang tampil tergantung role:
 
 | Menu | Untuk | Isi & cara pakai |
 |------|-------|------------------|
-| **User Account** | semua | Kartu user + avatar + badge role (lihat 0.4). Admin: tombol **Tambah User** (username, email, password awal + role) dan dropdown Role di dialog Edit. |
+| **Dashboard** | semua | Halaman pertama (lihat 0.3b). USER **hanya** melihat ini. |
+| **User Account** | ADMIN | Kartu user + avatar + badge role (lihat 0.4). Tombol **Tambah User** (username, email, password awal + role) dan dropdown Role di dialog Edit. Admin bisa edit/cabut-sesi/hapus akun lain. |
 | **Role & Permission** | ADMIN | Pilih role (tombol kiri) → centang permission per grup di matriks → **Simpan permission**. **Role baru** (kode huruf besar, mis. `EDITOR`) → atur permission-nya → user bisa dipindah ke role itu. Role `ADMIN`/`USER` bawaan tidak bisa dihapus; role yang masih dipakai user tidak bisa dihapus. |
-| **Sesi & Auth** | semua | Tab **Sesi saya**: daftar perangkat login + tombol sampah untuk mencabut satu sesi + tombol cabut semua. Tab **Semua sesi** (ADMIN): semua user + pagination. |
+| **Sesi & Auth** | ADMIN | Tab **Sesi saya**: daftar perangkat login + tombol sampah untuk mencabut satu sesi + tombol cabut semua. Tab **Semua sesi**: semua user + pagination. (USER mengelola sesinya dari Dashboard.) |
 | **Audit Log** | ADMIN | Tabel siapa–apa–kapan–IP. Filter: aksi (LOGIN, DELETE_USER, …), entitas, kode pelaku + tombol Filter/Reset + pagination. |
 | **Security Center** | ADMIN | 6 kartu ringkasan (user, role, sesi aktif, audit 24 jam, error 24 jam, status), aktivitas terkini, dan daftar kebijakan keamanan aktif. |
 | **System Log** | ADMIN | Filter level SEMUA/ERROR/WARN/INFO + tabel + tombol **Bersihkan lama** (hapus log > N hari, tercatat di audit). |
@@ -379,6 +392,8 @@ frontend/
 │   │   └── index.js        # `import { Button, Modal } from '../components'`
 │   └── pages/
 │       ├── Auth.jsx        # LoginForm (tanpa registrasi; fokus login)
+│       ├── Dashboard.jsx   # beranda semua role (profil, sesi, password,
+│       │                   # ringkasan admin, slot modul M* persiapan)
 │       ├── Users.jsx       # User Account Management (kartu, role badge,
 │       │                   # pagination, edit/logout-all/hapus)
 │       ├── EditUserModal.jsx # dialog edit + dropdown role (khusus admin)
@@ -575,7 +590,7 @@ Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 
 | Perintah | Artinya | Kapan dipakai |
 |----------|---------|---------------|
-| `task dev` | Buka Vite HMR + `go run .` | Kerja harian (2 jendela) |
+| `task dev` | Sama dengan `task start` (1 terminal) | Kerja harian |
 | `task start` | Backend + Vite HMR dalam **1 terminal** (Ctrl+C mematikan keduanya) | Kerja harian tercepat |
 | `task build` | Build penuh → `app.exe` + `stop.exe` | Rilis / test prod lokal |
 | `task build-frontend` / `task build-backend` | Build salah satu sisi | Hemat waktu |
