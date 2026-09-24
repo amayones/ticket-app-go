@@ -3,6 +3,7 @@ package roles
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"golang-backend/models"
 	"golang-backend/repositories"
@@ -134,6 +135,9 @@ func (r *Repository) ListPermissions(ctx context.Context) ([]models.Permission, 
 		if err := rows.Scan(&p.ID, &p.Code, &p.Name, &p.Group, &desc, &p.CreatedAt); err != nil {
 			return nil, err
 		}
+		if !strings.HasPrefix(p.Code, "MENU_") {
+			continue
+		}
 		p.Description = desc.String
 		perms = append(perms, p)
 	}
@@ -158,7 +162,9 @@ func (r *Repository) GetRolePermissions(ctx context.Context, roleCode string) ([
 		if err := rows.Scan(&c); err != nil {
 			return nil, err
 		}
-		codes = append(codes, c)
+		if strings.HasPrefix(c, "MENU_") {
+			codes = append(codes, c)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
