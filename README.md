@@ -224,25 +224,18 @@ CREATE TABLE CPREFRESHTOKEN (
 > USER=hak dasar) + `CPAUDITLOG` + `CPSYSLOG` + `CPNOTIFTEMPLATE` (3 template
 > bawaan) + `CPNOTIFLOG`. Aman diulang (idempotent).
 
-### Langkah 4 — Jalankan mode development (2 terminal)
-
-**Terminal 1 — backend:**
+### Langkah 4 — Jalankan mode development (1 perintah)
 
 ```powershell
-go run .
-# -> API di http://localhost:1067/api
-# -> health di http://localhost:1067/healthz
+task start
+# -> backend:  http://localhost:1067 (API + health /healthz)
+# -> frontend: http://localhost:5173 (HMR, otomatis proxy /api ke :1067)
+# -> Ctrl+C mematikan keduanya sekaligus
 ```
 
-**Terminal 2 — frontend:**
-
-```powershell
-npm --prefix frontend install   # hanya pertama kali
-npm --prefix frontend run dev
-# -> http://localhost:5173 (otomatis proxy /api ke :1067)
-```
-
-Atau sekaligus dengan satu perintah: `task dev`.
+Tanpa CLI task: `pwsh ./scripts/start.ps1`. Masih ingin 2 terminal terpisah?
+`task dev` (atau manual: terminal 1 `go run .`, terminal 2
+`npm --prefix frontend run dev`).
 
 > Catatan: log `WARN frontend/dist missing` saat `go run .` itu **normal** di mode
 > dev (frontend belum di-build). API tetap jalan.
@@ -578,7 +571,8 @@ Aturan validasi: username ≥3 (maks 50, tanpa karakter kontrol), email valid
 
 | Perintah | Artinya | Kapan dipakai |
 |----------|---------|---------------|
-| `task dev` | Buka Vite HMR + `go run .` | Kerja harian |
+| `task dev` | Buka Vite HMR + `go run .` | Kerja harian (2 jendela) |
+| `task start` | Backend + Vite HMR dalam **1 terminal** (Ctrl+C mematikan keduanya) | Kerja harian tercepat |
 | `task build` | Build penuh → `app.exe` + `stop.exe` | Rilis / test prod lokal |
 | `task build-frontend` / `task build-backend` | Build salah satu sisi | Hemat waktu |
 | `task run` | Build + jalan foreground | Coba prod cepat |
