@@ -13,8 +13,10 @@ import {
 } from '../../../components'
 
 // TEMPLATE mainpage menu baru. Cara pakai:
-// 1. Copy folder ini ke menus/<role>/<menu>/  (contoh: menus/admin/laporan/)
-//    <role> = shared (semua) | admin (ADMIN) | user (USER) | nama-role-lowercase
+// 1. Copy folder ini ke menus/admin/<menu>/ (khusus ADMIN) ATAU
+//    menus/user/<menu>/ (SEMUA role; batas antar-role non-ADMIN diatur
+//    via permission backend, lihat tutorial/README.md Kasus A/B).
+//    Contoh: menus/admin/laporan/ atau menus/user/laporan/
 // 2. Sesuaikan meta di bawah (label tampil di sidebar, icon lihat
 //    components/icons.jsx -> PATHS, order = urutan sidebar).
 // 3. Isi api.js dengan fungsi menu ini, lalu ganti isi Card dengan UI-mu.

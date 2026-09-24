@@ -1,6 +1,8 @@
 -- TEMPLATE role baru. Ganti EDITOR + permission sesuai kebutuhan, jalankan
 -- di database (sqlcmd / SSMS / psql / sqlite3 — sintaks di bawah standar).
--- Setelah role ada: buat folder frontend/src/menus/editor/ agar punya halaman.
+-- Menu frontend untuk role ini: taruh di frontend/src/menus/user/ (otomatis
+-- terlihat oleh SEMUA role); yang membedakan antar-role adalah permission
+-- di bawah ini + RequirePermission di routes (lihat tutorial/README.md).
 
 -- 1. Daftarkan role (kode huruf besar, maks 20 karakter):
 INSERT INTO CPROLE (CODE, NAME)

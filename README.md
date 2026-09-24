@@ -123,28 +123,41 @@ Buka `http://localhost:5173` → login `admin` / `admin` (atau `user` /
 
 ### Role baru (mis. `EDITOR`)
 
+Role baru **tidak butuh folder menu sendiri** — menu `user/` otomatis
+terlihat oleh semua role. Langkahnya:
+
 1. Buat role: menu Role & Permission → **Role baru** (kode huruf besar).
-2. Centang permission-nya di matriks → **Simpan**.
-3. Pindahkan user: User Account → pensil → dropdown Role. Atau via SQL +
-   daftar permission manual di `CPROLEPERMISSION`.
-4. (Opsional, agar punya halaman sendiri) buat folder `frontend/src/menus/editor/`
-   — role `EDITOR` otomatis melihat menu `shared/` + `editor/`.
+2. Centang permission-nya di matriks → **Simpan**. (Tanpa UI: edit
+   `tutorial/templates/new-role.sql` lalu jalankan di DB — tiap langkah ada
+   checkpoint `SELECT`-nya di `tutorial/README.md` Kasus C.)
+3. Pindahkan user: User Account → pensil → dropdown Role. Atau via SQL
+   `UPDATE CPUSER SET ROLE_CODE='EDITOR' WHERE CODE='…'`.
+4. User tersebut **login ulang** agar klaim role di JWT terbarui.
+5. Cek: menu `user/` tampil, menu `admin/` tidak (kecuali role-nya ADMIN).
 
 ### Menu baru (langsung tampil di sidebar)
 
-**Frontend** — tambah 1 folder (nama folder = key menu, huruf kecil):
+**Frontend** — tambah 1 folder (nama folder = key menu, huruf kecil).
+Hanya 2 tipe:
+
+| Folder | Dilihat oleh |
+|--------|--------------|
+| `frontend/src/menus/admin/<menu>/` | role `ADMIN` saja |
+| `frontend/src/menus/user/<menu>/` | SEMUA role |
 
 ```
-frontend/src/menus/<role>/<menu>/
+frontend/src/menus/user/laporan/
 ├── index.jsx   # WAJIB: mainpage, `export default function`, + opsional:
 │               # export const meta = { label: 'Judul', icon: 'bell', order: 8 }
 ├── api.js      # fungsi menu ini (pakai apiRequest dari api/client.js)
 └── components/ # pecahan halaman (opsional)
 ```
 
-`<role>` = `shared` (semua role) | `admin` (ADMIN) | `user` (USER) |
-nama-role-lowercase (role custom). Contoh: `menus/admin/laporan/index.jsx`
-langsung tampil di sidebar admin tanpa sentuh file lain. Daftar ikon valid:
+Contoh: `menus/admin/laporan/index.jsx` langsung tampil di sidebar admin
+tanpa sentuh file lain; `menus/user/laporan/` tampil di semua role dan
+batas antar-role non-ADMIN diatur via permission backend. Detail
+langkah-demi-langkah + checkpoint tiap langkah ada di `tutorial/README.md`
+(Kasus A untuk admin, Kasus B untuk semua role). Daftar ikon valid:
 lihat `components/icons.jsx` (`PATHS`).
 
 **Backend** — tambah 1 folder + 1 baris registrasi:
@@ -534,14 +547,14 @@ frontend/
 │   │                       # currentUser()/health(). Fungsi tiap menu ada di
 │   │                       # menus/<role>/<menu>/api.js (pakai apiRequest)
 │   ├── menus/              # 1 menu = 1 folder (auto-scan registry.js):
-│   │   ├── registry.js     # import.meta.glob menus/*/*/index.jsx → sidebar
-│   │   ├── shared/dashboard/   # semua role: profil, sesi, password,
-│   │   │   │               # ringkasan + pintasan admin
+│   │   ├── registry.js     # glob menus/admin/*/ + menus/user/*/index.jsx → sidebar
+│   │   │                   # ADMIN melihat semuanya; role lain hanya menu user/
+│   │   ├── user/dashboard/ # SEMUA role: profil, ganti password,
+│   │   │   │               # ringkasan + pintasan (khusus admin)
 │   │   │   └── index.jsx   # mainpage + export const meta {label,icon,order}
-│   │   ├── admin/<menu>/   # ADMIN: users (+components/EditUserModal.jsx),
-│   │   │                   # roles, sessions, audit, security, syslog,
-│   │   │                   # notifications — tiap folder: index.jsx + api.js
-│   │   └── user/           # USER (.gitkeep; tambah folder menu bila perlu)
+│   │   └── admin/<menu>/   # ADMIN saja: users (+components/EditUserModal.jsx),
+│   │                       # roles, sessions, audit, security, syslog,
+│   │                       # notifications — tiap folder: index.jsx + api.js
 │   ├── components/         # UI KIT modern (lihat 2.5): Toast, Alert, Modal,
 │   │   │                   # ConfirmDialog, Button, TextField/PasswordInput,
 │   │   │                   # Spinner/Skeleton, EmptyState, Badge, Pagination,
@@ -552,25 +565,13 @@ frontend/
 │   │   ├── ThemeToggle.jsx # tombol bulan/matahari
 │   │   └── index.js        # `import { Button, Modal } from '../components'`
 │   └── pages/
-│       ├── Auth.jsx        # LoginForm (tanpa registrasi; fokus login)
-│       ├── Dashboard.jsx   # beranda semua role (profil, sesi, password,
-│       │                   # ringkasan + pintasan admin)
-│       ├── Users.jsx       # User Account Management (kartu, role badge,
-│       │                   # pagination, edit/logout-all/hapus)
-│       ├── EditUserModal.jsx # dialog edit + dropdown role (khusus admin)
-│       ├── Roles.jsx       # Role & Permission: matriks checkbox per grup,
-│       │                   # buat/hapus role, simpan permission
-│       ├── Sessions.jsx    # tab Sesi saya / Semua sesi + revoke per sesi
-│       ├── Audit.jsx       # filter aksi/entitas/pelaku + tabel + pagination
-│       ├── Security.jsx    # 6 kartu ringkasan + aktivitas + kebijakan aktif
-│       ├── Syslog.jsx      # filter level + tabel + bersihkan log lama
-│       └── Notifications.jsx # tab Template (CRUD + variabel) / Kirim-Test /
-│                             # Riwayat kirim
+│       └── Auth.jsx        # LoginForm (tanpa registrasi; fokus login)
+│                           # dipakai di halaman login + popup sesi-habis
 └── dist/                   # HASIL build (di-ignore, jangan edit manual)
     └── .gitignore          # placeholder agar go:embed tetap compile di fresh clone
 ```
 
-Alur data frontend: `menus/<role>/<menu>/index.jsx` → `api.js` menu itu →
+Alur data frontend: `menus/admin|user/<menu>/index.jsx` → `api.js` menu itu →
 `apiRequest` (`api/client.js`) → `fetch(${VITE_API_URL}/api/...)`.
 `App.jsx` membangun sidebar otomatis dari `menus/registry.js` (filter role).
 Saat dev (`npm run dev`), `VITE_API_URL` kosong → request relatif `/api/...` →
@@ -665,7 +666,10 @@ AKSES PRIVAT
 
 TOKEN KEDALUWARSA (otomatis di client.js)
   401 ──► POST /api/refresh {refresh_token} ──► hapus token lama + terbitkan pasangan
-  baru ──► ulangi request awal. Gagal refresh → logout (token dibuang).
+  baru ──► ulangi request awal. Gagal refresh → token dibuang + event
+  `go-core:session-expired` → popup "Sesi berakhir — login lagi" tampil
+  di atas halaman terakhir (tanpa pindah halaman); login sukses → lanjut
+  di tempat, halaman dimuat ulang otomatis.
 ```
 
 Aturan keamanan: 1 user maksimal **5 sesi** (login ke-6 menghapus sesi tertua);
