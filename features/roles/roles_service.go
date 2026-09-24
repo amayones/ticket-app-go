@@ -53,9 +53,6 @@ func (s *Service) CheckPermission(ctx context.Context, userCode, permCode string
 		}
 		return fmt.Errorf("permission user lookup: %w", err)
 	}
-	if user.RoleCode == models.RoleAdmin {
-		return nil
-	}
 	ok, err := s.roles.HasPermission(ctx, user.RoleCode, permCode)
 	if err != nil {
 		return fmt.Errorf("permission check: %w", err)
