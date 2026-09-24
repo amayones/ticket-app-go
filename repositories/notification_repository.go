@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"golang-backend/models"
 )
@@ -20,22 +21,28 @@ type NotificationRepositoryInterface interface {
 }
 
 type NotificationRepository struct {
-	db *sql.DB
+	db      *sql.DB
+	dialect Dialect
 }
 
-func NewNotificationRepository(db *sql.DB) NotificationRepositoryInterface {
-	return &NotificationRepository{db: db}
+func NewNotificationRepository(db *sql.DB, dialect Dialect) NotificationRepositoryInterface {
+	return &NotificationRepository{db: db, dialect: dialect}
 }
+
+func (r *NotificationRepository) tmplTable() string { return r.dialect.Table("CPNOTIFTEMPLATE") }
+func (r *NotificationRepository) logTable() string  { return r.dialect.Table("CPNOTIFLOG") }
 
 func (r *NotificationRepository) ListTemplates(ctx context.Context, activeOnly bool) ([]models.NotifTemplate, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	query := `
 		SELECT CODE, NAME, CHANNEL, SUBJECT, BODY, IS_ACTIVE, CREATED_AT, UPDATED_AT
-		FROM dbo.CPNOTIFTEMPLATE
-		WHERE (@p1 = 0 OR IS_ACTIVE = 1)
-		ORDER BY NAME ASC`
-	rows, err := r.db.QueryContext(ctx, query, boolToInt(activeOnly))
+		FROM ` + r.tmplTable()
+	if activeOnly {
+		query += ` WHERE IS_ACTIVE = ` + r.dialect.IsTrue()
+	}
+	query += ` ORDER BY NAME ASC`
+	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -56,21 +63,14 @@ func (r *NotificationRepository) ListTemplates(ctx context.Context, activeOnly b
 	return out, nil
 }
 
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func (r *NotificationRepository) GetTemplate(ctx context.Context, code string) (*models.NotifTemplate, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	var t models.NotifTemplate
 	var subject sql.NullString
-	err := r.db.QueryRowContext(ctx, `
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(`
 		SELECT CODE, NAME, CHANNEL, SUBJECT, BODY, IS_ACTIVE, CREATED_AT, UPDATED_AT
-		FROM dbo.CPNOTIFTEMPLATE WHERE CODE = @p1`, code,
+		FROM `+r.tmplTable()+` WHERE CODE = ?`), code,
 	).Scan(&t.Code, &t.Name, &t.Channel, &subject, &t.Body, &t.IsActive, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -82,9 +82,9 @@ func (r *NotificationRepository) GetTemplate(ctx context.Context, code string) (
 func (r *NotificationRepository) CreateTemplate(ctx context.Context, t *models.NotifTemplate) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO dbo.CPNOTIFTEMPLATE (CODE, NAME, CHANNEL, SUBJECT, BODY, IS_ACTIVE)
-		VALUES (@p1, @p2, @p3, @p4, @p5, @p6)`,
+	_, err := r.db.ExecContext(ctx, r.dialect.Bind(`
+		INSERT INTO `+r.tmplTable()+` (CODE, NAME, CHANNEL, SUBJECT, BODY, IS_ACTIVE)
+		VALUES (?, ?, ?, ?, ?, ?)`),
 		t.Code, t.Name, t.Channel, nullStr(t.Subject), t.Body, t.IsActive)
 	return err
 }
@@ -92,10 +92,10 @@ func (r *NotificationRepository) CreateTemplate(ctx context.Context, t *models.N
 func (r *NotificationRepository) UpdateTemplate(ctx context.Context, t *models.NotifTemplate) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx, `
-		UPDATE dbo.CPNOTIFTEMPLATE
-		SET NAME = @p1, CHANNEL = @p2, SUBJECT = @p3, BODY = @p4, IS_ACTIVE = @p5, UPDATED_AT = GETDATE()
-		WHERE CODE = @p6`,
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(`
+		UPDATE `+r.tmplTable()+`
+		SET NAME = ?, CHANNEL = ?, SUBJECT = ?, BODY = ?, IS_ACTIVE = ?, UPDATED_AT = `+r.dialect.Now()+`
+		WHERE CODE = ?`),
 		t.Name, t.Channel, nullStr(t.Subject), t.Body, t.IsActive, t.Code)
 	if err != nil {
 		return err
@@ -113,7 +113,8 @@ func (r *NotificationRepository) UpdateTemplate(ctx context.Context, t *models.N
 func (r *NotificationRepository) DeleteTemplate(ctx context.Context, code string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	res, err := r.db.ExecContext(ctx, `DELETE FROM dbo.CPNOTIFTEMPLATE WHERE CODE = @p1`, code)
+	res, err := r.db.ExecContext(ctx,
+		r.dialect.Bind(`DELETE FROM `+r.tmplTable()+` WHERE CODE = ?`), code)
 	if err != nil {
 		return err
 	}
@@ -130,9 +131,9 @@ func (r *NotificationRepository) DeleteTemplate(ctx context.Context, code string
 func (r *NotificationRepository) CreateLog(ctx context.Context, l *models.NotifLog) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO dbo.CPNOTIFLOG (CODE, TEMPLATE_CODE, CHANNEL, RECIPIENT, SUBJECT, BODY, STATUS, ERROR)
-		VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8)`,
+	_, err := r.db.ExecContext(ctx, r.dialect.Bind(`
+		INSERT INTO `+r.logTable()+` (CODE, TEMPLATE_CODE, CHANNEL, RECIPIENT, SUBJECT, BODY, STATUS, ERROR)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 		l.Code, nullStr(l.TemplateCode), l.Channel, l.Recipient,
 		nullStr(l.Subject), l.Body, l.Status, nullStr(l.Error))
 	return err
@@ -150,11 +151,19 @@ func (r *NotificationRepository) ListLogs(ctx context.Context, limit, offset int
 	}
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	rows, err := r.db.QueryContext(ctx, `
+	query := `
 		SELECT CODE, TEMPLATE_CODE, CHANNEL, RECIPIENT, SUBJECT, BODY, STATUS, ERROR, CREATED_AT
-		FROM dbo.CPNOTIFLOG
-		ORDER BY ID DESC
-		OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY`, offset, limit)
+		FROM ` + r.logTable() + `
+		ORDER BY ID DESC `
+	var args []any
+	if r.dialect == DialectMSSQL {
+		query += pageMSSQL()
+		args = []any{offset, limit}
+	} else {
+		query += pageStd()
+		args = []any{limit, offset}
+	}
+	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +188,9 @@ func (r *NotificationRepository) CountSentSince(ctx context.Context, hours int) 
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	var n int
-	err := r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM dbo.CPNOTIFLOG
-		WHERE STATUS = 'SENT' AND CREATED_AT >= DATEADD(HOUR, -@p1, GETDATE())`, hours).Scan(&n)
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(`
+		SELECT COUNT(*) FROM `+r.logTable()+`
+		WHERE STATUS = 'SENT' AND CREATED_AT >= ?`),
+		time.Now().Add(-time.Duration(hours)*time.Hour)).Scan(&n)
 	return n, err
 }
