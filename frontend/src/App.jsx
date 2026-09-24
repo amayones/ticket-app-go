@@ -87,52 +87,69 @@ function Shell() {
       {/* Sidebar (desktop) — bisa dilipat via tombol chevron.
           Hanya lebar yang ditransisikan (bukan all) agar tidak bergetar. */}
       <aside
-        className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white transition-[width,padding] duration-200 ease-out md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
+        className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] transition-[width,padding] md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
           collapsed ? 'w-[76px] p-2' : 'w-60 p-3'
         }`}
       >
-        {/* Logo sejajar ikon menu; tombol lipat menonjol di kanan logo
-            (tengah-tengah tinggi baris logo). */}
-        <div className={`relative flex items-center pb-4 ${collapsed ? 'justify-center px-0' : 'gap-2 px-1'}`}>
-          <span className="flex items-center gap-2 text-sm font-bold tracking-tight">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
+        {/* Baris logo tanpa padding-bawah: tombol tepat sejajar tengah logo. */}
+        <div className="pb-4">
+          <div className={`relative flex items-center ${collapsed ? 'justify-center px-0' : 'gap-2 px-1'}`}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">
               G
             </span>
-            {!collapsed && <span className="truncate">Go Core</span>}
-          </span>
-          <Tooltip
-            label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-            position="right"
-            className="absolute -right-5 top-1/2 -translate-y-1/2"
-          >
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-              className="shrink-0 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-md transition-all duration-200 hover:bg-zinc-50 hover:text-zinc-800 hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+            <span
+              className={`whitespace-nowrap text-sm font-bold tracking-tight transition-all delay-100 duration-300 ${
+                collapsed ? 'max-w-0 opacity-0' : 'max-w-[160px] opacity-100'
+              }`}
+              style={{ overflow: 'hidden' }}
             >
-              <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} className="h-4 w-4" />
-            </button>
-          </Tooltip>
+              Go Core
+            </span>
+            <Tooltip
+              label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+              position="right"
+              className="absolute -right-5 top-1/2 -translate-y-1/2"
+            >
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+                className="shrink-0 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-md transition-all duration-300 hover:bg-zinc-50 hover:text-zinc-800 hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+              >
+                <Icon
+                  name="chevronLeft"
+                  className={`h-4 w-4 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}
+                />
+              </button>
+            </Tooltip>
+          </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
-          {visibleNav.map((n) => {
+          {visibleNav.map((n, i) => {
+            const stagger = `${Math.min(i, 6) * 25}ms`
             const btn = (
               <button
                 key={n.key}
                 type="button"
                 onClick={() => setView(n.key)}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-colors ${
-                  collapsed ? 'justify-center' : ''
-                } ${
+              className={`flex w-full items-center rounded-xl px-3 py-2.5 transition-colors ${
+                collapsed ? 'justify-center gap-0' : 'gap-2.5'
+              } ${
                   activeNav === n.key
                     ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
                     : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
                 }`}
               >
-                <Icon name={n.icon} className="h-5 w-5 shrink-0" />
-                {!collapsed && <span className="truncate">{n.label}</span>}
-              </button>
+              <Icon name={n.icon} className="h-5 w-5 shrink-0" />
+              <span
+                style={{ transitionDelay: stagger, overflow: 'hidden' }}
+                className={`whitespace-nowrap text-[13px] font-medium transition-all duration-300 ${
+                  collapsed ? 'max-w-0 opacity-0' : 'max-w-[160px] opacity-100'
+                }`}
+              >
+                {n.label}
+              </span>
+            </button>
             )
             return collapsed ? (
               <Tooltip key={n.key} label={n.label} position="right">
@@ -144,15 +161,20 @@ function Shell() {
           })}
         </nav>
         <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
-          {!collapsed && (
-            <div className="mb-2 flex items-center gap-2 px-2">
+          <div
+            className={`transition-all delay-100 duration-300 ${
+              collapsed ? 'max-h-0 opacity-0' : 'mb-2 max-h-20 opacity-100'
+            }`}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="flex items-center gap-2 px-2">
               <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
                 <span className="block truncate font-semibold text-zinc-700 dark:text-zinc-200">@{me?.username}</span>
                 <span className="font-mono">{me?.code}</span>
               </span>
               <Badge tone={isAdmin ? 'danger' : 'brand'}>{me?.role}</Badge>
             </div>
-          )}
+          </div>
           <div className={`flex items-center gap-1.5 ${collapsed ? 'flex-col' : ''}`}>
             {collapsed ? (
               <Tooltip label="Logout" position="right">
