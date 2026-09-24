@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client.js'
+import { api } from '../../../api/client.js'
+import { getUser, logoutAll, updateUser } from '../../admin/users/api.js'
+import { listMySessions } from '../../admin/sessions/api.js'
+import { securitySummary } from '../../admin/security/api.js'
+
+export const meta = { label: 'Dashboard', icon: 'home', order: 0 }
 import {
   Alert,
   Avatar,
@@ -12,7 +17,7 @@ import {
   PasswordInput,
   useSmoothLoading,
   useToast,
-} from '../components'
+} from '../../../components'
 
 // Dashboard: satu-satunya halaman untuk role USER; beranda untuk ADMIN.
 // Berisi profil, status backend, sesi sendiri, ganti password, dan area
@@ -40,15 +45,15 @@ export default function Dashboard({ onNavigate }) {
     setError('')
     try {
       const [user, sessions, health] = await Promise.all([
-        api.getUser(me.code),
-        api.listMySessions(),
+        getUser(me.code),
+        listMySessions(),
         api.health().catch(() => null),
       ])
       setProfile(user)
       setSessionCount(Array.isArray(sessions) ? sessions.length : 0)
       setBackendOk(!!health)
       if (isAdmin) {
-        setSummary(await api.securitySummary().catch(() => null))
+        setSummary(await securitySummary().catch(() => null))
       }
     } catch (err) {
       setError(err.message)
@@ -63,7 +68,7 @@ export default function Dashboard({ onNavigate }) {
 
   async function logoutAll() {
     try {
-      await api.logoutAll(me.code)
+      await logoutAll(me.code)
       toast.warning('Semua sesi Anda dicabut. Muat ulang bila perlu login lagi.')
       load()
     } catch (err) {
@@ -84,7 +89,7 @@ export default function Dashboard({ onNavigate }) {
     }
     setSavingPass(true)
     try {
-      await api.updateUser(me.code, { password: newPass })
+      await updateUser(me.code, { password: newPass })
       setNewPass('')
       setConfirmPass('')
       toast.success('Password berhasil diganti.')
