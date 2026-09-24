@@ -12,7 +12,7 @@ export default function Card({ children, className = '' }) {
 export function CardTitle({ children, description }) {
   return (
     <div className="mb-4">
-      <h2 className="!m-0 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{children}</h2>
+      <h2 className="m-0 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{children}</h2>
       {description && <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{description}</p>}
     </div>
   )
