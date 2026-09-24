@@ -69,7 +69,7 @@ tasks:
       - bash ./scripts/watch.sh
 
   dev:
-    desc: Vite HMR + go run in ONE terminal (daily development)
+    desc: Daily development in ONE terminal (alias of start)
     cmds:
       - bash ./scripts/dev.sh
 
