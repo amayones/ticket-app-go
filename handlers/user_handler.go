@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -19,12 +20,22 @@ import (
 const MaxBodyBytes = 1 << 20 // 1 MB
 
 // UserHandler depends on the service interface (mockable), not concrete.
+// Audit + Syslog are best-effort (nil-safe) so failures never break requests.
 type UserHandler struct {
 	Service services.UserServiceInterface
+	Audit   AuditLogger
+	Sys     SysLogger
 }
 
-func NewUserHandler(service services.UserServiceInterface) *UserHandler {
-	return &UserHandler{Service: service}
+func NewUserHandler(service services.UserServiceInterface, audit AuditLogger, sys SysLogger) *UserHandler {
+	return &UserHandler{Service: service, Audit: audit, Sys: sys}
+}
+
+func (h *UserHandler) audit(r *http.Request, actorCode, action, entity, entityCode, detail string) {
+	if h.Audit == nil {
+		return
+	}
+	_ = h.Audit.Log(r.Context(), actorCode, action, entity, entityCode, detail, services.ClientIP(r.RemoteAddr))
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
@@ -70,6 +81,9 @@ func (h *UserHandler) handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, err.Error())
 	default:
 		slog.Error("internal error", "err", err)
+		if h.Sys != nil {
+			_ = h.Sys.Error(context.Background(), "user_handler", err.Error())
+		}
 		writeError(w, http.StatusInternalServerError, "Something went wrong")
 	}
 }
@@ -82,9 +96,18 @@ func parseCode(r *http.Request) (string, bool) {
 	return code, true
 }
 
-func requireSelf(w http.ResponseWriter, r *http.Request, code string) bool {
+// requireSelfOrPerm allows the owner, or anyone holding the permission
+// (e.g. admin with USER_UPDATE can edit other users).
+func requireSelfOrPerm(h *UserHandler, w http.ResponseWriter, r *http.Request, code, perm string) bool {
 	callerCode, ok := middleware.GetUserCode(r)
-	if !ok || callerCode != code {
+	if !ok {
+		writeError(w, http.StatusForbidden, services.ErrForbidden.Error())
+		return false
+	}
+	if callerCode == code {
+		return true
+	}
+	if err := h.Service.CheckPermission(r.Context(), callerCode, perm); err != nil {
 		writeError(w, http.StatusForbidden, services.ErrForbidden.Error())
 		return false
 	}
@@ -148,6 +171,7 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		h.handleServiceError(w, err)
 		return
 	}
+	h.audit(r, code, models.AuditRegister, models.EntityUser, code, "Akun "+req.Username+" didaftarkan")
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"message": "User created successfully",
 		"code":    code,
@@ -160,7 +184,7 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelf(w, r, code) {
+	if !requireSelfOrPerm(h, w, r, code, models.PermUserUpdate) {
 		return
 	}
 	var req models.UpdateUserRequest
@@ -171,6 +195,8 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		h.handleServiceError(w, err)
 		return
 	}
+	caller, _ := middleware.GetUserCode(r)
+	h.audit(r, caller, models.AuditUpdateUser, models.EntityUser, code, "Profil diperbarui")
 	writeJSON(w, http.StatusOK, map[string]string{"message": "User updated successfully"})
 }
 
@@ -180,13 +206,15 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelf(w, r, code) {
+	if !requireSelfOrPerm(h, w, r, code, models.PermUserDelete) {
 		return
 	}
 	if err := h.Service.DeleteUser(r.Context(), code); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
+	caller, _ := middleware.GetUserCode(r)
+	h.audit(r, caller, models.AuditDeleteUser, models.EntityUser, code, "Akun dihapus")
 	writeJSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
 }
 
@@ -197,9 +225,11 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	accessToken, refreshToken, err := h.Service.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
+		h.audit(r, "", models.AuditLoginFailed, models.EntityAuth, req.Username, "Login gagal: "+req.Username)
 		h.handleServiceError(w, err)
 		return
 	}
+	h.audit(r, "", models.AuditLogin, models.EntityAuth, req.Username, "Login berhasil: "+req.Username)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]string{
 		"message":       "Login successful",
@@ -234,6 +264,7 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		h.handleServiceError(w, err)
 		return
 	}
+	h.audit(r, "", models.AuditLogout, models.EntitySession, "", "Sesi dicabut via logout")
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
 }
 
@@ -243,13 +274,15 @@ func (h *UserHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Invalid user code")
 		return
 	}
-	if !requireSelf(w, r, code) {
+	if !requireSelfOrPerm(h, w, r, code, models.PermSessionManage) {
 		return
 	}
 	if err := h.Service.LogoutAll(r.Context(), code); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
+	caller, _ := middleware.GetUserCode(r)
+	h.audit(r, caller, models.AuditLogoutAll, models.EntitySession, code, "Semua sesi dicabut")
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Logged out from all devices"})
 }
 
