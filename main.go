@@ -63,14 +63,21 @@ func main() {
 	userRepository := repositories.NewUserRepository(db)
 	refreshTokenRepository := repositories.NewRefreshTokenRepository(db)
 	roleRepository := repositories.NewRoleRepository(db)
+	auditRepository := repositories.NewAuditRepository(db)
+	syslogRepository := repositories.NewSyslogRepository(db)
+	notifRepository := repositories.NewNotificationRepository(db)
 	userService, err := services.NewUserService(userRepository, refreshTokenRepository, roleRepository, cfg.JWTSecret)
 	if err != nil {
 		fail("service init failed", err)
 	}
-	userHandler := handlers.NewUserHandler(userService)
+	auditService := services.NewAuditService(auditRepository)
+	syslogService := services.NewSyslogService(syslogRepository)
+	notifService := services.NewNotificationService(notifRepository)
+	userHandler := handlers.NewUserHandler(userService, auditService, syslogService)
+	adminHandler := handlers.NewAdminHandler(userService, auditService, syslogService, notifService)
 
 	routeCfg := routes.DefaultRouteConfig(cfg.JWTSecret)
-	r := routes.SetupRoutesWithConfig(userHandler, routeCfg)
+	r := routes.SetupRoutesWithConfig(userHandler, adminHandler, routeCfg)
 	if err := attachEmbeddedSPA(r); err != nil {
 		slog.Warn("frontend/dist missing; API only", "err", err)
 	}
