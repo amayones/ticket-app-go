@@ -105,7 +105,13 @@ DB_DATABASE=<NAMA_DB-bebas-mis-GoCore>
 DB_USERNAME=may
 DB_PASSWORD=password-database-anda
 JWT_SECRET=ganti-dengan-string-acak-minimal-32-karakter
+ACCESS_TOKEN_MINUTES=15
+REFRESH_TOKEN_DAYS=7
 ```
+
+Umur sesi dapat diubah tanpa rebuild: `ACCESS_TOKEN_MINUTES` dalam menit
+(default 15), `REFRESH_TOKEN_DAYS` dalam hari (default 7). Untuk mengecek
+modal "Sesi habis", set `ACCESS_TOKEN_MINUTES=1` lalu restart backend.
 
 Buat `JWT_SECRET` acak:
 

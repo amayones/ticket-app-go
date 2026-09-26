@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -35,6 +36,12 @@ type Config struct {
 
 	JWTSecret string
 
+	// Token lifetimes (umur sesi). ACCESS_TOKEN_MINUTES dalam menit
+	// (default 15), REFRESH_TOKEN_DAYS dalam hari (default 7).
+	// Nilai <= 0 / bukan angka otomatis fallback ke default.
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
+
 	// Pool tuning with sane defaults, overridable via env.
 	DBMaxOpenConns int
 	DBMaxIdleConns int
@@ -58,6 +65,8 @@ func Load() (Config, error) {
 		DBUsername:     strings.TrimSpace(os.Getenv("DB_USERNAME")),
 		DBPassword:     os.Getenv("DB_PASSWORD"), // keep as-is; may contain spaces
 		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		AccessTokenTTL:  time.Duration(getEnvIntDefault("ACCESS_TOKEN_MINUTES", 15)) * time.Minute,
+		RefreshTokenTTL: time.Duration(getEnvIntDefault("REFRESH_TOKEN_DAYS", 7)) * 24 * time.Hour,
 		DBMaxOpenConns: getEnvIntDefault("DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns: getEnvIntDefault("DB_MAX_IDLE_CONNS", 10),
 	}

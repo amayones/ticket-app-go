@@ -30,9 +30,20 @@ func ValidateSecret(secret string) error {
 // GenerateAccessToken signs HS256 with iss/aud claims. Identity is the
 // public user CODE (never the numeric ID). Secret is injected
 // (no utils->config import) so the package stays pure and testable.
+// Umur token = AccessTokenTTL default; untuk umur custom (mis. dari Config)
+// pakai GenerateAccessTokenWithTTL.
 func GenerateAccessToken(secret, userCode, username, roleCode string) (string, error) {
+	return GenerateAccessTokenWithTTL(secret, userCode, username, roleCode, AccessTokenTTL)
+}
+
+// GenerateAccessTokenWithTTL sama seperti GenerateAccessToken dengan umur
+// token eksplisit. ttl <= 0 fallback ke AccessTokenTTL.
+func GenerateAccessTokenWithTTL(secret, userCode, username, roleCode string, ttl time.Duration) (string, error) {
 	if err := ValidateSecret(secret); err != nil {
 		return "", err
+	}
+	if ttl <= 0 {
+		ttl = AccessTokenTTL
 	}
 	now := time.Now()
 	claims := jwt.MapClaims{
@@ -42,7 +53,7 @@ func GenerateAccessToken(secret, userCode, username, roleCode string) (string, e
 		"iss":       TokenIssuer,
 		"aud":       TokenIssuer,
 		"iat":       now.Unix(),
-		"exp":       now.Add(AccessTokenTTL).Unix(),
+		"exp":       now.Add(ttl).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))

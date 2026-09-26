@@ -125,7 +125,7 @@ export default function Security() {
         </CardTitle>
         <ul className="grid gap-2 text-sm sm:grid-cols-2">
           {[
-            ['Access token 15 menit + refresh 7 hari (rotasi)', true],
+            ['Access token pendek + refresh berotasi (lihat ACCESS_TOKEN_MINUTES)', true],
             ['Refresh token disimpan sebagai hash SHA-256', true],
             ['Maksimal 5 sesi per user (sesi tertua digusur)', true],
             ['Rate-limit: login 5/mnt, register 10/mnt, refresh 30/mnt', true],

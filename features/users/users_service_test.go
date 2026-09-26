@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"golang-backend/models"
 	"golang-backend/services"
+	"golang-backend/utils"
 )
 
 var errUsernameConstraint = errors.New(`mssql: Violation of UNIQUE KEY constraint 'UQ_CPUSER_USERNAME'`)
@@ -23,7 +25,7 @@ func newTestService(t *testing.T) (*Service, *MockUserRepository, *MockRefreshTo
 	repo := NewMockUserRepository()
 	refreshRepo := NewMockRefreshTokenRepository()
 	roleRepo := NewMockRoleRepository()
-	svc, err := NewService(repo, refreshRepo, roleRepo, testJWTSecret)
+	svc, err := NewService(repo, refreshRepo, roleRepo, testJWTSecret, utils.AccessTokenTTL, utils.RefreshTokenTTL)
 	if err != nil {
 		t.Fatalf("NewUserService: %v", err)
 	}
@@ -244,5 +246,41 @@ func TestLogout(t *testing.T) {
 	}
 	if err := svc.Logout(ctx, "ngawur"); !errors.Is(err, services.ErrInvalidRefresh) {
 		t.Fatalf("expected logout unknown -> services.ErrInvalidRefresh, got %v", err)
+	}
+}
+
+func TestLogin_CustomTokenTTL(t *testing.T) {
+	t.Helper()
+	repo := NewMockUserRepository()
+	refreshRepo := NewMockRefreshTokenRepository()
+	roleRepo := NewMockRoleRepository()
+	svc, err := NewService(repo, refreshRepo, roleRepo, testJWTSecret, time.Minute, 2*time.Hour)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	ctx := context.Background()
+	if _, err := svc.CreateUser(ctx, "budi", "budi@example.com", "password123", ""); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	access, _, err := svc.Login(ctx, "budi", "password123")
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	// Klaim exp access token harus ~1 menit setelah iat.
+	parser := jwt.NewParser()
+	claims := jwt.MapClaims{}
+	if _, _, err := parser.ParseUnverified(access, claims); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	iat, _ := claims["iat"].(float64)
+	exp, _ := claims["exp"].(float64)
+	if got := time.Duration(exp-iat) * time.Second; got != time.Minute {
+		t.Fatalf("expected access TTL 1m, got %v", got)
+	}
+	// EXPIRES_AT refresh token harus ~2 jam dari sekarang.
+	for _, rt := range refreshRepo.Tokens {
+		if left := time.Until(rt.ExpiresAt); left < time.Hour || left > 2*time.Hour+time.Minute {
+			t.Fatalf("expected refresh TTL ~2h, got %v", left)
+		}
 	}
 }

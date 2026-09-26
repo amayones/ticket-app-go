@@ -75,7 +75,7 @@ func main() {
 	syslogRepo := fsyslog.NewRepository(db, dialect)
 	notifRepo := fnotif.NewRepository(db, dialect)
 
-	userSvc, err := fusers.NewService(userRepo, sessionRepo, roleRepo, cfg.JWTSecret)
+	userSvc, err := fusers.NewService(userRepo, sessionRepo, roleRepo, cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 	if err != nil {
 		fail("service init failed", err)
 	}

@@ -50,10 +50,12 @@ type refreshStore interface {
 }
 
 type Service struct {
-	users     RepositoryInterface
-	refresh   refreshStore
-	roles     roleChecker
-	jwtSecret string
+	users       RepositoryInterface
+	refresh     refreshStore
+	roles       roleChecker
+	jwtSecret   string
+	accessTTL   time.Duration
+	refreshTTL  time.Duration
 }
 
 func NewService(
@@ -61,11 +63,18 @@ func NewService(
 	refresh refreshStore,
 	roles roleChecker,
 	jwtSecret string,
+	accessTTL, refreshTTL time.Duration,
 ) (*Service, error) {
 	if err := utils.ValidateSecret(jwtSecret); err != nil {
 		return nil, fmt.Errorf("invalid JWT secret: %w", err)
 	}
-	return &Service{users: users, refresh: refresh, roles: roles, jwtSecret: jwtSecret}, nil
+	if accessTTL <= 0 {
+		accessTTL = utils.AccessTokenTTL
+	}
+	if refreshTTL <= 0 {
+		refreshTTL = utils.RefreshTokenTTL
+	}
+	return &Service{users: users, refresh: refresh, roles: roles, jwtSecret: jwtSecret, accessTTL: accessTTL, refreshTTL: refreshTTL}, nil
 }
 
 func (s *Service) validateUserInput(username, email, password string) error {
@@ -335,7 +344,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 	rt := models.RefreshToken{
 		UserCode:  user.Code,
 		Token:     utils.HashRefreshToken(refresh),
-		ExpiresAt: time.Now().Add(utils.RefreshTokenTTL),
+		ExpiresAt: time.Now().Add(s.refreshTTL),
 	}
 	if err := s.refresh.Create(ctx, &rt); err != nil {
 		return "", "", fmt.Errorf("store refresh token: %w", err)
@@ -383,7 +392,7 @@ func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken string) (
 	newRT := models.RefreshToken{
 		UserCode:  user.Code,
 		Token:     utils.HashRefreshToken(newRefresh),
-		ExpiresAt: time.Now().Add(utils.RefreshTokenTTL),
+		ExpiresAt: time.Now().Add(s.refreshTTL),
 	}
 	if err := s.refresh.Create(ctx, &newRT); err != nil {
 		return "", "", fmt.Errorf("store rotated token: %w", err)
@@ -415,5 +424,5 @@ func (s *Service) CountUsers(ctx context.Context) (int, error) {
 
 // accessTokenFor mengemas pembuatan token akses (dipakai login & refresh flow).
 func (s *Service) accessTokenFor(user *models.User) (string, error) {
-	return utils.GenerateAccessToken(s.jwtSecret, user.Code, user.Username, user.RoleCode)
+	return utils.GenerateAccessTokenWithTTL(s.jwtSecret, user.Code, user.Username, user.RoleCode, s.accessTTL)
 }

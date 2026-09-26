@@ -12,6 +12,8 @@ const SIZES = {
 // <Modal open title="…" onClose footer={<…/>}>isi…</Modal>
 // Set showClose={false} + closeOnBackdrop={false} + onClose={undefined}
 // untuk dialog wajib (misal sesi habis) yang tidak boleh di-skip.
+// bodyClassName mengganti kelas body default (yang scrollable) bila dialog
+// butuh tinggi fixed tanpa scrollbar, mis. bodyClassName="h-[320px] overflow-hidden px-5 py-4".
 export default function Modal({
   open,
   onClose,
@@ -21,6 +23,7 @@ export default function Modal({
   size = 'md',
   closeOnBackdrop = true,
   showClose = true,
+  bodyClassName = '',
 }) {
   useEffect(() => {
     if (!open || !onClose) return
@@ -64,7 +67,12 @@ export default function Modal({
             </button>
           )}
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4 text-sm text-zinc-600 dark:text-zinc-300">
+        <div
+          className={
+            bodyClassName ||
+            'max-h-[70vh] overflow-y-auto px-5 py-4 text-sm text-zinc-600 dark:text-zinc-300'
+          }
+        >
           {children}
         </div>
         {footer && (
