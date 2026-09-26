@@ -84,6 +84,7 @@ tasks:
     cmds:
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate.sql
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate2_rbac.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate3_mcontrol.sql
 
   migrate-postgres:
     desc: Apply scripts/schema.postgres.sql to PostgreSQL (requires psql)

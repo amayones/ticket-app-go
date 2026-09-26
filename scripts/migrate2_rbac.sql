@@ -1,6 +1,8 @@
 -- Migrasi 2: RBAC + Audit Log + System Log + Notifikasi + sesi admin.
 --   CPMODULE          master modul (CODE, LABEL, SORT_ORDER)
---   CPMENU            registry menu (MODULE -> CPMODULE, MENU_KIND + PARENT_CODE)
+--   CPMENU            registry menu (MODULE -> CPMODULE = section sidebar,
+--                     MCONTROL = folder frontend app/<mcontrol>/ untuk CHILD,
+--                     MENU_KIND + PARENT_CODE = header buka-tutup)
 --   CPPERMISSION      grant role -> menu (ROLE_CODE, MENU_CODE)
 --   CPAUDITLOG        jejak aksi user (siapa, apa, kapan, dari IP mana)
 --   CPSYSLOG          log error/sistem aplikasi (pengganti baca file log)
@@ -10,7 +12,15 @@
 --
 -- Aman diulang (idempotent). Jalankan:
 --   sqlcmd -S localhost,1433 -U <user> -P <pass> -d <NAMA_DB> -C -i scripts/migrate2_rbac.sql
--- Atau: task migrate (menjalankan migrate.sql lalu file ini berurutan)
+-- Atau: task migrate (menjalankan migrate.sql, file ini, lalu migrate3_mcontrol.sql)
+--
+-- WAJIB: DML ke dbo.CPMENU (backfill MENU_KIND + seed menu) di bawah menuntut
+-- QUOTED_IDENTIFIER ON karena migrasi 3 menambah filtered unique index
+-- UQ_CPMENU_MCONTROL. Default sqlcmd = OFF, jadi diset eksplisit di sini
+-- (tanpa ini: "UPDATE failed because the following SET options have incorrect
+-- settings: 'QUOTED_IDENTIFIER'").
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 SET XACT_ABORT ON;
 BEGIN TRAN;
 
@@ -21,13 +31,15 @@ BEGIN TRAN;
 -- 2. (Dihapus) Tabel grant CPERMISSION lama diganti CPPERMISSION (blok 2d).
 
 -- 2b. CPMODULE (master modul) --------------------------------------------------
--- Satu baris = satu modul (= satu section sidebar + satu folder di
--- frontend/src/menus/<MODULE>/). CPMENU.MODULE ber-FK ke sini sehingga modul
--- wajib dibuat dulu sebelum menunya (urut: modul -> menu -> grant role).
+-- Satu baris = satu modul = satu section sidebar di frontend (MODULE di
+-- CPMENU ber-FK ke sini sehingga modul wajib dibuat dulu sebelum menunya;
+-- urut: modul -> menu -> grant role).
 --
 -- Riwayat nama: tabel ini dulu CPMATRIX, sekarang CPMODULE (kolom
--- CPMENU.MCONTROL ikut jadi CPMENU.MODULE). Blok di bawah me-rename objek
--- lama bila masih ada, lalu membuat tabel bila belum ada sama sekali.
+-- CPMENU.MCONTROL waktu itu ikut jadi CPMENU.MODULE). Blok di bawah me-rename
+-- objek lama bila masih ada, lalu membuat tabel bila belum ada sama sekali.
+-- Catatan: sejak migrasi 3, MCONTROL dipakai lagi untuk arti lain (nama folder
+-- frontend per menu CHILD), lihat migrate3_mcontrol.sql.
 IF OBJECT_ID(N'dbo.CPMATRIX', N'V') IS NOT NULL DROP VIEW dbo.CPMATRIX;
 GO
 -- Rename dulu (instalasi lama), baru buat kalau memang belum ada. Urutan ini
@@ -64,13 +76,12 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMODULE WHERE CODE = N'REPORT');
 GO
 
 -- 2b. CPMENU (registry menu) ---------------------------------------------------
--- Satu baris = satu menu. MODULE = nama folder modul (UPPERCASE), wajib sama
--- persis dengan folder frontend menus/<MODULE>/<menu>/ (tanpa folder
--- perantara: semua menu satu level di dalam folder modul).
--- MENU_KIND menentukan peran baris: 'PARENT' (menu yang bisa punya anak,
--- tampil expandable di sidebar) atau 'CHILD' (menu biasa).
--- PARENT_CODE = kode menu parent; wajib menunjuk menu bertipe PARENT, satu
--- modul yang sama, dan tidak boleh menimbulkan siklus.
+-- Satu baris = satu menu. MODULE = section sidebar (FK ke CPMODULE; label
+-- section dari CPMODULE.LABEL), bukan nama folder.
+-- MENU_KIND menentukan peran baris: 'PARENT' (header buka-tutup di sidebar,
+-- tanpa halaman/folder) atau 'CHILD' (item biasa, folder frontend dari
+-- MCONTROL). PARENT_CODE = kode menu parent; wajib menunjuk menu bertipe
+-- PARENT, satu modul yang sama, dan tidak boleh menimbulkan siklus.
 IF OBJECT_ID(N'dbo.CPMENU', N'U') IS NULL
 CREATE TABLE dbo.CPMENU (
   ID INT IDENTITY(1,1) NOT NULL,
@@ -90,9 +101,13 @@ CREATE TABLE dbo.CPMENU (
   CONSTRAINT CK_CPMENU_KIND CHECK (MENU_KIND IN (N'PARENT', N'CHILD'))
 );
 GO
--- Rename kolom lama MCONTROL -> MODULE (instalasi sebelum rename).
+-- Rename kolom lama MCONTROL -> MODULE (instalasi sebelum rename). Hanya bila
+-- MODULE belum ada: setelah migrate3_mcontrol.sql, MCONTROL dipakai lagi untuk
+-- nama folder frontend sehingga rename tidak boleh diulang.
 IF EXISTS (SELECT 1 FROM sys.columns
            WHERE object_id = OBJECT_ID(N'dbo.CPMENU') AND name = N'MCONTROL')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+           WHERE object_id = OBJECT_ID(N'dbo.CPMENU') AND name = N'MODULE')
   EXEC sp_rename N'dbo.CPMENU.MCONTROL', N'MODULE', N'COLUMN';
 GO
 -- Tambah kolom MENU_KIND bila belum ada. ALTER dipisah dari UPDATE karena
@@ -123,50 +138,56 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CPMENU_MODULE')
 
 -- Seed registry menu bawaan (urut sesuai sidebar) + contoh tes tampilan.
 -- MENU_MODUL = halaman manajemen modul & menu. Dua menu REPORT adalah contoh
--- (menu biasa vs menu bersarang di grup visual) yang sengaja TANPA akses
--- role mana pun. Grup visual (mis. folder keuangan/) tidak punya baris menu.
-DECLARE @menus TABLE (CODE NVARCHAR(40), MODULE NVARCHAR(40), LABEL NVARCHAR(100), MENU_KIND NVARCHAR(10), SORT_ORDER INT, PARENT_CODE NVARCHAR(40));
-INSERT INTO @menus VALUES
-  (N'MENU_USERS',         N'SYSTEM', N'User Account',       N'CHILD',  1, NULL),
-  (N'MENU_MODUL',         N'SYSTEM', N'Modul & Menu',       N'CHILD',  2, NULL),
-  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission',  N'CHILD',  3, NULL),
-  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',        N'CHILD',  4, NULL),
-  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',          N'CHILD',  5, NULL),
-  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',    N'CHILD',  6, NULL),
-  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',         N'CHILD',  7, NULL),
-  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',         N'CHILD',  8, NULL),
-  (N'MENU_LAPORAN',       N'REPORT', N'Laporan',            N'CHILD',  1, NULL),
-  (N'MENU_KEUANGAN',      N'REPORT', N'Keuangan',           N'PARENT', 2, NULL),
-  (N'MENU_ARUS_KAS',      N'REPORT', N'Arus Kas',           N'CHILD',  3, N'MENU_KEUANGAN');
+-- (menu biasa vs menu anak di bawah header PARENT) yang sengaja TANPA akses
+-- role mana pun. MCONTROL = nama folder frontend app/<mcontrol>/ (kolomnya
+-- ditambahkan migrate3_mcontrol.sql; lihat percabangan di bawah).
+IF OBJECT_ID(N'tempdb..#menus') IS NOT NULL DROP TABLE #menus;
+CREATE TABLE #menus (CODE NVARCHAR(40), MODULE NVARCHAR(40), LABEL NVARCHAR(100), MCONTROL NVARCHAR(40) NULL, MENU_KIND NVARCHAR(10), SORT_ORDER INT, PARENT_CODE NVARCHAR(40) NULL);
+INSERT INTO #menus VALUES
+  (N'MENU_USERS',         N'SYSTEM', N'User Account',      N'users',           N'CHILD',  1, NULL),
+  (N'MENU_MODUL',         N'SYSTEM', N'Modul & Menu',      N'modul_menu',      N'CHILD',  2, NULL),
+  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission', N'role_permission', N'CHILD',  3, NULL),
+  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',       N'sesi_auth',       N'CHILD',  4, NULL),
+  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',         N'audit_log',       N'CHILD',  5, NULL),
+  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',   N'security_center', N'CHILD',  6, NULL),
+  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',        N'system_log',      N'CHILD',  7, NULL),
+  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',        N'notifikasi',      N'CHILD',  8, NULL),
+  (N'MENU_LAPORAN',       N'REPORT', N'Laporan',           N'laporan',         N'CHILD',  1, NULL),
+  (N'MENU_KEUANGAN',      N'REPORT', N'Keuangan',          NULL,               N'PARENT', 2, NULL),
+  (N'MENU_ARUS_KAS',      N'REPORT', N'Arus Kas',          N'arus_kas',        N'CHILD',  3, N'MENU_KEUANGAN');
 
-INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE)
-SELECT CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE FROM @menus m
-WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMENU x WHERE x.CODE = m.CODE);
+-- Dua varian INSERT: tanpa MCONTROL (kolom belum ada) atau dengan MCONTROL
+-- (kolom sudah ada, CK_CPMENU_MCONTROL menuntut CHILD punya folder). Diambil
+-- lewat EXEC karena nama kolom di-hardcode per varian.
+IF COL_LENGTH(N'dbo.CPMENU', N'MCONTROL') IS NULL
+  EXEC(N'INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE)
+  SELECT CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE FROM #menus m
+  WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMENU x WHERE x.CODE = m.CODE);');
+ELSE
+  EXEC(N'INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MCONTROL, MENU_KIND, SORT_ORDER, PARENT_CODE)
+  SELECT CODE, MODULE, LABEL, MCONTROL, MENU_KIND, SORT_ORDER, PARENT_CODE FROM #menus m
+  WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMENU x WHERE x.CODE = m.CODE);');
 
--- Sinkronkan urutan menu bawaan (penting untuk instalasi lama yang sudah
--- menjalankan migrasi ini sebelum urutan_sidebar berubah). Hanya 8 kode
--- bawaan yang disentuh; menu buatan sendiri tidak terpengaruh.
+-- Sinkronkan urutan + label menu bawaan (penting untuk instalasi lama yang
+-- sudah menjalankan migrasi ini sebelum urutan_sidebar berubah). Hanya 8 kode
+-- bawaan di SYSTEM yang disentuh; menu buatan sendiri tidak terpengaruh.
 UPDATE m
 SET m.SORT_ORDER = s.SORT_ORDER, m.LABEL = s.LABEL
 FROM dbo.CPMENU m
-JOIN @menus s ON s.CODE = m.CODE
+JOIN #menus s ON s.CODE = m.CODE
 WHERE m.MODULE = N'SYSTEM'
   AND (m.SORT_ORDER <> s.SORT_ORDER OR m.LABEL <> s.LABEL);
+DROP TABLE #menus;
 GO
 
 -- Contoh parent-child (Keuangan = PARENT, Arus Kas = CHILD di bawahnya).
--- Seed di atas hanya menambahkan yang belum ada, jadi instalasi lama
--- sudah punya Arus Kas tanpa parent: blok ini melengkapinya.
-IF NOT EXISTS (SELECT 1 FROM dbo.CPMENU WHERE CODE = N'MENU_KEUANGAN')
-  INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER)
-  VALUES (N'MENU_KEUANGAN', N'REPORT', N'Keuangan', N'PARENT', 2);
-IF NOT EXISTS (SELECT 1 FROM dbo.CPMENU WHERE CODE = N'MENU_ARUS_KAS')
-  INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE)
-  VALUES (N'MENU_ARUS_KAS', N'REPORT', N'Arus Kas', N'CHILD', 3, N'MENU_KEUANGAN');
-ELSE
-  UPDATE dbo.CPMENU
-  SET MENU_KIND = N'CHILD', PARENT_CODE = N'MENU_KEUANGAN', SORT_ORDER = 3
-  WHERE CODE = N'MENU_ARUS_KAS';
+-- Seed di atas sudah memuat keduanya; blok ini menyelaraskan instalasi lama
+-- yang baris Arus Kas-nya sudah ada tapi belum menunjuk parent. MCONTROL baris
+-- CHILD dilengkapi migrate3_mcontrol.sql bila masih NULL.
+UPDATE dbo.CPMENU
+SET MENU_KIND = N'CHILD', PARENT_CODE = N'MENU_KEUANGAN', SORT_ORDER = 3
+WHERE CODE = N'MENU_ARUS_KAS'
+  AND (PARENT_CODE IS NULL OR PARENT_CODE <> N'MENU_KEUANGAN' OR MENU_KIND <> N'CHILD');
 GO
 
 -- 2d. CPPERMISSION (grant role -> menu) --------------------------------------------
@@ -261,14 +282,23 @@ WHERE MENU_CODE IN (
   N'AUDIT_READ', N'SECURITY_READ', N'SYSLOG_READ', N'SYSLOG_MANAGE',
   N'NOTIF_READ', N'NOTIF_MANAGE', N'NOTIF_SEND'
 );
--- ADMIN mendapat semua menu secara default (dari CPMENU), KECUALI menu contoh
--- tes tampilan (REPORT) yang sengaja tanpa akses role mana pun.
+-- ADMIN mendapat semua menu CHILD secara default (dari CPMENU), KECUALI menu
+-- contoh tes tampilan (REPORT) yang sengaja tanpa akses role mana pun.
+-- Menu PARENT tidak di-grant: header buka-tutup tanpa halaman sendiri, aksesnya
+-- menyusul otomatis dari menu CHILD di bawahnya (lihat MyMenusByRole).
 INSERT INTO dbo.CPPERMISSION (ROLE_CODE, MENU_CODE)
 SELECT N'ADMIN', CODE FROM dbo.CPMENU
-WHERE CODE NOT IN (N'MENU_LAPORAN', N'MENU_KEUANGAN', N'MENU_ARUS_KAS')
+WHERE MENU_KIND = N'CHILD'
+  AND CODE NOT IN (N'MENU_LAPORAN', N'MENU_ARUS_KAS')
 AND NOT EXISTS (
   SELECT 1 FROM dbo.CPPERMISSION x WHERE x.ROLE_CODE = N'ADMIN' AND x.MENU_CODE = CPMENU.CODE
 );
+-- Bersihkan grant PARENT sisa instalasi lama: matriks Role & Permission kini
+-- hanya mencentang menu CHILD (header PARENT tampil otomatis, tanpa grant).
+DELETE g
+FROM dbo.CPPERMISSION g
+JOIN dbo.CPMENU m ON m.CODE = g.MENU_CODE
+WHERE m.MENU_KIND = N'PARENT';
 -- USER tidak diberi menu apa pun (nol mapping). Akses diberikan manual
 -- oleh admin lewat matriks Role & Permission.
 -- (Sengaja tidak ada INSERT untuk USER di sini.)
