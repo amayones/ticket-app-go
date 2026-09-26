@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     base: '/',
+    // Nama aplikasi untuk branding (judul tab + kartu login). Satu sumber:
+    // APP_NAME di .env root, jadi ganti nama aplikasi cukup edit satu baris.
+    define: {
+      __APP_NAME__: JSON.stringify(env.APP_NAME || 'Go Core'),
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: true,

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api/client.js'
+import { APP_NAME } from '../appName.js'
 import { Alert, Button, Card, CardTitle, PasswordInput, TextField } from '../components'
 
 // Form login. Mode penuh (default) = kartu ber-branding untuk halaman login.
@@ -64,10 +65,10 @@ export function LoginForm({ onDone, bare = false }) {
     <Card className="w-full">
       <div className="mb-5 flex flex-col items-center gap-2 text-center">
         <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-xl font-bold text-white">
-          G
+          {APP_NAME.charAt(0).toUpperCase()}
         </span>
         <CardTitle description="Masuk untuk mengelola aplikasi. Akun dibuatkan oleh admin.">
-          Go Core
+          {APP_NAME}
         </CardTitle>
       </div>
       {form}

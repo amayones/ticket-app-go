@@ -121,7 +121,8 @@ AND NOT EXISTS (
 
 -- Matriks role x modul x menu dibaca via JOIN (CPROLE x CPMENU LEFT JOIN
 -- CPPERMISSION); tulis grant tetap ke CPPERMISSION (tidak ada sinkron ganda).
-DROP VIEW IF EXISTS CPMATRIX;
+-- Catatan: dulu CPMATRIX adalah VIEW. Sekarang CPMATRIX = tabel master modul
+-- (lihat di atas), jadi tidak ada view yang perlu di-drop.
 
 CREATE TABLE IF NOT EXISTS CPAUDITLOG (
   ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,3 +196,16 @@ CREATE TABLE IF NOT EXISTS CPNOTIFLOG (
   ERROR TEXT,
   CREATED_AT DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Seed 2 akun awal (sama seperti scripts/seed-admin.sql untuk SQL Server):
+-- admin/admin (ADMIN) + user/user (USER). WAJIB ganti password setelah login
+-- pertama, dan jangan dipakai di production apa adanya.
+-- Hash di bawah = bcrypt; sama persis dengan seed SQL Server.
+INSERT INTO CPUSER (CODE, USERNAME, EMAIL, PASSWORD, ROLE_CODE)
+SELECT 'USR-000004', 'admin', 'admin@example.com',
+  '$2a$10$vq5MqkuG4/mD/twgYMBsxeOwbrmL3xE88rIpOEzMYt./TmL8xKAqO', 'ADMIN'
+WHERE NOT EXISTS (SELECT 1 FROM CPUSER WHERE USERNAME = 'admin');
+INSERT INTO CPUSER (CODE, USERNAME, EMAIL, PASSWORD, ROLE_CODE)
+SELECT 'USR-USER0001', 'user', 'user@example.com',
+  '$2a$10$MpKcDZmTSotcNefe53ODl.3frNUr0E/fuU/cpAKPglu85tG0Niyr6', 'USER'
+WHERE NOT EXISTS (SELECT 1 FROM CPUSER WHERE USERNAME = 'user');

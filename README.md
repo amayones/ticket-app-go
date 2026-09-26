@@ -26,9 +26,11 @@ Browser :1067 ─────────────────► app.exe :10
 - Maksimal 5 sesi per user
 - RBAC sederhana: **satu permission untuk satu menu**
 - Semua role dapat memakai menu bila role tersebut diberi akses `MENU_*`
-- Registry menu di tabel **`CPMENU`** (`MCONTROL` = folder modul UPPERCASE);
-  matriks role × modul × menu dibaca dari **view `CPMATRIX`**
-- Sidebar dikelompokkan per modul (tombol +/−), mendukung parent bersarang
+- Master modul di tabel **`CPMATRIX`**, registry menu di tabel **`CPMENU`**
+  (`MCONTROL` = folder modul UPPERCASE), grant role→menu di
+  **`CPPERMISSION`**; matriks dibaca dari JOIN ketiga tabel
+- Sidebar dikelompokkan per modul (tombol +/−), mendukung grup visual
+  (folder perantara tanpa `index.jsx`, bukan menu tersendiri)
 - Menu terdaftar tapi folder belum dibuat tampil sebagai **halaman 404
   pemandu** (menunjukkan path persis), bukan hilang diam-diam
 - Menu baru dibuat via UI Modul & Menu (tanpa auto-grant)
@@ -38,6 +40,11 @@ Browser :1067 ─────────────────► app.exe :10
 - Audit log, system log, dan notifikasi
 - Popup login ulang ketika sesi habis tanpa pindah halaman
 - Build frontend dan backend dalam satu binary
+
+> Mau memakai untuk proyek Anda sendiri? Urutan yang benar:
+> [ganti nama aplikasi & database](#19-mengganti-nama-aplikasi) →
+> [tambah role, user, modul, menu](#7-resep-cepat-role-user-modul-menu) →
+> [tutorial lengkap](tutorial/README.md).
 
 ---
 
@@ -158,7 +165,9 @@ sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/mi
 sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/migrate2_rbac.sql
 ```
 
-Migrasi aman diulang. `migrate2_rbac.sql` juga membersihkan permission lama per-fitur dan membuat permission menu baru.
+Migrasi aman diulang (boleh dijalankan berkali-kali). `migrate2_rbac.sql`
+ membersihkan definisi permission lama per-fitur, lalu membuat master modul
+(`CPMATRIX`), registry menu (`CPMENU`), dan grant default `CPPERMISSION`.
 
 ### Membuat akun awal
 
@@ -211,10 +220,11 @@ FROM dbo.CPMATRIX
 ORDER BY SORT_ORDER;
 ```
 
-Hasil yang benar (1 modul bawaan; tambah modul baru via UI Role):
+Hasil yang benar (2 modul bawaan; tambah modul baru via UI **Modul & Menu**):
 
 ```text
 SYSTEM  System  1
+REPORT  Report  2
 ```
 
 ### Verifikasi role
@@ -416,6 +426,119 @@ Hasil yang benar:
 
 Jika memakai development, frontend berjalan di port `5173`, tetapi API tetap diproxy ke backend `1067`.
 
+## 1.9. Mengganti Nama Aplikasi
+
+Satu sumber nama aplikasi: `APP_NAME` di `.env`.
+
+```env
+APP_NAME=Toko Saya
+```
+
+Yang otomatis mengikuti `APP_NAME`:
+
+| Yang berubah | Keterangan |
+|---|---|
+| Judul tab browser | Di-set runtime oleh `main.jsx` |
+| Kartu di halaman login | Nama + huruf awal pada logo |
+| `Config.AppName` backend | Dibaca `config/env.go` |
+
+Setelah mengubah `.env`, **build ulang frontend** (`task build-frontend`),
+lalu restart backend. Clone lama yang masih punya `APP_NAME=GoBackend` (nilai
+default lama) ikut diganti ke nama yang Anda pilih. `frontend/index.html` masih berisi `<title>Go Core</title>`
+sebagai fallback sebelum JavaScript berjalan — ganti juga file itu bila ingin
+judulnya benar sejak awal.
+
+Branding lain yang **tidak** ikut `APP_NAME` dan boleh Anda edit bebas:
+
+| File | Isi |
+|---|---|
+| `frontend/index.html` | `<title>` dan referensi favicon |
+| `frontend/public/favicon.svg` | Ikon tab |
+| `README.md` | Judul & deskripsi proyek |
+| `Dockerfile`, `Taskfile.yml` | Nama binary bila ingin `toko.exe` |
+| Tabel `CPNOTIFTEMPLATE` | Teks email (bisa diedit dari menu **Notifikasi**) |
+
+Nama modul bawaan (`SYSTEM`, `REPORT`) dan kode tabel `CP*` tidak perlu
+diubah — keduanya hanya internal. Module baru cukup ditambah lewat UI
+**Modul & Menu**, bukan mengganti folder yang ada.
+
+## 1.10. Memakai Database Lain
+
+### Nama database berbeda (SQL Server)
+
+Nama database **bebas**. Yang wajib sama persis:
+
+1. Nama database yang dibuat di SQL Server.
+2. `DB_DATABASE` di `.env`.
+3. Argumen `-d` pada perintah `sqlcmd` manual.
+
+Contoh memakai nama `TokoDb`:
+
+```sql
+IF DB_ID(N'TokoDb') IS NULL
+BEGIN
+  CREATE DATABASE [TokoDb];
+END
+GO
+```
+
+```env
+DB_DATABASE=TokoDb
+```
+
+```bash
+task migrate
+sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d TokoDb -C -i scripts/seed-admin.sql
+```
+
+Tidak ada kode aplikasi yang perlu diedit. Nama tersebut tidak muncul di
+query aplikasi — semua query memakai `CP*` tanpa prefix database.
+
+### Engine lain: PostgreSQL / SQLite
+
+Repository ini menyediakan skema fresh-install untuk keduanya. SQL Server
+adalah jalur utama yang dipakai harian; dua skema lain tersedia bila Anda
+tidak memakai SQL Server.
+
+PostgreSQL:
+
+```env
+DB_CONNECTION=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_DATABASE=tokodb
+DB_USERNAME=postgres
+DB_PASSWORD=password-postgres-anda
+```
+
+```bash
+task migrate-postgres
+# atau manual:
+psql -h localhost -U postgres -d tokodb -v ON_ERROR_STOP=1 -f scripts/schema.postgres.sql
+```
+
+SQLite (cukup satu file, tanpa server):
+
+```env
+DB_CONNECTION=sqlite
+DB_DATABASE=./data/tokodb.db
+```
+
+```bash
+task migrate-sqlite
+# atau manual:
+mkdir -p ./data && sqlite3 ./data/tokodb.db < scripts/schema.sqlite.sql
+```
+
+Ketiganya menghasilkan state awal yang sama: 10 tabel, 2 modul, 10 menu,
+`ADMIN` 8 grant, 2 akun (`admin`/`admin`, `user`/`user`), 3 template
+notifikasi. Skema ikut `IF NOT EXISTS` / `WHERE NOT EXISTS` sehingga aman
+dijalankan ulang. Untuk PostgreSQL, buat database dulu dengan
+`CREATE DATABASE tokodb;` sebelum menjalankan skemanya.
+
+Username/password pada `DB_USERNAME`/`DB_PASSWORD` diabaikan saat
+`DB_CONNECTION=sqlite`.
+
 ---
 
 # 2. Cara Kerja Permission Menu
@@ -581,6 +704,8 @@ task build
 | `localhost:1067` tidak bisa dibuka | Backend belum jalan → `task start` atau `go run .`. |
 | `go:embed no matching files` | Jalankan `task build-frontend`, pastikan `frontend/dist/.gitignore` ada. |
 | Koneksi DB gagal saat start | `DB_DATABASE` di `.env` tidak sama dengan nama database di SQL Server, atau kredensial salah → samakan ketiganya (`DB_HOST/DB_PORT/DB_DATABASE` + perintah `-d`). |
+| `sqlite3: unable to open database file` | Folder file SQLite belum ada → `mkdir -p ./data` lalu jalankan ulang skemanya. |
+| Judul tab masih "Go Core" | `APP_NAME` diubah di `.env` tapi frontend belum di-build ulang → `task build-frontend` + restart. |
 
 ---
 
@@ -594,10 +719,40 @@ tutorial/README.md
 
 Tutorial terbaru menjelaskan:
 
-1. Mendaftarkan menu di `CPMENU` via UI Modul & Menu (tanpa auto-grant).
-2. Menambah folder `menus/<MCONTROL>/[<parent>/]<menu>/` (modul UPPERCASE).
-3. Memahami halaman 404 pemandu sebagai kompas lokasi folder.
-4. Membuat permission `MENU_<MENU>` (satu permission per menu).
-5. Mendaftarkan route backend dengan permission menu yang sama.
-6. Mengatur akses dari halaman Role & Permission (matriks per modul).
-7. Login ulang dan memastikan menu otomatis muncul di grup modulnya.
+1. Membuat modul baru di `CPMATRIX` (UI **Modul & Menu**).
+2. Mendaftarkan menu di `CPMENU` via UI yang sama (tanpa auto-grant).
+3. Menambah folder `menus/<MCONTROL>/[<grup>/]<menu>/` (modul UPPERCASE).
+4. Mengisi `index.jsx` + `api.js` (termasuk pola tabel, skeleton, paginasi).
+5. Memahami halaman 404 pemandu sebagai kompas lokasi folder.
+6. Menambah endpoint backend (opsional) dengan permission menu yang sama.
+7. Membuat role baru, memindahkan user ke role itu, lalu memberi akses menu.
+8. Login ulang dan memastikan menu otomatis muncul di grup modulnya.
+
+---
+
+# 7. Resep Cepat: Role, User, Modul, Menu
+
+Semua langkah bisa lewat **UI** (tanpa SQL). Urutan tetap: modul → menu →
+folder → role → grant.
+
+| # | Tujuan | Langkah | Verifikasi |
+|---|---|---|---|
+| 1 | Role baru | **Role & Permission** → **Role baru** → kode `EDITOR` | `SELECT * FROM dbo.CPROLE WHERE CODE='EDITOR'` |
+| 2 | User baru | **User Account** → **Tambah user** → pilih role `EDITOR` | `SELECT USERNAME, ROLE_CODE FROM dbo.CPUSER` |
+| 3 | Modul baru | **Modul & Menu** → **Modul baru** → kode `TOKO` | `SELECT * FROM dbo.CPMATRIX` |
+| 4 | Menu baru | **Modul & Menu** → **Menu baru** → `MENU_STOK`, modul `TOKO` | `SELECT * FROM dbo.CPMENU WHERE CODE='MENU_STOK'` |
+| 5 | Isi menu | `cp -r tutorial/templates/frontend-menu frontend/src/menus/TOKO/stok`, lalu isi `index.jsx` + `api.js` | `npm run lint && npm run build` |
+| 6 | Beri akses | **Role & Permission** → pilih `EDITOR` → centang `MENU_STOK` → **Simpan permission** | `SELECT * FROM dbo.CPPERMISSION WHERE MENU_CODE='MENU_STOK'` |
+| 7 | Cek hasil | `task build` + restart, login user role `EDITOR` | Menu **Stok** muncul di sidebar modul `TOKO` |
+
+Catatan penting:
+
+- Kode menu **wajib** `MENU_` + huruf besar/angka/underscore, maksimal 40 karakter.
+- Nama folder frontend **wajib sama** dengan kode menu setelah `MENU_`:
+  `MENU_STOK` ↔ `menus/TOKO/stok/`.
+- Menu baru **tidak** dapat diakses role mana pun sampai dicentang di langkah 6.
+- User harus **logout/login ulang** setelah akses berubah.
+- Menambah menu tanpa endpoint backend sendiri? Lewati saja — pakai endpoint
+  yang sudah ada (mis. `/api/admin/menus`).
+- Menghapus menu: UI **Modul & Menu** (grant ikut terhapus), atau lihat
+  [tutorial bagian 7](tutorial/README.md).

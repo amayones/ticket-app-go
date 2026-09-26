@@ -85,6 +85,18 @@ tasks:
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate.sql
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate2_rbac.sql
 
+  migrate-postgres:
+    desc: Apply scripts/schema.postgres.sql to PostgreSQL (requires psql)
+    dotenv: ['.env']
+    cmds:
+      - psql -h {{.DB_HOST}} -p {{.DB_PORT}} -U {{.DB_USERNAME}} -d {{.DB_DATABASE}} -v ON_ERROR_STOP=1 -f scripts/schema.postgres.sql
+
+  migrate-sqlite:
+    desc: Apply scripts/schema.sqlite.sql to the SQLite file in DB_DATABASE (requires sqlite3)
+    dotenv: ['.env']
+    cmds:
+      - bash -c 'mkdir -p "$(dirname {{.DB_DATABASE}})" && sqlite3 {{.DB_DATABASE}} < scripts/schema.sqlite.sql'
+
   test:
     desc: Go vet + race tests
     cmds:
