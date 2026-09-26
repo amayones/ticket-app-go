@@ -30,8 +30,8 @@ func newFakeRoleRepo() *fakeRoleRepo {
 			models.RoleUser:  {},
 		},
 		menus: map[string]*models.Menu{
-			models.MenuUsers: {Code: models.MenuUsers, MControl: "SYSTEM", Label: "User Account", SortOrder: 1},
-			models.MenuRoles: {Code: models.MenuRoles, MControl: "SYSTEM", Label: "Role & Permission", SortOrder: 2},
+			models.MenuUsers: {Code: models.MenuUsers, Module: "SYSTEM", Label: "User Account", SortOrder: 1},
+			models.MenuRoles: {Code: models.MenuRoles, Module: "SYSTEM", Label: "Role & Permission", SortOrder: 2},
 		},
 		modules: map[string]*models.Module{
 			"SYSTEM": {Code: "SYSTEM", Label: "System", SortOrder: 1},
@@ -80,7 +80,7 @@ func (f *fakeRoleRepo) Count(ctx context.Context) (int, error) { return len(f.ro
 func (f *fakeRoleRepo) ListPermissions(ctx context.Context) ([]models.Permission, error) {
 	out := make([]models.Permission, 0, len(f.menus))
 	for _, m := range f.menus {
-		out = append(out, models.Permission{Code: m.Code, Name: "Akses " + m.Label, Group: m.MControl})
+		out = append(out, models.Permission{Code: m.Code, Name: "Akses " + m.Label, Group: m.Module})
 	}
 	return out, nil
 }
@@ -133,7 +133,7 @@ func (f *fakeRoleRepo) UpdateMenu(ctx context.Context, menu *models.Menu) error 
 	if !ok {
 		return sql.ErrNoRows
 	}
-	cur.MControl = menu.MControl
+	cur.Module = menu.Module
 	cur.Label = menu.Label
 	cur.SortOrder = menu.SortOrder
 	cur.Parent = menu.Parent
@@ -184,7 +184,7 @@ func (f *fakeRoleRepo) QueryMatrix(ctx context.Context, roleFilter string) ([]mo
 					has = true
 				}
 			}
-			out = append(out, models.MatrixRow{RoleCode: rc, Module: m.MControl, MenuCode: m.Code, MenuLabel: m.Label, HasAccess: has})
+			out = append(out, models.MatrixRow{RoleCode: rc, Module: m.Module, MenuCode: m.Code, MenuLabel: m.Label, HasAccess: has})
 		}
 	}
 	return out, nil
@@ -194,7 +194,7 @@ func (f *fakeRoleRepo) MyMenusByRole(ctx context.Context, roleCode string) ([]mo
 	out := make([]models.MenuEntry, 0)
 	for _, p := range f.perms[roleCode] {
 		if m, ok := f.menus[p]; ok {
-			out = append(out, models.MenuEntry{Code: m.Code, Module: m.MControl, Label: m.Label, SortOrder: m.SortOrder})
+			out = append(out, models.MenuEntry{Code: m.Code, Module: m.Module, Label: m.Label, SortOrder: m.SortOrder})
 		}
 	}
 	return out, nil
@@ -236,7 +236,7 @@ func (f *fakeRoleRepo) DeleteModule(ctx context.Context, code string) error {
 func (f *fakeRoleRepo) CountModuleMenus(ctx context.Context, code string) (int, error) {
 	n := 0
 	for _, m := range f.menus {
-		if m.MControl == code {
+		if m.Module == code {
 			n++
 		}
 	}
@@ -372,7 +372,7 @@ func TestMenuLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create menu: %v", err)
 	}
-	if menu.Code != "MENU_LAPORAN" || menu.MControl != "REPORT" {
+	if menu.Code != "MENU_LAPORAN" || menu.Module != "REPORT" {
 		t.Fatalf("unexpected normalization: %+v", menu)
 	}
 	// Tanpa auto-grant: USER tetap nol menu.
@@ -413,7 +413,8 @@ func TestMenuLifecycle(t *testing.T) {
 	}
 }
 
-func intPtr(v int) *int { return &v }
+func intPtr(v int) *int       { return &v }
+func strPtr(v string) *string { return &v }
 
 func TestUpdateMenu(t *testing.T) {
 	svc, _, _ := newTestService()
@@ -424,15 +425,39 @@ func TestUpdateMenu(t *testing.T) {
 	if _, err := svc.CreateModule(ctx, "toko", "Toko", 11); err != nil {
 		t.Fatalf("create module: %v", err)
 	}
+	// MENU_PAJU = menu parent (boleh punya anak), MENU_STOK = child biasa.
 	if _, err := svc.CreateMenu(ctx, models.MenuInput{
-		Code: "MENU_STOK", Module: "report", Label: "Stok", SortOrder: 4,
+		Code: "MENU_PAJU", Module: "report", Label: "Paju", Kind: models.MenuKindParent, SortOrder: 5,
 	}); err != nil {
-		t.Fatalf("create menu: %v", err)
+		t.Fatalf("create parent menu: %v", err)
 	}
 	if _, err := svc.CreateMenu(ctx, models.MenuInput{
-		Code: "MENU_PAJU", Module: "report", Label: "Paju", SortOrder: 5,
+		Code: "MENU_STOK", Module: "report", Label: "Stok", Kind: models.MenuKindChild, SortOrder: 4,
+		Parent: "MENU_PAJU",
 	}); err != nil {
-		t.Fatalf("create menu 2: %v", err)
+		t.Fatalf("create child menu: %v", err)
+	}
+	// Default tanpa Kind = CHILD.
+	if cur, _ := svc.GetMenu(ctx, "MENU_STOK"); cur.Kind != models.MenuKindChild {
+		t.Fatalf("jenis menu harus CHILD, got %q", cur.Kind)
+	}
+	// Menu PARENT tidak boleh punya parent.
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{
+		Code: "MENU_X", Module: "report", Label: "X", Kind: models.MenuKindParent, Parent: "MENU_PAJU",
+	}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("PARENT tidak boleh punya parent, got %v", err)
+	}
+	// Parent harus bertipe PARENT.
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{
+		Code: "MENU_Y", Module: "report", Label: "Y", Parent: "MENU_STOK",
+	}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("parent harus kind PARENT, got %v", err)
+	}
+	// Kind tidak dikenal ditolak.
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{
+		Code: "MENU_Z", Module: "report", Label: "Z", Kind: "INDUK",
+	}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("kind tidak dikenal harus ditolak, got %v", err)
 	}
 
 	// Ubah label + urutan (patch: field lain kosong tidak boleh berubah).
@@ -440,41 +465,44 @@ func TestUpdateMenu(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update label/sort: %v", err)
 	}
-	if got.Label != "Stok Barang" || got.SortOrder != 1 || got.MControl != "REPORT" {
+	if got.Label != "Stok Barang" || got.SortOrder != 1 || got.Module != "REPORT" {
 		t.Fatalf("unexpected update result: %+v", got)
 	}
+	if got.Parent != "MENU_PAJU" || got.Kind != models.MenuKindChild {
+		t.Fatalf("parent/jenis tidak boleh berubah: %+v", got)
+	}
 
-	// Pindah modul.
-	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Module: "toko"}); err != nil {
-		t.Fatalf("pindah modul: %v", err)
-	}
-	if cur, _ := svc.GetMenu(ctx, "MENU_STOK"); cur.MControl != "TOKO" {
-		t.Fatalf("modul tidak berubah: %+v", cur)
-	}
 	// Parent harus se-modul.
-	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: "menu_paju"}); !errors.Is(err, services.ErrInvalidMenu) {
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Module: "toko", Parent: strPtr("MENU_PAJU")}); !errors.Is(err, services.ErrInvalidMenu) {
 		t.Fatalf("parent beda modul harus ditolak, got %v", err)
 	}
-	// Parent valid se-modul, lalu dilepas dengan string kosong.
-	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Module: "report", Parent: "MENU_PAJU"}); err != nil {
-		t.Fatalf("set parent: %v", err)
-	}
-	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: ""}); err != nil {
+	// Lepas parent dengan string kosong, lalu pasang lagi.
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: strPtr("")}); err != nil {
 		t.Fatalf("lepas parent: %v", err)
 	}
 	if cur, _ := svc.GetMenu(ctx, "MENU_STOK"); cur.Parent != "" {
 		t.Fatalf("parent belum lepas: %+v", cur)
 	}
-	// Siklus: STOK jadi anak PAJU, lalu PAJU tidak boleh jadi anak STOK.
-	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: "MENU_PAJU"}); err != nil {
-		t.Fatalf("set parent PAJU: %v", err)
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: strPtr("MENU_PAJU")}); err != nil {
+		t.Fatalf("set parent lagi: %v", err)
 	}
-	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Parent: "MENU_STOK"}); !errors.Is(err, services.ErrInvalidMenu) {
-		t.Fatalf("siklus parent harus ditolak, got %v", err)
+	// Parent tidak boleh punya anak -> parent.
+	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Parent: strPtr("MENU_STOK")}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("PARENT tidak boleh punya parent, got %v", err)
+	}
+	// Menu yang punya anak tidak boleh diubah jadi CHILD.
+	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Kind: models.MenuKindChild}); !errors.Is(err, services.ErrMenuHasChildren) {
+		t.Fatalf("parent beranak tidak boleh jadi CHILD, got %v", err)
 	}
 	// Menu tidak boleh jadi parent dirinya sendiri.
-	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Parent: "MENU_PAJU"}); !errors.Is(err, services.ErrInvalidMenu) {
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: strPtr("MENU_STOK")}); !errors.Is(err, services.ErrInvalidMenu) {
 		t.Fatalf("parent diri sendiri harus ditolak, got %v", err)
+	}
+	// Siklus: STOK anak PAJU, lalu STOK tidak boleh jadi parent PAJU lewat
+	// HPLC -> tidak ada siklus karena PAJU tidak punya parent. Cek siklus
+	// dengan mengubah PAJU jadi child STOK harus ditolak (butuh PAJU PARENT).
+	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Kind: models.MenuKindChild, Parent: strPtr("MENU_STOK")}); err == nil {
+		t.Fatalf("siklus / parent beranak harus ditolak, got nil error")
 	}
 	// Modul tak dikenal dan menu tak ada.
 	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Module: "hantu"}); !errors.Is(err, services.ErrInvalidMenu) {

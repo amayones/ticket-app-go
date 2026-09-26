@@ -32,7 +32,7 @@ type RepositoryInterface interface {
 	ListChildren(ctx context.Context, code string) ([]models.Menu, error)
 	QueryMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error)
 	MyMenusByRole(ctx context.Context, roleCode string) ([]models.MenuEntry, error)
-	// Master modul (CPMATRIX tabel).
+	// Master modul (CPMODULE tabel).
 	ListModules(ctx context.Context) ([]models.Module, error)
 	GetModule(ctx context.Context, code string) (*models.Module, error)
 	CreateModule(ctx context.Context, m *models.Module) error
@@ -57,7 +57,7 @@ func (r *Repository) grantTable() string { return r.dialect.Table("CPPERMISSION"
 
 func (r *Repository) menuTable() string { return r.dialect.Table("CPMENU") }
 
-func (r *Repository) moduleTable() string { return r.dialect.Table("CPMATRIX") }
+func (r *Repository) moduleTable() string { return r.dialect.Table("CPMODULE") }
 
 func (r *Repository) List(ctx context.Context) ([]models.Role, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
@@ -147,7 +147,7 @@ func (r *Repository) ListPermissions(ctx context.Context) ([]models.Permission, 
 	defer cancel()
 	// Definisi permission = registry menu (1:1): CODE/Nama/Grup dari CPMENU.
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT CODE, LABEL, MCONTROL, CREATED_AT FROM `+r.menuTable()+` ORDER BY MCONTROL ASC, CODE ASC`)
+		`SELECT CODE, LABEL, MODULE, CREATED_AT FROM `+r.menuTable()+` ORDER BY MODULE ASC, CODE ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -232,13 +232,13 @@ func (r *Repository) HasPermission(ctx context.Context, roleCode, permCode strin
 
 // --- Registry menu (CPMENU) + matriks (JOIN CPMATRIX) ------------------------
 
-const menuColumns = `CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE, CREATED_AT, UPDATED_AT`
+const menuColumns = `CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE, CREATED_AT, UPDATED_AT`
 
 func scanMenu(row interface {
 	Scan(dest ...any) error
 }, m *models.Menu) error {
 	var parent sql.NullString
-	err := row.Scan(&m.Code, &m.MControl, &m.Label, &m.SortOrder, &parent, &m.CreatedAt, &m.UpdatedAt)
+	err := row.Scan(&m.Code, &m.Module, &m.Label, &m.Kind, &m.SortOrder, &parent, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -249,7 +249,7 @@ func scanMenu(row interface {
 func (r *Repository) ListMenus(ctx context.Context) ([]models.Menu, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `SELECT ` + menuColumns + ` FROM ` + r.menuTable() + ` ORDER BY MCONTROL ASC, SORT_ORDER ASC, CODE ASC`
+	query := `SELECT ` + menuColumns + ` FROM ` + r.menuTable() + ` ORDER BY MODULE ASC, SORT_ORDER ASC, CODE ASC`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -285,13 +285,13 @@ func (r *Repository) GetMenu(ctx context.Context, code string) (*models.Menu, er
 func (r *Repository) CreateMenu(ctx context.Context, menu *models.Menu) error {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `INSERT INTO ` + r.menuTable() + ` (CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE) VALUES (?, ?, ?, ?, ?)`
+	query := `INSERT INTO ` + r.menuTable() + ` (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE) VALUES (?, ?, ?, ?, ?, ?)`
 	var parent any
 	if menu.Parent != "" {
 		parent = menu.Parent
 	}
 	_, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
-		menu.Code, menu.MControl, menu.Label, menu.SortOrder, parent)
+		menu.Code, menu.Module, menu.Label, menu.Kind, menu.SortOrder, parent)
 	return err
 }
 
@@ -301,13 +301,13 @@ func (r *Repository) CreateMenu(ctx context.Context, menu *models.Menu) error {
 func (r *Repository) UpdateMenu(ctx context.Context, menu *models.Menu) error {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `UPDATE ` + r.menuTable() + ` SET MCONTROL = ?, LABEL = ?, SORT_ORDER = ?, PARENT_CODE = ? WHERE CODE = ?`
+	query := `UPDATE ` + r.menuTable() + ` SET MODULE = ?, LABEL = ?, MENU_KIND = ?, SORT_ORDER = ?, PARENT_CODE = ? WHERE CODE = ?`
 	var parent any
 	if menu.Parent != "" {
 		parent = menu.Parent
 	}
 	res, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
-		menu.MControl, menu.Label, menu.SortOrder, parent, menu.Code)
+		menu.Module, menu.Label, menu.Kind, menu.SortOrder, parent, menu.Code)
 	if err != nil {
 		return err
 	}
@@ -387,13 +387,13 @@ func (r *Repository) ListChildren(ctx context.Context, code string) ([]models.Me
 	return out, nil
 }
 
-// QueryMatrix membaca matriks via JOIN eksplisit (CPMATRIX tabel modul,
+// QueryMatrix membaca matriks via JOIN eksplisit (CPMODULE tabel modul,
 // CPROLE x CPMENU LEFT JOIN CPPERMISSION grant). roleFilter kosong = semua role.
 func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `SELECT r.CODE AS ROLE_CODE, r.NAME AS ROLE_NAME, m.MCONTROL AS MODULE,
-		m.CODE AS MENU_CODE, m.LABEL AS MENU_LABEL, m.SORT_ORDER, m.PARENT_CODE,
+	query := `SELECT r.CODE AS ROLE_CODE, r.NAME AS ROLE_NAME, m.MODULE AS MODULE,
+		m.CODE AS MENU_CODE, m.LABEL AS MENU_LABEL, m.MENU_KIND, m.SORT_ORDER, m.PARENT_CODE,
 		CASE WHEN pm.ROLE_CODE IS NULL THEN 0 ELSE 1 END AS HAS_ACCESS
 		FROM ` + r.roleTable() + ` r CROSS JOIN ` + r.menuTable() + ` m
 		LEFT JOIN ` + r.grantTable() + ` pm
@@ -415,7 +415,7 @@ func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]mode
 		var parent sql.NullString
 		var access int
 		if err := rows.Scan(&row.RoleCode, &row.RoleName, &row.Module, &row.MenuCode,
-			&row.MenuLabel, &row.SortOrder, &parent, &access); err != nil {
+			&row.MenuLabel, &row.Kind, &row.SortOrder, &parent, &access); err != nil {
 			return nil, err
 		}
 		row.Parent = parent.String
@@ -432,9 +432,9 @@ func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]mode
 func (r *Repository) MyMenusByRole(ctx context.Context, roleCode string) ([]models.MenuEntry, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `SELECT m.CODE, m.MCONTROL, m.LABEL, m.SORT_ORDER, m.PARENT_CODE
+	query := `SELECT m.CODE, m.MODULE, m.LABEL, m.MENU_KIND, m.SORT_ORDER, m.PARENT_CODE
 		FROM ` + r.menuTable() + ` m JOIN ` + r.grantTable() + ` pm ON pm.MENU_CODE = m.CODE
-		WHERE pm.ROLE_CODE = ? ORDER BY m.MCONTROL ASC, m.SORT_ORDER ASC, m.CODE ASC`
+		WHERE pm.ROLE_CODE = ? ORDER BY m.MODULE ASC, m.SORT_ORDER ASC, m.CODE ASC`
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), roleCode)
 	if err != nil {
 		return nil, err
@@ -444,7 +444,7 @@ func (r *Repository) MyMenusByRole(ctx context.Context, roleCode string) ([]mode
 	for rows.Next() {
 		var e models.MenuEntry
 		var parent sql.NullString
-		if err := rows.Scan(&e.Code, &e.Module, &e.Label, &e.SortOrder, &parent); err != nil {
+		if err := rows.Scan(&e.Code, &e.Module, &e.Label, &e.Kind, &e.SortOrder, &parent); err != nil {
 			return nil, err
 		}
 		e.Parent = parent.String
@@ -456,7 +456,7 @@ func (r *Repository) MyMenusByRole(ctx context.Context, roleCode string) ([]mode
 	return out, nil
 }
 
-// --- Master modul (CPMATRIX tabel) --------------------------------------------
+// --- Master modul (CPMODULE tabel) --------------------------------------------
 
 func scanModule(row interface {
 	Scan(dest ...any) error
@@ -532,7 +532,7 @@ func (r *Repository) CountModuleMenus(ctx context.Context, code string) (int, er
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
-		`SELECT COUNT(*) FROM `+r.menuTable()+` WHERE MCONTROL = ?`), code).Scan(&n)
+		`SELECT COUNT(*) FROM `+r.menuTable()+` WHERE MODULE = ?`), code).Scan(&n)
 	if err != nil {
 		return 0, err
 	}

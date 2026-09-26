@@ -1,6 +1,6 @@
 -- Migrasi 2: RBAC + Audit Log + System Log + Notifikasi + sesi admin.
---   CPMATRIX          master modul (CODE, LABEL, SORT_ORDER)
---   CPMENU            registry menu (MCONTROL -> CPMATRIX, PARENT se-modul)
+--   CPMODULE          master modul (CODE, LABEL, SORT_ORDER)
+--   CPMENU            registry menu (MODULE -> CPMODULE, MENU_KIND + PARENT_CODE)
 --   CPPERMISSION      grant role -> menu (ROLE_CODE, MENU_CODE)
 --   CPAUDITLOG        jejak aksi user (siapa, apa, kapan, dari IP mana)
 --   CPSYSLOG          log error/sistem aplikasi (pengganti baca file log)
@@ -20,82 +20,127 @@ BEGIN TRAN;
 
 -- 2. (Dihapus) Tabel grant CPERMISSION lama diganti CPPERMISSION (blok 2d).
 
--- 2b. CPMATRIX (master modul) ----------------------------------------------------
--- Satu baris = satu modul. CPMENU.MCONTROL ber-FK ke sini sehingga modul
--- wajib dibuat dulu sebelum menunya (urut: modul -> menu -> permission).
--- CATATAN: DROP VIEW dan CREATE TABLE dipisah batch GO agar SQL Server
--- menerapkannya berurutan (satu batch = DDL lama masih terlihat).
+-- 2b. CPMODULE (master modul) --------------------------------------------------
+-- Satu baris = satu modul (= satu section sidebar + satu folder di
+-- frontend/src/menus/<MODULE>/). CPMENU.MODULE ber-FK ke sini sehingga modul
+-- wajib dibuat dulu sebelum menunya (urut: modul -> menu -> grant role).
+--
+-- Riwayat nama: tabel ini dulu CPMATRIX, sekarang CPMODULE (kolom
+-- CPMENU.MCONTROL ikut jadi CPMENU.MODULE). Blok di bawah me-rename objek
+-- lama bila masih ada, lalu membuat tabel bila belum ada sama sekali.
 IF OBJECT_ID(N'dbo.CPMATRIX', N'V') IS NOT NULL DROP VIEW dbo.CPMATRIX;
 GO
-IF OBJECT_ID(N'dbo.CPMATRIX', N'U') IS NULL
-CREATE TABLE dbo.CPMATRIX (
+-- Rename dulu (instalasi lama), baru buat kalau memang belum ada. Urutan ini
+-- penting: kalau tabel baru dibuat lebih dulu, sp_rename berikutnya bentrok.
+IF OBJECT_ID(N'dbo.CPMODULE', N'U') IS NULL AND OBJECT_ID(N'dbo.CPMATRIX', N'U') IS NOT NULL
+BEGIN
+  EXEC sp_rename N'dbo.CPMATRIX', N'CPMODULE';
+  IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE name = N'PK_CPMATRIX')
+    EXEC sp_rename N'dbo.CPMODULE.PK_CPMATRIX', N'PK_CPMODULE', N'INDEX';
+  IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_CPMATRIX_CODE')
+    EXEC sp_rename N'dbo.CPMODULE.UQ_CPMATRIX_CODE', N'UQ_CPMODULE_CODE', N'INDEX';
+END
+GO
+IF OBJECT_ID(N'dbo.CPMODULE', N'U') IS NULL
+CREATE TABLE dbo.CPMODULE (
   ID INT IDENTITY(1,1) NOT NULL,
   CODE NVARCHAR(40) NOT NULL,
   LABEL NVARCHAR(100) NOT NULL,
-  SORT_ORDER INT NOT NULL CONSTRAINT DF_CPMX_SORT DEFAULT 99,
-  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMX_CREATED DEFAULT GETDATE(),
-  UPDATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMX_UPDATED DEFAULT GETDATE(),
-  CONSTRAINT PK_CPMATRIX PRIMARY KEY CLUSTERED (ID),
-  CONSTRAINT UQ_CPMATRIX_CODE UNIQUE NONCLUSTERED (CODE)
+  SORT_ORDER INT NOT NULL CONSTRAINT DF_CPMODULE_SORT DEFAULT 99,
+  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMODULE_CREATED DEFAULT GETDATE(),
+  UPDATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMODULE_UPDATED DEFAULT GETDATE(),
+  CONSTRAINT PK_CPMODULE PRIMARY KEY CLUSTERED (ID),
+  CONSTRAINT UQ_CPMODULE_CODE UNIQUE NONCLUSTERED (CODE)
 );
 GO
 
 -- Seed modul bawaan (SYSTEM untuk operasional; REPORT untuk contoh tes tampilan).
-INSERT INTO dbo.CPMATRIX (CODE, LABEL, SORT_ORDER)
+INSERT INTO dbo.CPMODULE (CODE, LABEL, SORT_ORDER)
 SELECT N'SYSTEM', N'System', 1
-WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMATRIX WHERE CODE = N'SYSTEM');
-INSERT INTO dbo.CPMATRIX (CODE, LABEL, SORT_ORDER)
+WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMODULE WHERE CODE = N'SYSTEM');
+INSERT INTO dbo.CPMODULE (CODE, LABEL, SORT_ORDER)
 SELECT N'REPORT', N'Report', 2
-WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMATRIX WHERE CODE = N'REPORT');
+WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMODULE WHERE CODE = N'REPORT');
 GO
 
 -- 2b. CPMENU (registry menu) ---------------------------------------------------
--- Satu baris = satu menu. MCONTROL = nama folder modul (UPPERCASE),
--- wajib sama persis dengan folder frontend menus/<MCONTROL>/... .
--- PARENT_CODE = menu induk (grup visual bersarang), wajib se-modul.
+-- Satu baris = satu menu. MODULE = nama folder modul (UPPERCASE), wajib sama
+-- persis dengan folder frontend menus/<MODULE>/<menu>/ (tanpa folder
+-- perantara: semua menu satu level di dalam folder modul).
+-- MENU_KIND menentukan peran baris: 'PARENT' (menu yang bisa punya anak,
+-- tampil expandable di sidebar) atau 'CHILD' (menu biasa).
+-- PARENT_CODE = kode menu parent; wajib menunjuk menu bertipe PARENT, satu
+-- modul yang sama, dan tidak boleh menimbulkan siklus.
 IF OBJECT_ID(N'dbo.CPMENU', N'U') IS NULL
 CREATE TABLE dbo.CPMENU (
   ID INT IDENTITY(1,1) NOT NULL,
   CODE NVARCHAR(40) NOT NULL,
-  MCONTROL NVARCHAR(40) NOT NULL,
+  MODULE NVARCHAR(40) NOT NULL,
   LABEL NVARCHAR(100) NOT NULL,
+  MENU_KIND NVARCHAR(10) NOT NULL CONSTRAINT DF_CPMENU_KIND DEFAULT N'CHILD',
   SORT_ORDER INT NOT NULL CONSTRAINT DF_CPMENU_SORT DEFAULT 99,
   PARENT_CODE NVARCHAR(40) NULL,
   CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMENU_CREATED DEFAULT GETDATE(),
   UPDATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMENU_UPDATED DEFAULT GETDATE(),
   CONSTRAINT PK_CPMENU PRIMARY KEY CLUSTERED (ID),
   CONSTRAINT UQ_CPMENU_CODE UNIQUE NONCLUSTERED (CODE),
-  CONSTRAINT UQ_CPMENU_MODULE_CODE UNIQUE NONCLUSTERED (MCONTROL, CODE),
-  CONSTRAINT FK_CPMENU_MODULE FOREIGN KEY (MCONTROL) REFERENCES dbo.CPMATRIX (CODE),
-  CONSTRAINT FK_CPMENU_PARENT FOREIGN KEY (PARENT_CODE) REFERENCES dbo.CPMENU (CODE)
+  CONSTRAINT UQ_CPMENU_MODULE_CODE UNIQUE NONCLUSTERED (MODULE, CODE),
+  CONSTRAINT FK_CPMENU_MODULE FOREIGN KEY (MODULE) REFERENCES dbo.CPMODULE (CODE),
+  CONSTRAINT FK_CPMENU_PARENT FOREIGN KEY (PARENT_CODE) REFERENCES dbo.CPMENU (CODE),
+  CONSTRAINT CK_CPMENU_KIND CHECK (MENU_KIND IN (N'PARENT', N'CHILD'))
 );
+GO
+-- Rename kolom lama MCONTROL -> MODULE (instalasi sebelum rename).
+IF EXISTS (SELECT 1 FROM sys.columns
+           WHERE object_id = OBJECT_ID(N'dbo.CPMENU') AND name = N'MCONTROL')
+  EXEC sp_rename N'dbo.CPMENU.MCONTROL', N'MODULE', N'COLUMN';
+GO
+-- Tambah kolom MENU_KIND bila belum ada. ALTER dipisah dari UPDATE karena
+-- SQL Server meng-compile satu batch sebelum menjalankannya, jadi kolom baru
+-- tidak boleh dirujuk di batch yang sama dengan ADD COLUMN.
+IF NOT EXISTS (SELECT 1 FROM sys.columns
+               WHERE object_id = OBJECT_ID(N'dbo.CPMENU') AND name = N'MENU_KIND')
+  ALTER TABLE dbo.CPMENU ADD MENU_KIND NVARCHAR(10) NOT NULL
+    CONSTRAINT DF_CPMENU_KIND DEFAULT N'CHILD';
+GO
+-- Backfill: menu yang sudah punya anak = PARENT, selain itu CHILD.
+UPDATE dbo.CPMENU
+SET MENU_KIND = N'PARENT'
+WHERE MENU_KIND = N'CHILD'
+  AND EXISTS (SELECT 1 FROM dbo.CPMENU c WHERE c.PARENT_CODE = CPMENU.CODE);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_CPMENU_KIND')
+  ALTER TABLE dbo.CPMENU ADD CONSTRAINT CK_CPMENU_KIND
+    CHECK (MENU_KIND IN (N'PARENT', N'CHILD'));
+GO
 -- FK lama ke tabel definisi (sudah tidak ada) dicabut bila masih menempel.
 IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CPMENU_PERM')
   ALTER TABLE dbo.CPMENU DROP CONSTRAINT FK_CPMENU_PERM;
 -- Tabel lama (sebelum FK modul ada) dilengkapi secara kondisional.
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CPMENU_MODULE')
   ALTER TABLE dbo.CPMENU ADD CONSTRAINT FK_CPMENU_MODULE
-    FOREIGN KEY (MCONTROL) REFERENCES dbo.CPMATRIX (CODE);
+    FOREIGN KEY (MODULE) REFERENCES dbo.CPMODULE (CODE);
 
 -- Seed registry menu bawaan (urut sesuai sidebar) + contoh tes tampilan.
 -- MENU_MODUL = halaman manajemen modul & menu. Dua menu REPORT adalah contoh
 -- (menu biasa vs menu bersarang di grup visual) yang sengaja TANPA akses
 -- role mana pun. Grup visual (mis. folder keuangan/) tidak punya baris menu.
-DECLARE @menus TABLE (CODE NVARCHAR(40), MCONTROL NVARCHAR(40), LABEL NVARCHAR(100), SORT_ORDER INT, PARENT_CODE NVARCHAR(40));
+DECLARE @menus TABLE (CODE NVARCHAR(40), MODULE NVARCHAR(40), LABEL NVARCHAR(100), MENU_KIND NVARCHAR(10), SORT_ORDER INT, PARENT_CODE NVARCHAR(40));
 INSERT INTO @menus VALUES
-  (N'MENU_USERS',         N'SYSTEM', N'User Account',       1, NULL),
-  (N'MENU_MODUL',         N'SYSTEM', N'Modul & Menu',       2, NULL),
-  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission',  3, NULL),
-  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',        4, NULL),
-  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',          5, NULL),
-  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',    6, NULL),
-  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',         7, NULL),
-  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',         8, NULL),
-  (N'MENU_LAPORAN',       N'REPORT', N'Laporan',            1, NULL),
-  (N'MENU_ARUS_KAS',      N'REPORT', N'Arus Kas',           2, NULL);
+  (N'MENU_USERS',         N'SYSTEM', N'User Account',       N'CHILD',  1, NULL),
+  (N'MENU_MODUL',         N'SYSTEM', N'Modul & Menu',       N'CHILD',  2, NULL),
+  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission',  N'CHILD',  3, NULL),
+  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',        N'CHILD',  4, NULL),
+  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',          N'CHILD',  5, NULL),
+  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',    N'CHILD',  6, NULL),
+  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',         N'CHILD',  7, NULL),
+  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',         N'CHILD',  8, NULL),
+  (N'MENU_LAPORAN',       N'REPORT', N'Laporan',            N'CHILD',  1, NULL),
+  (N'MENU_KEUANGAN',      N'REPORT', N'Keuangan',           N'PARENT', 2, NULL),
+  (N'MENU_ARUS_KAS',      N'REPORT', N'Arus Kas',           N'CHILD',  3, N'MENU_KEUANGAN');
 
-INSERT INTO dbo.CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE)
-SELECT CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE FROM @menus m
+INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE)
+SELECT CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE FROM @menus m
 WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMENU x WHERE x.CODE = m.CODE);
 
 -- Sinkronkan urutan menu bawaan (penting untuk instalasi lama yang sudah
@@ -105,8 +150,23 @@ UPDATE m
 SET m.SORT_ORDER = s.SORT_ORDER, m.LABEL = s.LABEL
 FROM dbo.CPMENU m
 JOIN @menus s ON s.CODE = m.CODE
-WHERE m.MCONTROL = N'SYSTEM'
+WHERE m.MODULE = N'SYSTEM'
   AND (m.SORT_ORDER <> s.SORT_ORDER OR m.LABEL <> s.LABEL);
+GO
+
+-- Contoh parent-child (Keuangan = PARENT, Arus Kas = CHILD di bawahnya).
+-- Seed di atas hanya menambahkan yang belum ada, jadi instalasi lama
+-- sudah punya Arus Kas tanpa parent: blok ini melengkapinya.
+IF NOT EXISTS (SELECT 1 FROM dbo.CPMENU WHERE CODE = N'MENU_KEUANGAN')
+  INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER)
+  VALUES (N'MENU_KEUANGAN', N'REPORT', N'Keuangan', N'PARENT', 2);
+IF NOT EXISTS (SELECT 1 FROM dbo.CPMENU WHERE CODE = N'MENU_ARUS_KAS')
+  INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE)
+  VALUES (N'MENU_ARUS_KAS', N'REPORT', N'Arus Kas', N'CHILD', 3, N'MENU_KEUANGAN');
+ELSE
+  UPDATE dbo.CPMENU
+  SET MENU_KIND = N'CHILD', PARENT_CODE = N'MENU_KEUANGAN', SORT_ORDER = 3
+  WHERE CODE = N'MENU_ARUS_KAS';
 GO
 
 -- 2d. CPPERMISSION (grant role -> menu) --------------------------------------------
@@ -205,7 +265,7 @@ WHERE MENU_CODE IN (
 -- tes tampilan (REPORT) yang sengaja tanpa akses role mana pun.
 INSERT INTO dbo.CPPERMISSION (ROLE_CODE, MENU_CODE)
 SELECT N'ADMIN', CODE FROM dbo.CPMENU
-WHERE CODE NOT IN (N'MENU_LAPORAN', N'MENU_ARUS_KAS')
+WHERE CODE NOT IN (N'MENU_LAPORAN', N'MENU_KEUANGAN', N'MENU_ARUS_KAS')
 AND NOT EXISTS (
   SELECT 1 FROM dbo.CPPERMISSION x WHERE x.ROLE_CODE = N'ADMIN' AND x.MENU_CODE = CPMENU.CODE
 );

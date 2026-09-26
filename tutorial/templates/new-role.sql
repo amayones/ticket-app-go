@@ -1,7 +1,7 @@
 -- TEMPLATE role baru. Ganti EDITOR + permission sesuai kebutuhan, jalankan
 -- di SQL Server (sqlcmd / SSMS).
--- Menu frontend untuk role ini: taruh di frontend/src/menus/<MCONTROL>/...
--- (modul UPPERCASE sesuai CPMENU.MCONTROL); menu hanya tampil bila
+-- Menu frontend untuk role ini: taruh di frontend/src/menus/<MODULE>/<menu>/...
+-- (modul UPPERCASE sesuai CPMENU.MODULE); menu hanya tampil bila
 -- permission MENU_<NAMA_MENU> di bawah diberikan.
 -- Permission yang sama dipakai RequirePermission di routes.
 

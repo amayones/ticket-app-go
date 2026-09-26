@@ -26,7 +26,7 @@ type ServiceInterface interface {
 	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
 	UpdateUserRole(ctx context.Context, userCode, roleCode string) error
 	CountRoles(ctx context.Context) (int, error)
-	// Registry menu (CPMENU + CPMATRIX tabel + grant CPPERMISSION).
+	// Registry menu (CPMENU + CPMODULE tabel + grant CPPERMISSION).
 	ListMenus(ctx context.Context) ([]models.Menu, error)
 	GetMenu(ctx context.Context, code string) (*models.Menu, error)
 	CreateMenu(ctx context.Context, input models.MenuInput) (*models.Menu, error)
@@ -34,7 +34,7 @@ type ServiceInterface interface {
 	DeleteMenu(ctx context.Context, code string) error
 	GetMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error)
 	MyMenus(ctx context.Context, userCode string) ([]models.MenuEntry, error)
-	// Master modul (CPMATRIX tabel).
+	// Master modul (CPMODULE tabel).
 	ListModules(ctx context.Context) ([]models.Module, error)
 	CreateModule(ctx context.Context, code, label string, sortOrder int) (*models.Module, error)
 	DeleteModule(ctx context.Context, code string) error
@@ -301,8 +301,12 @@ func (s *Service) GetMenu(ctx context.Context, code string) (*models.Menu, error
 	return m, nil
 }
 
-// CreateMenu menulis permission + registry dalam 1 transaksi.
+// CreateMenu menulis registry menu (permission + tampilan) dalam 1 baris.
 // Tanpa auto-grant ke role mana pun (admin mencentang manual via matriks).
+//
+// Kind menentukan peran baris: MenuKindParent (menu yang bisa punya anak,
+// tampil expandable di sidebar) atau MenuKindChild (menu biasa, boleh punya
+// PARENT_CODE). Menu parent tidak boleh punya parent.
 func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*models.Menu, error) {
 	code := strings.TrimSpace(strings.ToUpper(input.Code))
 	name := strings.TrimSpace(input.Name)
@@ -314,10 +318,10 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 	if err := validModule(module); err != nil {
 		return nil, err
 	}
-	// Modul wajib sudah terdaftar di CPMATRIX (urut: modul -> menu).
+	// Modul wajib sudah terdaftar di CPMODULE (urut: modul -> menu).
 	if _, err := s.roles.GetModule(ctx, module); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: module not found in CPMATRIX: %s (buat modul dulu)", services.ErrInvalidMenu, module)
+			return nil, fmt.Errorf("%w: module not found in CPMODULE: %s (buat modul dulu)", services.ErrInvalidMenu, module)
 		}
 		return nil, fmt.Errorf("get module: %w", err)
 	}
@@ -334,20 +338,20 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 	if sortOrder < 0 || sortOrder > 9999 {
 		return nil, fmt.Errorf("%w: sort order must be 0-9999", services.ErrInvalidMenu)
 	}
-	parent := strings.TrimSpace(strings.ToUpper(input.Parent))
-	if parent != "" {
-		pm, err := s.roles.GetMenu(ctx, parent)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, fmt.Errorf("%w: parent menu not found: %s", services.ErrInvalidMenu, parent)
-			}
-			return nil, fmt.Errorf("get parent menu: %w", err)
-		}
-		if pm.MControl != module {
-			return nil, fmt.Errorf("%w: parent must be in the same module", services.ErrInvalidMenu)
-		}
+	kind, err := normalizeKind(input.Kind)
+	if err != nil {
+		return nil, err
 	}
-	menu := &models.Menu{Code: code, MControl: module, Label: label, SortOrder: sortOrder, Parent: parent}
+	parent := strings.TrimSpace(strings.ToUpper(input.Parent))
+	if err := s.validateParent(ctx, &models.Menu{
+		Code: code, Module: module, Kind: kind, Parent: parent,
+	}); err != nil {
+		return nil, err
+	}
+	menu := &models.Menu{
+		Code: code, Module: module, Label: label,
+		Kind: kind, SortOrder: sortOrder, Parent: parent,
+	}
 	if err := s.roles.CreateMenu(ctx, menu); err != nil {
 		if isDuplicateErr(err) {
 			return nil, services.ErrPermissionExists
@@ -357,8 +361,66 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 	return menu, nil
 }
 
-// UpdateMenu mengubah data menu yang boleh diubah: nama permission, label
-// tampil, urutan, modul, dan parent. CODE (permission) tidak bisa diubah
+// normalizeKind menerima PARENT/CHILD (case-insensitive); kosong = CHILD.
+func normalizeKind(kind string) (string, error) {
+	k := strings.TrimSpace(strings.ToUpper(kind))
+	switch k {
+	case "":
+		return models.MenuKindChild, nil
+	case models.MenuKindParent:
+		return models.MenuKindParent, nil
+	case models.MenuKindChild:
+		return models.MenuKindChild, nil
+	default:
+		return "", fmt.Errorf("%w: menu kind must be PARENT or CHILD", services.ErrInvalidMenu)
+	}
+}
+
+// validateParent memastikan aturan parent-child pada menu (dipakai create
+// dan update):
+//   - menu PARENT tidak boleh punya parent;
+//   - PARENT_CODE harus menunjuk menu bertipe PARENT, se-modul, bukan diri
+//     sendiri, dan tidak menimbulkan siklus;
+//   - parent tidak boleh keturunan menu yang sedang disetel.
+func (s *Service) validateParent(ctx context.Context, m *models.Menu) error {
+	if m.Kind == models.MenuKindParent {
+		if m.Parent != "" {
+			return fmt.Errorf("%w: a PARENT menu cannot have a parent", services.ErrInvalidMenu)
+		}
+		return nil
+	}
+	if m.Parent == "" {
+		return nil
+	}
+	if m.Parent == m.Code {
+		return fmt.Errorf("%w: menu cannot be its own parent", services.ErrInvalidMenu)
+	}
+	pm, err := s.roles.GetMenu(ctx, m.Parent)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: parent menu not found: %s", services.ErrInvalidMenu, m.Parent)
+		}
+		return fmt.Errorf("get parent menu: %w", err)
+	}
+	if !pm.IsParent() {
+		return fmt.Errorf("%w: parent menu must be kind PARENT: %s", services.ErrInvalidMenu, m.Parent)
+	}
+	if pm.Module != m.Module {
+		return fmt.Errorf("%w: parent must be in the same module", services.ErrInvalidMenu)
+	}
+	// Cegah siklus: parent tidak boleh keturunan menu ini.
+	descendants, err := s.descendantsOf(ctx, m.Code)
+	if err != nil {
+		return err
+	}
+	if descendants[m.Parent] {
+		return fmt.Errorf("%w: parent would create a cycle", services.ErrInvalidMenu)
+	}
+	return nil
+}
+
+// UpdateMenu mengubah data menu yang boleh diubah: label, urutan, modul,
+// jenis (PARENT/CHILD), dan parent. CODE (permission) tidak bisa diubah
 // karena jadi acuan folder frontend + grant CPPERMISSION; untuk mengganti
 // permission, buat menu baru lalu hapus yang lama.
 //
@@ -375,14 +437,24 @@ func (s *Service) UpdateMenu(ctx context.Context, code string, input models.Menu
 		updated.Label = v
 	}
 	if v := strings.TrimSpace(strings.ToUpper(input.Module)); v != "" {
-		updated.MControl = v
+		updated.Module = v
 	}
 	if input.SortOrder != nil {
 		updated.SortOrder = *input.SortOrder
 	}
-	if input.Parent != "" || strings.TrimSpace(input.Parent) == "" {
-		// Parent selalu disetel: string kosong = lepas parent.
-		updated.Parent = strings.TrimSpace(strings.ToUpper(input.Parent))
+	if v := strings.TrimSpace(input.Kind); v != "" {
+		kind, err := normalizeKind(v)
+		if err != nil {
+			return nil, err
+		}
+		updated.Kind = kind
+	}
+	if updated.Kind == "" {
+		updated.Kind = models.MenuKindChild
+	}
+	// Parent hanya berubah bila dikirim: string kosong = lepas parent.
+	if input.Parent != nil {
+		updated.Parent = strings.TrimSpace(strings.ToUpper(*input.Parent))
 	}
 	if updated.Label == "" {
 		return nil, fmt.Errorf("%w: menu label is required", services.ErrInvalidMenu)
@@ -393,37 +465,28 @@ func (s *Service) UpdateMenu(ctx context.Context, code string, input models.Menu
 	if updated.SortOrder < 0 || updated.SortOrder > 9999 {
 		return nil, fmt.Errorf("%w: sort order must be 0-9999", services.ErrInvalidMenu)
 	}
-	if err := validModule(updated.MControl); err != nil {
+	if err := validModule(updated.Module); err != nil {
 		return nil, err
 	}
-	if _, err := s.roles.GetModule(ctx, updated.MControl); err != nil {
+	if _, err := s.roles.GetModule(ctx, updated.Module); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: module not found in CPMATRIX: %s (buat modul dulu)", services.ErrInvalidMenu, updated.MControl)
+			return nil, fmt.Errorf("%w: module not found in CPMODULE: %s (buat modul dulu)", services.ErrInvalidMenu, updated.Module)
 		}
 		return nil, fmt.Errorf("get module: %w", err)
 	}
-	if updated.Parent != "" {
-		if updated.Parent == updated.Code {
-			return nil, fmt.Errorf("%w: menu cannot be its own parent", services.ErrInvalidMenu)
-		}
-		pm, err := s.roles.GetMenu(ctx, updated.Parent)
+	// Menu yang sudah punya anak tidak boleh diturunkan jadi CHILD, karena
+	// anak-anaknya butuh parent bertipe PARENT.
+	if updated.Kind == models.MenuKindChild {
+		children, err := s.roles.ListChildren(ctx, updated.Code)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, fmt.Errorf("%w: parent menu not found: %s", services.ErrInvalidMenu, updated.Parent)
-			}
-			return nil, fmt.Errorf("get parent menu: %w", err)
+			return nil, fmt.Errorf("list children: %w", err)
 		}
-		if pm.MControl != updated.MControl {
-			return nil, fmt.Errorf("%w: parent must be in the same module", services.ErrInvalidMenu)
+		if len(children) > 0 {
+			return nil, fmt.Errorf("%w: menu still has %d child menu(s)", services.ErrMenuHasChildren, len(children))
 		}
-		// Cegah siklus: parent tidak boleh keturunan menu ini.
-		descendants, err := s.descendantsOf(ctx, updated.Code)
-		if err != nil {
-			return nil, err
-		}
-		if descendants[updated.Parent] {
-			return nil, fmt.Errorf("%w: parent would create a cycle", services.ErrInvalidMenu)
-		}
+	}
+	if err := s.validateParent(ctx, &updated); err != nil {
+		return nil, err
 	}
 	if err := s.roles.UpdateMenu(ctx, &updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -527,7 +590,7 @@ func (s *Service) MyMenus(ctx context.Context, userCode string) ([]models.MenuEn
 	return entries, nil
 }
 
-// --- Master modul (CPMATRIX tabel) --------------------------------------------
+// --- Master modul (CPMODULE tabel) --------------------------------------------
 
 func (s *Service) ListModules(ctx context.Context) ([]models.Module, error) {
 	modules, err := s.roles.ListModules(ctx)

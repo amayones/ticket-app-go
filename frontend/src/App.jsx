@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, onSessionExpired } from './api/client.js'
 import { AppLogo, Badge, Button, Icon, MissingMenu, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
 import { APP_NAME } from './brand.js'
-import { groupMenus, menusForPermissions, missingMenus } from './menus/registry.js'
+import { menuTree, menusForPermissions, missingMenus, withHierarchy } from './menus/registry.js'
 import { LoginForm } from './pages/Auth.jsx'
 
 // Shell aplikasi: sidebar/topbar dibangun OTOMATIS dari registry menu
@@ -32,72 +32,64 @@ function saveExpanded(key, value) {
   }
 }
 
-// Tombol satu menu (leaf). Entri hilang (folder belum dibuat) tampil amber.
-function MenuLeaf({ node, active, onSelect }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(node.key)}
-      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors ${
-        active
-          ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
-          : node.missing
-            ? 'text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40'
-            : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-      }`}
-    >
-      <Icon name={node.missing ? 'warning' : node.icon || 'list'} className="h-5 w-5 shrink-0" />
-      <span className="grid whitespace-nowrap text-[13px] font-medium">
-        <span className="min-w-0 overflow-hidden">
-          {node.label}
-          {node.missing && <span className="ml-1.5 font-mono text-[10px] opacity-70">404</span>}
-        </span>
-      </span>
-    </button>
-  )
-}
-
-// Grup parent bersarang (rekursif). Folder tanpa index.jsx = grup visual saja.
-function ParentGroup({ name, pathKey, items, depth, activeKey, onSelect, openParents, onToggleParent }) {
-  const open = openParents[pathKey] !== false
-  const leaves = items.filter((it) => (it.parents || []).length === depth)
-  const subs = new Map()
-  for (const it of items) {
-    if ((it.parents || []).length > depth) {
-      const sub = it.parents[depth]
-      if (!subs.has(sub)) subs.set(sub, [])
-      subs.get(sub).push(it)
-    }
-  }
+// Satu node menu di sidebar. Kalau CPMENU menandainya PARENT (atau punya
+// anak), node bisa dibuka-tutup; anak menanjak ke kanan. Hierarki ini
+// berasal dari CPMENU (MENU_KIND + PARENT_CODE), bukan dari nama folder.
+function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggleParent, depth = 0 }) {
+  const children = childrenOf.get(node.key) || []
+  const expandable = node.kind === 'PARENT' || children.length > 0
+  const open = openParents[node.key] !== false
   return (
     <div className="flex flex-col gap-1">
-      <button
-        type="button"
-        onClick={() => onToggleParent(pathKey)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold tracking-wide text-zinc-500 transition-colors hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-      >
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current text-[10px] leading-none">
-          {open ? '−' : '+'}
-        </span>
-        <span className="truncate uppercase">{name}</span>
-      </button>
-      {open && (
-        <div className="ml-3 flex flex-col gap-1 border-l border-zinc-200 pl-2 dark:border-zinc-700">
-          {leaves.map((n) => (
-            <MenuLeaf key={n.key} node={n} active={activeKey === n.key} onSelect={onSelect} />
-          ))}
-          {[...subs.entries()].map(([sub, subItems]) => (
-            <ParentGroup
-              key={sub}
-              name={sub}
-              pathKey={`${pathKey}/${sub}`}
-              items={subItems}
-              depth={depth + 1}
+      <div className="flex items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => onSelect(node.key)}
+          className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2.5 pr-1 transition-colors ${
+            depth > 0 ? 'pl-5' : 'pl-3'
+          } ${
+            activeKey === node.key
+              ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+              : node.missing
+                ? 'text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40'
+                : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
+          }`}
+        >
+          <Icon name={node.missing ? 'warning' : node.icon || 'list'} className="h-5 w-5 shrink-0" />
+          <span className="grid min-w-0 whitespace-nowrap text-[13px] font-medium">
+            <span className="min-w-0 overflow-hidden">
+              {node.label}
+              {node.missing && <span className="ml-1.5 font-mono text-[10px] opacity-70">404</span>}
+            </span>
+          </span>
+        </button>
+        {expandable && (
+          <button
+            type="button"
+            onClick={() => onToggleParent(node.key)}
+            aria-expanded={open}
+            aria-label={`${open ? 'Tutup' : 'Buka'} anak menu ${node.label}`}
+            className="shrink-0 rounded-lg p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
+          >
+            <Icon
+              name="chevronRight"
+              className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
+            />
+          </button>
+        )}
+      </div>
+      {expandable && open && children.length > 0 && (
+        <div className="ml-4 flex flex-col gap-1 border-l border-zinc-200 pl-1 dark:border-zinc-700">
+          {children.map((child) => (
+            <MenuNode
+              key={child.key}
+              node={child}
+              childrenOf={childrenOf}
               activeKey={activeKey}
               onSelect={onSelect}
               openParents={openParents}
               onToggleParent={onToggleParent}
+              depth={depth + 1}
             />
           ))}
         </div>
@@ -107,16 +99,7 @@ function ParentGroup({ name, pathKey, items, depth, activeKey, onSelect, openPar
 }
 
 // Section satu modul di sidebar (header + tombol +/−).
-function ModuleGroup({ module, items, open, onToggle, activeKey, onSelect, openParents, onToggleParent }) {
-  const leaves = items.filter((it) => (it.parents || []).length === 0)
-  const subs = new Map()
-  for (const it of items) {
-    if ((it.parents || []).length > 0) {
-      const sub = it.parents[0]
-      if (!subs.has(sub)) subs.set(sub, [])
-      subs.get(sub).push(it)
-    }
-  }
+function ModuleGroup({ module, roots, childrenOf, open, onToggle, activeKey, onSelect, openParents, onToggleParent }) {
   return (
     <div className="flex flex-col gap-1">
       <button
@@ -132,16 +115,11 @@ function ModuleGroup({ module, items, open, onToggle, activeKey, onSelect, openP
       </button>
       {open && (
         <div className="flex flex-col gap-1">
-          {leaves.map((n) => (
-            <MenuLeaf key={n.key} node={n} active={activeKey === n.key} onSelect={onSelect} />
-          ))}
-          {[...subs.entries()].map(([sub, subItems]) => (
-            <ParentGroup
-              key={sub}
-              name={sub}
-              pathKey={`${module}/${sub}`}
-              items={subItems}
-              depth={1}
+          {roots.map((n) => (
+            <MenuNode
+              key={n.key}
+              node={n}
+              childrenOf={childrenOf}
               activeKey={activeKey}
               onSelect={onSelect}
               openParents={openParents}
@@ -179,8 +157,12 @@ function Shell() {
   const isAdmin = me?.role === 'ADMIN'
   const visibleMenus = menusForPermissions(permissions)
   const missing = useMemo(() => missingMenus(myMenus), [myMenus])
-  const allNodes = useMemo(() => [...visibleMenus, ...missing], [visibleMenus, missing])
-  const groups = useMemo(() => groupMenus(allNodes), [allNodes])
+  // Parent/kind/label ikut dari CPMENU supaya sidebar persis sama dengan DB.
+  const allNodes = useMemo(
+    () => [...withHierarchy(visibleMenus, myMenus), ...missing],
+    [visibleMenus, missing, myMenus]
+  )
+  const groups = useMemo(() => menuTree(allNodes), [allNodes])
   const activeNode = allNodes.find((m) => m.key === view) || allNodes[0] || null
   const Active = activeNode && !activeNode.missing ? activeNode.Component : null
 
@@ -366,7 +348,8 @@ function Shell() {
               <ModuleGroup
                 key={g.module}
                 module={g.module}
-                items={g.items}
+                roots={g.roots}
+                childrenOf={g.childrenOf}
                 open={isOpen(openModules, g.module)}
                 onToggle={() => toggleOpen(setOpenModules, 'go-core-modules', g.module)}
                 activeKey={activeNode?.key}

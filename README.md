@@ -26,11 +26,12 @@ Browser :1067 ─────────────────► app.exe :10
 - Maksimal 5 sesi per user
 - RBAC sederhana: **satu permission untuk satu menu**
 - Semua role dapat memakai menu bila role tersebut diberi akses `MENU_*`
-- Master modul di tabel **`CPMATRIX`**, registry menu di tabel **`CPMENU`**
-  (`MCONTROL` = folder modul UPPERCASE), grant role→menu di
+- Master modul di tabel **`CPMODULE`**, registry menu di tabel **`CPMENU`**
+  (kolom `MODULE` = folder modul UPPERCASE), grant role→menu di
   **`CPPERMISSION`**; matriks dibaca dari JOIN ketiga tabel
-- Sidebar dikelompokkan per modul (tombol +/−), mendukung grup visual
-  (folder perantara tanpa `index.jsx`, bukan menu tersendiri)
+- Sidebar dikelompokkan per modul (tombol +/−); menu **parent/child**
+  ditentukan database lewat `CPMENU.MENU_KIND` (`PARENT`/`CHILD`) +
+  `CPMENU.PARENT_CODE`, bukan dari nama folder
 - Menu terdaftar tapi folder belum dibuat tampil sebagai **halaman 404
   pemandu** (menunjukkan path persis), bukan hilang diam-diam
 - Menu baru dibuat via UI Modul & Menu (tanpa auto-grant), dan menu yang
@@ -170,7 +171,7 @@ sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/mi
 
 Migrasi aman diulang (boleh dijalankan berkali-kali). `migrate2_rbac.sql`
  membersihkan definisi permission lama per-fitur, lalu membuat master modul
-(`CPMATRIX`), registry menu (`CPMENU`), dan grant default `CPPERMISSION`.
+(`CPMODULE`), registry menu (`CPMENU`), dan grant default `CPPERMISSION`.
 
 ### Membuat akun awal
 
@@ -204,8 +205,8 @@ Harus ada 10 tabel:
 
 ```text
 CPAUDITLOG
-CPMATRIX
 CPMENU
+CPMODULE
 CPNOTIFLOG
 CPNOTIFTEMPLATE
 CPPERMISSION
@@ -215,11 +216,11 @@ CPSYSLOG
 CPUSER
 ```
 
-### Verifikasi modul (CPMATRIX)
+### Verifikasi modul (CPMODULE)
 
 ```sql
 SELECT CODE, LABEL, SORT_ORDER
-FROM dbo.CPMATRIX
+FROM dbo.CPMODULE
 ORDER BY SORT_ORDER;
 ```
 
@@ -248,28 +249,38 @@ USER   Pengguna
 ### Verifikasi registry menu (CPMENU)
 
 ```sql
-SELECT CODE, MCONTROL, LABEL, SORT_ORDER
+SELECT CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE
 FROM dbo.CPMENU
-ORDER BY SORT_ORDER;
+ORDER BY MODULE, SORT_ORDER;
 ```
 
-Hasil yang benar (10 baris: 8 menu `SYSTEM` + 2 contoh `REPORT`):
+Hasil yang benar (11 baris: 8 menu `SYSTEM` + 3 contoh `REPORT`):
 
 ```text
-MENU_USERS          SYSTEM  User Account       1
-MENU_MODUL          SYSTEM  Modul & Menu       2
-MENU_ROLES          SYSTEM  Role & Permission  3
-MENU_SESSIONS       SYSTEM  Sesi & Auth        4
-MENU_AUDIT          SYSTEM  Audit Log          5
-MENU_SECURITY       SYSTEM  Security Center    6
-MENU_SYSLOG         SYSTEM  System Log         7
-MENU_NOTIFICATIONS  SYSTEM  Notifikasi         8
-MENU_LAPORAN        REPORT  Laporan            1
-MENU_ARUS_KAS       REPORT  Arus Kas           2
+CODE                MODULE  LABEL            KIND    URUTAN  PARENT_CODE
+MENU_USERS          SYSTEM  User Account     CHILD   1       NULL
+MENU_MODUL          SYSTEM  Modul & Menu     CHILD   2       NULL
+MENU_ROLES          SYSTEM  Role & Permission CHILD  3       NULL
+MENU_SESSIONS       SYSTEM  Sesi & Auth      CHILD   4       NULL
+MENU_AUDIT          SYSTEM  Audit Log        CHILD   5       NULL
+MENU_SECURITY       SYSTEM  Security Center  CHILD   6       NULL
+MENU_SYSLOG         SYSTEM  System Log       CHILD   7       NULL
+MENU_NOTIFICATIONS  SYSTEM  Notifikasi       CHILD   8       NULL
+MENU_LAPORAN        REPORT  Laporan          CHILD   1       NULL
+MENU_KEUANGAN       REPORT  Keuangan         PARENT  2       NULL
+MENU_ARUS_KAS       REPORT  Arus Kas         CHILD   3       MENU_KEUANGAN
 ```
 
-Dua menu `REPORT` adalah contoh tes tampilan (menu biasa vs menu di dalam grup
-visual) yang sengaja tanpa akses role mana pun.
+Tiga menu `REPORT` adalah contoh tes tampilan (menu biasa, menu parent, dan
+menu child di bawah parent) yang sengaja tanpa akses role mana pun.
+
+Tiga kolom penting di `CPMENU`:
+
+| Kolom | Isi |
+|---|---|
+| `MODULE` | Folder modul di frontend: `menus/<MODULE>/<menu>/`, huruf besar, wajib ada di `CPMODULE` |
+| `MENU_KIND` | `PARENT` (bisa punya anak, expandable di sidebar) atau `CHILD` (menu biasa) |
+| `PARENT_CODE` | Kode menu parent; hanya boleh menunjuk menu `PARENT` satu modul yang sama |
 
 ### Verifikasi grant role -> menu (CPPERMISSION)
 
@@ -316,7 +327,7 @@ via matriks. Setelah admin mencentang menu untuk suatu role, query JOIN
 berikut menampilkannya (modul otomatis ketahuan dari `CPMENU`):
 
 ```sql
-SELECT g.ROLE_CODE, m.MCONTROL AS MODULE, g.MENU_CODE
+SELECT g.ROLE_CODE, m.MODULE, g.MENU_CODE
 FROM dbo.CPPERMISSION g
 JOIN dbo.CPMENU m ON m.CODE = g.MENU_CODE
 ORDER BY g.ROLE_CODE, m.SORT_ORDER;
@@ -381,7 +392,7 @@ sengaja belum di-grant — perhatikan bahwa mencentang di matriks lalu
 1. Menu pertama otomatis terbuka, sidebar dikelompokkan per modul (SYSTEM).
 2. Buka **Role & Permission**.
 3. Role `ADMIN` dan `USER` harus terlihat.
-4. Matriks harus menampilkan 10 menu, bukan permission per fungsi.
+4. Matriks harus menampilkan 11 menu, bukan permission per fungsi.
 5. Menu **Modul & Menu** menampilkan 2 modul + 10 baris `CPMENU`.
 6. Centang menu untuk role yang membutuhkan (tanpa auto-grant).
 7. Klik **Simpan permission**.
@@ -569,7 +580,7 @@ task migrate-sqlite
 mkdir -p ./data && sqlite3 ./data/tokodb.db < scripts/schema.sqlite.sql
 ```
 
-Ketiganya menghasilkan state awal yang sama: 10 tabel, 2 modul, 10 menu,
+Ketiganya menghasilkan state awal yang sama: 10 tabel, 2 modul, 11 menu,
 `ADMIN` 8 grant, 2 akun (`admin`/`admin`, `user`/`user`), 3 template
 notifikasi. Skema ikut `IF NOT EXISTS` / `WHERE NOT EXISTS` sehingga aman
 dijalankan ulang. Untuk PostgreSQL, buat database dulu dengan
@@ -611,18 +622,25 @@ Folder pertama adalah module/kategori (UPPERCASE, bebas tambah modul baru),
 bukan batas role:
 
 ```text
-frontend/src/menus/SYSTEM/<menu>/            -> MODULE SYSTEM
-frontend/src/menus/REPORT/keu/<menu>/        -> MODULE REPORT, parent grup visual "keu"
+frontend/src/menus/SYSTEM/<menu>/     -> MODULE SYSTEM
+frontend/src/menus/REPORT/<menu>/     -> MODULE REPORT
 ```
+
+Tidak ada folder perantara: semua menu satu level di dalam folder modul.
+Menu parent/child ditentukan `CPMENU.MENU_KIND` + `PARENT_CODE`, jadi
+`menus/REPORT/keuangan/` dan `menus/REPORT/arus-kas/` berdua-dua berada di
+level yang sama.
 
 Frontend otomatis memindai semua module melalui `menus/registry.js`
 (glob `./*/**/index.jsx`). Module hanya mengelompokkan menu di sidebar dan
 matriks. Akses tetap ditentukan oleh permission menu + baris `CPMENU`.
 
 ```text
-menus/SYSTEM/users   -> MENU_USERS  (MCONTROL SYSTEM)
-menus/SYSTEM/roles   -> MENU_ROLES  (MCONTROL SYSTEM)
-menus/REPORT/laporan -> MENU_LAPORAN (MCONTROL REPORT)
+menus/SYSTEM/users       -> MENU_USERS     (MODULE SYSTEM)
+menus/SYSTEM/roles       -> MENU_ROLES     (MODULE SYSTEM)
+menus/REPORT/laporan     -> MENU_LAPORAN   (MODULE REPORT)
+menus/REPORT/keuangan   -> MENU_KEUANGAN  (MODULE REPORT, KIND PARENT)
+menus/REPORT/arus-kas   -> MENU_ARUS_KAS  (MODULE REPORT, PARENT MENU_KEUANGAN)
 ```
 
 Tidak ada lagi folder `menus/account` atau menu dashboard. Semua
@@ -676,7 +694,7 @@ go-core/
 │   ├── src/menus/
 │   │   ├── registry.js     # auto-scan menu nested per module + 404 pemandu
 │   │   └── SYSTEM/         # MODULE SYSTEM (8 menu: operasional + Modul & Menu)
-│   │   └── REPORT/         # MODULE REPORT (2 contoh tes: biasa vs di dalam grup)
+│   │   └── REPORT/         # MODULE REPORT (3 contoh: biasa, parent, child)
 │   ├── src/components/     # UI kit (termasuk MissingMenu)
 │   └── src/pages/          # LoginForm
 ├── scripts/                # migrate*.sql (SQL Server) dan build script
@@ -738,7 +756,7 @@ task build
 | `Matriks akses menu kosong` | Database belum menjalankan `migrate2_rbac.sql` → jalankan `task migrate`, restart backend, lalu refresh browser. |
 | `Tercatat 0 dari 0 permission` | `CPPERMISSION` masih kosong/permission lama belum dimigrasi → jalankan `task migrate`. |
 | Login berhasil tetapi sidebar kosong | Wajar bila role memang nol menu (mis. `USER` baru) → buka Role & Permission, centang menu, simpan, lalu login ulang. |
-| Menu terdaftar tapi tampil 404 | Folder `frontend/src/menus/<MCONTROL>/[<parent>/]<key>/` belum dibuat → ikuti petunjuk di halaman 404 (copy template, `npm run build`, restart). |
+| Menu terdaftar tapi tampil 404 | Folder `frontend/src/menus/<MODULE>/<menu>/` belum dibuat → ikuti petunjuk di halaman 404 (copy template, `npm run build`, restart). |
 | Menu baru tidak muncul sama sekali | Permission belum dicentang ke role tersebut, atau user belum login ulang. |
 | Menu baru muncul untuk semua role | Permission menu belum diberikan/di-filter dengan benar; cek `CPPERMISSION` role tersebut. |
 | Permission endpoint 403 | User belum memiliki `MENU_<MENU>` atau request dikirim ke role/menu yang salah. |
@@ -761,9 +779,9 @@ tutorial/README.md
 
 Tutorial terbaru menjelaskan:
 
-1. Membuat modul baru di `CPMATRIX` (UI **Modul & Menu**).
+1. Membuat modul baru di `CPMODULE` (UI **Modul & Menu**).
 2. Mendaftarkan menu di `CPMENU` via UI yang sama (tanpa auto-grant).
-3. Menambah folder `menus/<MCONTROL>/[<grup>/]<menu>/` (modul UPPERCASE).
+3. Menambah folder `menus/<MODULE>/<menu>/` (modul UPPERCASE, tanpa folder perantara).
 4. Mengisi `index.jsx` + `api.js` (termasuk pola tabel, skeleton, paginasi).
 5. Memahami halaman 404 pemandu sebagai kompas lokasi folder.
 6. Menambah endpoint backend (opsional) dengan permission menu yang sama.
@@ -781,8 +799,8 @@ folder → role → grant.
 |---|---|---|---|
 | 1 | Role baru | **Role & Permission** → **Role baru** → kode `EDITOR` | `SELECT * FROM dbo.CPROLE WHERE CODE='EDITOR'` |
 | 2 | User baru | **User Account** → **Tambah user** → pilih role `EDITOR` | `SELECT USERNAME, ROLE_CODE FROM dbo.CPUSER` |
-| 3 | Modul baru | **Modul & Menu** → **Modul baru** → kode `TOKO` | `SELECT * FROM dbo.CPMATRIX` |
-| 4 | Menu baru | **Modul & Menu** → **Menu baru** → `MENU_STOK`, modul `TOKO` | `SELECT * FROM dbo.CPMENU WHERE CODE='MENU_STOK'` |
+| 3 | Modul baru | **Modul & Menu** → **Modul baru** → kode `TOKO` | `SELECT * FROM dbo.CPMODULE` |
+| 4 | Menu baru | **Modul & Menu** → **Menu baru** → `MENU_STOK`, modul `TOKO`, jenis `CHILD`/`PARENT` | `SELECT * FROM dbo.CPMENU WHERE CODE='MENU_STOK'` |
 | 5 | Isi menu | `cp -r tutorial/templates/frontend-menu frontend/src/menus/TOKO/stok`, lalu isi `index.jsx` + `api.js` | `npm run lint && npm run build` |
 | 6 | Beri akses | **Role & Permission** → pilih `EDITOR` → centang `MENU_STOK` → **Simpan permission** | `SELECT * FROM dbo.CPPERMISSION WHERE MENU_CODE='MENU_STOK'` |
 | 7 | Cek hasil | `task build` + restart, login user role `EDITOR` | Menu **Stok** muncul di sidebar modul `TOKO` |
@@ -791,7 +809,10 @@ Catatan penting:
 
 - Kode menu **wajib** `MENU_` + huruf besar/angka/underscore, maksimal 40 karakter.
 - Nama folder frontend **wajib sama** dengan kode menu setelah `MENU_`:
-  `MENU_STOK` ↔ `menus/TOKO/stok/`.
+  `MENU_STOK` ↔ `menus/TOKO/stok/`. Tidak ada folder perantara.
+- Menu child butuh `PARENT_CODE` yang menunjuk menu `PARENT` di modul yang
+  sama; menu `PARENT` tidak boleh punya parent dan tidak bisa diubah jadi
+  `CHILD` selama masih punya anak.
 - Menu baru **tidak** dapat diakses role mana pun sampai dicentang di langkah 6.
 - User harus **logout/login ulang** setelah akses berubah.
 - Menambah menu tanpa endpoint backend sendiri? Lewati saja — pakai endpoint

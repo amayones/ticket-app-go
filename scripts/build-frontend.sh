@@ -11,5 +11,11 @@ fi
 npm run build
 # vite emptyOutDir menghapus placeholder embed; buat ulang agar
 # //go:embed all:frontend/dist tetap compile di fresh clone.
-printf '*\n!.gitignore\n' > "$ROOT/frontend/dist/.gitignore"
+cat > "$ROOT/frontend/dist/.gitignore" <<'EOF'
+# Placeholder agar //go:embed all:frontend/dist tetap compile di fresh clone.
+# Isi dist/* lain tetap di-ignore. File ini dibuat ulang otomatis oleh
+# scripts/build-frontend.sh setelah `vite build` (emptyOutDir menghapusnya).
+*
+!.gitignore
+EOF
 echo "==> Frontend done: frontend/dist"

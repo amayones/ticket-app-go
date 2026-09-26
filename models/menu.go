@@ -2,8 +2,15 @@ package models
 
 import "time"
 
-// Module adalah baris tabel CPMATRIX (master modul).
-// Satu baris = satu section sidebar. CPMENU.MCONTROL ber-FK ke CODE,
+// Nilai kolom CPMENU.MENU_KIND: menentukan apakah baris itu menu parent
+// (dapat punya anak, tampil expandable di sidebar) atau menu child.
+const (
+	MenuKindParent = "PARENT"
+	MenuKindChild  = "CHILD"
+)
+
+// Module adalah baris tabel CPMODULE (master modul).
+// Satu baris = satu section sidebar. CPMENU.MODULE ber-FK ke CODE,
 // sehingga modul wajib dibuat dulu sebelum menunya.
 type Module struct {
 	ID        int       `json:"-"`
@@ -15,51 +22,63 @@ type Module struct {
 }
 
 // Menu adalah baris tabel CPMENU (registry menu).
-// Satu baris = satu menu; MCONTROL = nama folder modul (UPPERCASE),
-// wajib sama persis dengan folder frontend menus/<MCONTROL>/... .
-// PARENT_CODE = menu induk untuk grup visual bersarang (boleh NULL).
+// Satu baris = satu menu; MODULE = nama folder modul (UPPERCASE), wajib
+// sama persis dengan folder frontend menus/<MODULE>/<menu>/ (tanpa folder
+// perantara: semua menu satu level di dalam folder modul).
+// MENU_KIND menentukan peran baris: MenuKindParent (punya anak, expandable)
+// atau MenuKindChild. PARENT_CODE = kode menu parent (wajib se-modul, dan
+// parent-nya harus bertipe PARENT).
 type Menu struct {
 	ID        int       `json:"-"`
 	Code      string    `json:"code"`
-	MControl  string    `json:"mcontrol"`
+	Module    string    `json:"module"`
 	Label     string    `json:"label"`
+	Kind      string    `json:"kind"`
 	SortOrder int       `json:"sort_order"`
-	Parent    string    `json:"parent_code,omitempty"`
+	Parent    string    `json:"parent_code"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// MenuInput adalah payload POST /api/admin/menus (buat menu + permission).
-// Name diterima untuk kompatibilitas API; label tampil diambil dari Label.
+// IsParent melaporkan apakah baris ini berperan sebagai menu parent.
+func (m Menu) IsParent() bool { return m.Kind == MenuKindParent }
+
+// MenuInput adalah payload POST /api/admin/menus (buat menu).
+// Kind opsional; kosong berarti CHILD. Name diterima untuk kompatibilitas
+// API tapi tidak disimpan (nama permission diambil dari Label).
 type MenuInput struct {
 	Code      string `json:"code"`
 	Name      string `json:"name"`
 	Module    string `json:"module"`
 	Label     string `json:"label"`
+	Kind      string `json:"kind"`
 	SortOrder int    `json:"sort_order"`
-	Parent    string `json:"parent_code,omitempty"`
-}
-
-// MenuUpdateInput adalah payload PUT /api/admin/menus/{code} (patch semantik).
-// Field kosong berarti tidak diubah, kecuali Parent: string kosong = lepas parent.
-// SortOrder pointer supaya "0" (posisi teratas) bisa dikirim dan dibedakan
-// dari "tidak diisi".
-type MenuUpdateInput struct {
-	Module    string `json:"module"`
-	Label     string `json:"label"`
-	SortOrder *int   `json:"sort_order"`
 	Parent    string `json:"parent_code"`
 }
 
-// MenuEntry adalah menu milik user (ada grant di CPPERMISSION).
+// MenuUpdateInput adalah payload PUT /api/admin/menus/{code} (patch semantik).
+// Field yang tidak dikirim = tidak diubah. Parent dan SortOrder berupa
+// pointer agar "tidak dikirim" (tetap) berbeda dari "dikirim kosong"
+// (lepas parent / urutan 0).
+type MenuUpdateInput struct {
+	Module    string  `json:"module"`
+	Label     string  `json:"label"`
+	Kind      string  `json:"kind"`
+	SortOrder *int    `json:"sort_order"`
+	Parent    *string `json:"parent_code"`
+}
+
+// MenuEntry adalah menu milik user (ada grant di CPPERMISSION) untuk sidebar.
 // Frontend membandingkan dengan folder registry: yang tidak punya folder
 // dirender sebagai halaman 404 pemandu (tahu harus bikin di mana).
+// Parent/Kind berasal dari CPMENU sehingga hierarki sidebar mengikuti DB.
 type MenuEntry struct {
 	Code      string `json:"code"`
 	Module    string `json:"module"`
 	Label     string `json:"label"`
+	Kind      string `json:"kind"`
 	SortOrder int    `json:"sort_order"`
-	Parent    string `json:"parent_code,omitempty"`
+	Parent    string `json:"parent_code"`
 }
 
 // MatrixRow adalah 1 baris matriks: 1 role x 1 menu + flag akses.
@@ -71,7 +90,8 @@ type MatrixRow struct {
 	Module    string `json:"module"`
 	MenuCode  string `json:"menu_code"`
 	MenuLabel string `json:"menu_label"`
+	Kind      string `json:"kind"`
 	SortOrder int    `json:"sort_order"`
-	Parent    string `json:"parent_code,omitempty"`
+	Parent    string `json:"parent_code"`
 	HasAccess bool   `json:"has_access"`
 }

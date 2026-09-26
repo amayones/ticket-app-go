@@ -38,7 +38,10 @@ CREATE TABLE IF NOT EXISTS CPREFRESHTOKEN (
 -- (CPPERMISSION sebagai tabel grant dibuat setelah CPMENU di bawah,
 -- karena FK-nya menunjuk ke sana.)
 
-CREATE TABLE IF NOT EXISTS CPMATRIX (
+-- CPMODULE: master modul. Satu baris = satu section sidebar + satu folder
+-- di frontend/src/menus/<MODULE>/. CPMENU.MODULE ber-FK ke sini (modul
+-- dibuat dulu, baru menunya).
+CREATE TABLE IF NOT EXISTS CPMODULE (
   ID SERIAL PRIMARY KEY,
   CODE VARCHAR(40) NOT NULL UNIQUE,
   LABEL VARCHAR(100) NOT NULL,
@@ -46,38 +49,45 @@ CREATE TABLE IF NOT EXISTS CPMATRIX (
   CREATED_AT TIMESTAMP NOT NULL DEFAULT NOW(),
   UPDATED_AT TIMESTAMP NOT NULL DEFAULT NOW()
 );
-INSERT INTO CPMATRIX (CODE, LABEL, SORT_ORDER)
-VALUES ('SYSTEM', 'System', 1)
-ON CONFLICT (CODE) DO NOTHING;
-INSERT INTO CPMATRIX (CODE, LABEL, SORT_ORDER)
-VALUES ('REPORT', 'Report', 2)
-ON CONFLICT (CODE) DO NOTHING;
+INSERT INTO CPMODULE (CODE, LABEL, SORT_ORDER)
+SELECT 'SYSTEM', 'System', 1
+WHERE NOT EXISTS (SELECT 1 FROM CPMODULE WHERE CODE = 'SYSTEM');
+INSERT INTO CPMODULE (CODE, LABEL, SORT_ORDER)
+SELECT 'REPORT', 'Report', 2
+WHERE NOT EXISTS (SELECT 1 FROM CPMODULE WHERE CODE = 'REPORT');
 
--- CPMENU: registry menu. MCONTROL = nama folder modul (UPPERCASE),
--- wajib sama persis dengan folder frontend menus/<MCONTROL>/... .
+-- CPMENU: registry menu. MODULE = nama folder modul (UPPERCASE), wajib sama
+-- persis dengan folder frontend menus/<MODULE>/<menu>/ (tanpa folder
+-- perantara: semua menu satu level di dalam folder modul).
+-- MENU_KIND: 'PARENT' = menu yang bisa punya anak (expandable di sidebar),
+-- 'CHILD' = menu biasa. PARENT_CODE menunjuk menu parent (wajib PARENT,
+-- se-modul, tanpa siklus).
 CREATE TABLE IF NOT EXISTS CPMENU (
   ID SERIAL PRIMARY KEY,
   CODE VARCHAR(40) NOT NULL UNIQUE,
-  MCONTROL VARCHAR(40) NOT NULL REFERENCES CPMATRIX (CODE),
+  MODULE VARCHAR(40) NOT NULL REFERENCES CPMODULE (CODE),
   LABEL VARCHAR(100) NOT NULL,
+  MENU_KIND VARCHAR(10) NOT NULL DEFAULT 'CHILD' CHECK (MENU_KIND IN ('PARENT', 'CHILD')),
   SORT_ORDER INT NOT NULL DEFAULT 99,
-  PARENT_CODE VARCHAR(40) NULL REFERENCES CPMENU (CODE),
+  PARENT_CODE VARCHAR(40) REFERENCES CPMENU (CODE),
   CREATED_AT TIMESTAMP NOT NULL DEFAULT NOW(),
   UPDATED_AT TIMESTAMP NOT NULL DEFAULT NOW(),
-  UNIQUE (MCONTROL, CODE)
+  UNIQUE (MODULE, CODE)
 );
 
-INSERT INTO CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE) VALUES
-  ('MENU_USERS',         'SYSTEM', 'User Account',       1, NULL),
-  ('MENU_MODUL',         'SYSTEM', 'Modul & Menu',       2, NULL),
-  ('MENU_ROLES',         'SYSTEM', 'Role & Permission',  3, NULL),
-  ('MENU_SESSIONS',      'SYSTEM', 'Sesi & Auth',        4, NULL),
-  ('MENU_AUDIT',         'SYSTEM', 'Audit Log',          5, NULL),
-  ('MENU_SECURITY',      'SYSTEM', 'Security Center',    6, NULL),
-  ('MENU_SYSLOG',        'SYSTEM', 'System Log',         7, NULL),
-  ('MENU_NOTIFICATIONS', 'SYSTEM', 'Notifikasi',         8, NULL),
-  ('MENU_LAPORAN',       'REPORT', 'Laporan',            1, NULL),
-  ('MENU_ARUS_KAS',      'REPORT', 'Arus Kas',           2, NULL)
+-- Seed menu bawaan (urut sesuai sidebar) + contoh parent-child di REPORT.
+INSERT INTO CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE) VALUES
+  ('MENU_USERS',         'SYSTEM', 'User Account',       'CHILD',  1, NULL),
+  ('MENU_MODUL',         'SYSTEM', 'Modul & Menu',       'CHILD',  2, NULL),
+  ('MENU_ROLES',         'SYSTEM', 'Role & Permission',  'CHILD',  3, NULL),
+  ('MENU_SESSIONS',      'SYSTEM', 'Sesi & Auth',        'CHILD',  4, NULL),
+  ('MENU_AUDIT',         'SYSTEM', 'Audit Log',          'CHILD',  5, NULL),
+  ('MENU_SECURITY',      'SYSTEM', 'Security Center',    'CHILD',  6, NULL),
+  ('MENU_SYSLOG',        'SYSTEM', 'System Log',         'CHILD',  7, NULL),
+  ('MENU_NOTIFICATIONS', 'SYSTEM', 'Notifikasi',         'CHILD',  8, NULL),
+  ('MENU_LAPORAN',       'REPORT', 'Laporan',            'CHILD',  1, NULL),
+  ('MENU_KEUANGAN',      'REPORT', 'Keuangan',           'PARENT', 2, NULL),
+  ('MENU_ARUS_KAS',      'REPORT', 'Arus Kas',           'CHILD',  3, 'MENU_KEUANGAN')
 ON CONFLICT (CODE) DO NOTHING;
 
 -- CPPERMISSION: satu-satunya tabel relasi grant (ROLE_CODE -> MENU_CODE).
@@ -93,7 +103,7 @@ CREATE TABLE IF NOT EXISTS CPPERMISSION (
 -- USER nol mapping (manual via UI).
 INSERT INTO CPPERMISSION (ROLE_CODE, MENU_CODE)
 SELECT 'ADMIN', CODE FROM CPMENU
-WHERE CODE NOT IN ('MENU_LAPORAN', 'MENU_ARUS_KAS')
+WHERE CODE NOT IN ('MENU_LAPORAN', 'MENU_KEUANGAN', 'MENU_ARUS_KAS')
 ON CONFLICT DO NOTHING;
 
 -- Matriks role x modul x menu dibaca via JOIN (CPROLE x CPMENU LEFT JOIN

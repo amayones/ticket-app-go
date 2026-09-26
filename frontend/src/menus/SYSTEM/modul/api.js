@@ -1,4 +1,4 @@
-// Fungsi menu Modul & Menu (master CPMATRIX + registry CPMENU).
+// Fungsi menu Modul & Menu (master CPMODULE + registry CPMENU).
 // Urut kerja: buat modul dulu, lalu menu di dalamnya, lalu centang role
 // di matriks halaman Role. Tanpa auto-grant ke role mana pun.
 import { apiRequest as request } from '../../../api/client.js'

@@ -13,8 +13,8 @@ Contoh: modul `TOKO`, menu `Stok`, role `EDITOR`, user `editor`.
 
 | # | Apa yang dilakukan | Di mana | Hasil |
 |---|---|---|---|
-| 1 | Buat modul `TOKO` | UI **Modul & Menu** → **Modul baru** | Baris `TOKO` di `CPMATRIX` |
-| 2 | Buat menu `MENU_STOK` (modul `TOKO`) | UI **Modul & Menu** → **Menu baru** | Baris `MENU_STOK` di `CPMENU`, belum ada grant |
+| 1 | Buat modul `TOKO` | UI **Modul & Menu** → **Modul baru** | Baris `TOKO` di `CPMODULE` |
+| 2 | Buat menu `MENU_STOK` (modul `TOKO`, jenis `CHILD`) | UI **Modul & Menu** → **Menu baru** | Baris `MENU_STOK` di `CPMENU`, belum ada grant |
 | 3 | Siapkan halaman | `cp -r tutorial/templates/frontend-menu frontend/src/menus/TOKO/stok` | Folder menu + `index.jsx` + `api.js` |
 | 4 | Isi halaman | `index.jsx` + `api.js` | Tabel stok (list, tambah, ubah, hapus) |
 | 5 | (opsional) Endpoint backend | `features/stok/` + `routes/routes.go` | `GET/POST/PUT/DELETE /api/stok` |
@@ -31,20 +31,29 @@ ada. Detail tiap langkah ada di bawah.
 Struktur folder menu (modul UPPERCASE, bebas tambah modul baru):
 
 ```text
-frontend/src/menus/<MCONTROL>/[<grup>/]<menu>/  -> semua role yang diberi akses menu
+frontend/src/menus/<MODULE>/<menu>/  -> semua role yang diberi akses menu
 ```
 
 Contoh bawaan:
 
 ```text
-menus/SYSTEM/users/         -> modul SYSTEM, menu users
-menus/REPORT/keu/arus-kas/  -> modul REPORT, grup visual "keu", menu arus-kas
-menus/REPORT/laporan/       -> modul REPORT, menu laporan (tanpa grup)
+menus/SYSTEM/users/       -> modul SYSTEM, menu users
+menus/REPORT/laporan/     -> modul REPORT, menu laporan (CHILD, tanpa parent)
+menus/REPORT/keuangan/    -> modul REPORT, menu keuangan (PARENT)
+menus/REPORT/arus-kas/    -> modul REPORT, menu arus kas (CHILD dari keuangan)
 ```
 
-Modul = kolom `MCONTROL` tabel `CPMENU`, wajib sama persis dengan nama
-folder (UPPERCASE). Folder perantara tanpa `index.jsx` = grup visual saja
-(bisa dibuka-tutup di sidebar dengan tombol +/−), **bukan** menu tersendiri.
+Modul = kolom `MODULE` tabel `CPMENU`, wajib sama persis dengan nama folder
+pertama (UPPERCASE). **Tidak ada folder perantara**: semua menu satu level di
+dalam folder modul.
+
+Menu parent/child ditentukan **database**, bukan folder:
+
+| Kolom `CPMENU` | Isi |
+|---|---|
+| `MODULE` | Folder modul: `menus/<MODULE>/<menu>/` |
+| `MENU_KIND` | `PARENT` (bisa punya anak, expandable di sidebar) atau `CHILD` |
+| `PARENT_CODE` | Kode menu parent; harus menunjuk menu `PARENT` satu modul yang sama |
 
 Tutorial ini memakai modul baru `TOKO` dan menu `stok`.
 
@@ -67,8 +76,8 @@ Tiga aturan yang paling sering membuat orang tersesat:
 
 1. Kode menu harus persis `MENU_` + nama folder menu dalam huruf besar.
    `stok` → `MENU_STOK`, `arus-kas` → `MENU_ARUS_KAS`.
-2. Nama folder modul harus sama dengan `MCONTROL` dan huruf besar.
-   `TOKO` ↔ `menus/TOKO/`.
+2. Nama folder modul harus sama dengan `MODULE` dan huruf besar.
+   `TOKO` ↔ `menus/TOKO/`, tanpa folder perantara.
 3. Menu baru **tidak** otomatis bisa diakses siapa pun. Sampai admin mencentang
    di halaman Role, menu itu tidak muncul di sidebar siapa pun.
 
@@ -76,9 +85,10 @@ Tiga aturan yang paling sering membuat orang tersesat:
 
 | Istilah | Arti |
 |---|---|
-| Modul | Kelompok menu di sidebar, mis. `SYSTEM`, `REPORT`. Disimpan di `CPMATRIX`. |
+| Modul | Kelompok menu di sidebar, mis. `SYSTEM`, `REPORT`. Disimpan di `CPMODULE`. |
 | Menu | Satu halaman di sidebar, mis. User Account atau Stok. Disimpan di `CPMENU`. |
-| Grup visual | Folder perantara untuk mengelompokkan menu (tombol +/−), bukan menu. |
+| Menu parent | Menu bertipe `PARENT`: expandable di sidebar dan bisa punya menu anak. |
+| Menu child | Menu bertipe `CHILD`: menu biasa, boleh punya `PARENT_CODE`. |
 | Role | Kelompok user, misalnya ADMIN, USER, EDITOR. Disimpan di `CPROLE`. |
 | Permission | Akses ke satu menu, misalnya `MENU_STOK`. |
 | Grant | Baris `CPPERMISSION` yang memberi role akses ke menu. |
@@ -161,7 +171,7 @@ PostgreSQL: `DB_CONNECTION=postgres` lalu `task migrate-postgres`
 SQLite: `DB_CONNECTION=sqlite` + `DB_DATABASE=./data/tokodb.db` lalu
 `task migrate-sqlite` (skema `scripts/schema.sqlite.sql`).
 
-Ketiganya menghasilkan state awal yang sama: 10 tabel, 2 modul, 10 menu,
+Ketiganya menghasilkan state awal yang sama: 10 tabel, 2 modul, 11 menu,
 `ADMIN` 8 grant, 2 akun (`admin`/`admin` dan `user`/`user`), 3 template
 notifikasi.
 
@@ -169,8 +179,8 @@ notifikasi.
 
 # Bagian 1 — Daftarkan Modul dan Menu di Database
 
-Urutannya wajib: **modul dulu, baru menu** — `CPMENU.MCONTROL` menunjuk ke
-`CPMATRIX.CODE`.
+Urutannya wajib: **modul dulu, baru menu** — `CPMENU.MODULE` menunjuk ke
+`CPMODULE.CODE`.
 
 ## 1.1. Buat modul baru
 
@@ -188,9 +198,9 @@ via UI (disarankan):
 via SQL:
 
 ```sql
-INSERT INTO dbo.CPMATRIX (CODE, LABEL, SORT_ORDER)
+INSERT INTO dbo.CPMODULE (CODE, LABEL, SORT_ORDER)
 SELECT N'TOKO', N'Toko', 3
-WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMATRIX WHERE CODE = N'TOKO');
+WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMODULE WHERE CODE = N'TOKO');
 ```
 
 Modul gagal dihapus selama masih ada menu di dalamnya (UI memberi pesan
@@ -199,7 +209,7 @@ Modul gagal dihapus selama masih ada menu di dalamnya (UI memberi pesan
 ✅ **Checkpoint 1.1**
 
 ```sql
-SELECT CODE, LABEL, SORT_ORDER FROM dbo.CPMATRIX ORDER BY SORT_ORDER;
+SELECT CODE, LABEL, SORT_ORDER FROM dbo.CPMODULE ORDER BY SORT_ORDER;
 ```
 
 `TOKO` harus muncul di antara `SYSTEM` dan `REPORT`.
@@ -211,8 +221,10 @@ via UI:
 1. Login `admin`, buka menu **Modul & Menu**.
 2. Klik **Menu baru**, isi:
    - Kode permission: `MENU_STOK` (wajib prefix `MENU_`, maks 40 karakter)
-   - Modul (MCONTROL): pilih `TOKO` dari dropdown
-   - Label tampil: `Stok`, Urutan: `1`, Parent: kosongkan
+   - Modul (MODULE): pilih `TOKO` dari dropdown
+   - Label tampil: `Stok`, Urutan: `1`
+   - Jenis menu: `CHILD` (menu biasa) atau `PARENT` (bisa punya anak)
+   - Parent: kosongkan (atau pilih menu `PARENT` kalau menu ini mau berada di bawahnya)
 3. Simpan. Menu tercatat di `CPMENU`
    **tanpa auto-grant ke role mana pun** — admin mencentang manual di
    halaman Role (Bagian 5).
@@ -226,10 +238,10 @@ buat menu baru lalu hapus yang lama.
 ✅ **Checkpoint 1.2**
 
 ```sql
-SELECT CODE, MCONTROL, LABEL FROM dbo.CPMENU WHERE CODE = 'MENU_STOK';
+SELECT CODE, MODULE, LABEL, MENU_KIND, PARENT_CODE FROM dbo.CPMENU WHERE CODE = 'MENU_STOK';
 ```
 
-Harus menghasilkan satu baris dengan `MCONTROL = TOKO`.
+Harus menghasilkan satu baris dengan `MODULE = TOKO` dan `MENU_KIND = CHILD`.
 
 ## 1.3. Alternatif via SQL
 
@@ -237,8 +249,8 @@ Satu permission mewakili satu menu (`MENU_<NAMA_MENU>`); modul = nama
 folder (`TOKO` → `menus/TOKO/`). Cukup satu INSERT:
 
 ```sql
-INSERT INTO dbo.CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER)
-VALUES (N'MENU_STOK', N'TOKO', N'Stok', 1);
+INSERT INTO dbo.CPMENU (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE)
+VALUES (N'MENU_STOK', N'TOKO', N'Stok', N'CHILD', 1, NULL);
 ```
 
 Grant ke role tetap via matriks UI (atau `INSERT INTO dbo.CPPERMISSION
@@ -247,7 +259,7 @@ Grant ke role tetap via matriks UI (atau `INSERT INTO dbo.CPPERMISSION
 ✅ **Checkpoint 1.3**
 
 ```sql
-SELECT CODE, MCONTROL FROM dbo.CPMENU WHERE CODE = 'MENU_STOK';
+SELECT CODE, MODULE, MENU_KIND FROM dbo.CPMENU WHERE CODE = 'MENU_STOK';
 ```
 
 Harus menghasilkan satu baris. (Jalur UI di 1.2 tidak menulis seed file —
@@ -257,9 +269,10 @@ Untuk menu permanen bawaan, tambahkan seed yang sama di
 `scripts/migrate2_rbac.sql` (proyek ini khusus SQL Server). Menu yang dibuat
 lewat UI tidak perlu seed.
 
-> Catatan: kolom `Parent (opsional)` di form menu biasanya **dikosongkan**.
-> Grup visual di sidebar datang dari folder perantara tanpa `index.jsx`,
-> bukan dari menu induk.
+> Catatan: kolom **Parent** hanya muncul saat jenis menu `CHILD`, dan
+> hanya berisi menu bertipe `PARENT` di modul yang sama. Menu `PARENT` tidak
+> boleh punya parent, dan tidak bisa diubah jadi `CHILD` selama masih punya
+> anak. Menu parent juga halaman biasa: ia butuh folder sendiri.
 
 ---
 
@@ -565,9 +578,10 @@ frontend/src/menus/TOKO/stok/
 MENU_STOK   (modul TOKO dari nama folder)
 ```
 
-Folder perantara tanpa `index.jsx` = grup visual, mis.
-`menus/TOKO/gudang/stok/` tetap memakai permission `MENU_STOK` di bawah grup
-`gudang` (bisa dibuka-tutup di sidebar).
+Folder menu tidak boleh punya folder perantara: `menus/TOKO/stok/`, bukan
+`menus/TOKO/gudang/stok/`. Penempatan anak di bawah parent diatur lewat
+`CPMENU.PARENT_CODE` (menu ikut bawah parent-nya di sidebar), bukan lewat
+folder.
 
 Jadi tidak perlu menambah daftar menu manual di `registry.js`.
 
@@ -974,7 +988,7 @@ DELETE FROM dbo.CPMENU WHERE CODE = 'MENU_STOK';
 ```
 
 5. Modul `TOKO` boleh dihapus setelah tidak ada menu di dalamnya — hapus lewat
-   UI **Modul & Menu** atau `DELETE FROM dbo.CPMATRIX WHERE CODE = N'TOKO';`.
+   UI **Modul & Menu** atau `DELETE FROM dbo.CPMODULE WHERE CODE = N'TOKO';`.
 6. Jalankan `task build-frontend`.
 7. Refresh/login ulang.
 
@@ -991,13 +1005,14 @@ Setup (khusus clone baru):
 
 Modul & menu:
 
-- [ ] Modul dibuat dulu di `CPMATRIX` (kode UPPERCASE), baru menu di `CPMENU`.
-- [ ] `CPMENU.MCONTROL` sama persis dengan nama folder modul.
+- [ ] Modul dibuat dulu di `CPMODULE` (kode UPPERCASE), baru menu di `CPMENU`.
+- [ ] `CPMENU.MODULE` sama persis dengan nama folder modul.
 - [ ] Kode menu = `MENU_` + nama folder menu (`MENU_STOK` ↔ `menus/TOKO/stok/`).
-- [ ] Menu diletakkan di `frontend/src/menus/<MCONTROL>/[<grup>/]<menu>/`.
+- [ ] Menu diletakkan di `frontend/src/menus/<MODULE>/<menu>/` (tanpa folder perantara).
 - [ ] `index.jsx` memiliki `export const meta` (setelah import) dan `export default`.
 - [ ] `api.js` memakai `auth: true` untuk endpoint privat, tanpa placeholder `<menu>`.
-- [ ] Menu bisa diedit dari **Modul & Menu** (label/urutan/modul/parent) tanpa dihapus-buat.
+- [ ] Menu bisa diedit dari **Modul & Menu** (label/urutan/modul/jenis/parent) tanpa dihapus-buat.
+- [ ] Menu child punya `PARENT_CODE` yang menunjuk menu `PARENT` se-modul; menu `PARENT` tanpa parent.
 - [ ] `npm run lint` dan `npm run build` berhasil tanpa error.
 
 Role, user, dan akses:
@@ -1024,19 +1039,23 @@ mengikuti README bagian 1 (buat DB kosong bebas nama → `task migrate` →
 SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME LIKE 'CP%'
 ORDER BY TABLE_NAME;
--- CPAUDITLOG, CPMATRIX, CPMENU, CPNOTIFLOG, CPNOTIFTEMPLATE,
+-- CPAUDITLOG, CPMENU, CPMODULE, CPNOTIFLOG, CPNOTIFTEMPLATE,
 -- CPPERMISSION, CPREFRESHTOKEN, CPROLE, CPSYSLOG, CPUSER
 
 -- 2 modul bawaan (SYSTEM operasional + REPORT contoh tes tampilan):
-SELECT CODE, LABEL, SORT_ORDER FROM dbo.CPMATRIX ORDER BY SORT_ORDER;
+SELECT CODE, LABEL, SORT_ORDER FROM dbo.CPMODULE ORDER BY SORT_ORDER;
 -- SYSTEM | System | 1
 -- REPORT | Report | 2
 
--- 10 menu (8 SYSTEM + 2 contoh REPORT); permission = menu (1:1):
-SELECT COUNT(*) FROM dbo.CPMENU;  -- 10
+-- 11 menu (8 SYSTEM + 3 contoh REPORT); permission = menu (1:1):
+SELECT COUNT(*) FROM dbo.CPMENU;  -- 11
+-- Contoh parent-child: MENU_KEUANGAN = PARENT, MENU_ARUS_KAS = CHILD
+-- dengan PARENT_CODE = MENU_KEUANGAN.
+SELECT CODE, MODULE, MENU_KIND, PARENT_CODE FROM dbo.CPMENU
+WHERE MODULE = 'REPORT' ORDER BY SORT_ORDER;
 
 -- Grant: ADMIN 8, USER 0 (akses USER selalu manual via matriks).
--- Dua menu REPORT sengaja tanpa akses role mana pun.
+-- Tiga menu REPORT sengaja tanpa akses role mana pun.
 SELECT ROLE_CODE, COUNT(*) AS JML FROM dbo.CPPERMISSION GROUP BY ROLE_CODE;
 -- ADMIN | 8
 

@@ -14,11 +14,13 @@ import {
 
 // TEMPLATE mainpage menu baru. Cara pakai:
 // 1. Daftarkan dulu lewat UI Modul & Menu (atau SQL ke CPMENU) agar
-//    MCONTROL + kode MENU_<NAMA> ada.
-// 2. Copy folder ini ke menus/<MCONTROL>/[<parent>/]<menu>/, misalnya
-//    menus/REPORT/laporan/ (modul UPPERCASE persis = MCONTROL).
+//    MODULE + kode MENU_<NAMA> ada. Pilih jenis menu: PARENT (bisa punya
+//    anak) atau CHILD (bisa diisi PARENT_CODE).
+// 2. Copy folder ini ke menus/<MODULE>/<menu>/, misalnya
+//    menus/REPORT/laporan/ (modul UPPERCASE persis = MODULE).
 //    Nama folder menjadi kode permission otomatis, contoh laporan -> MENU_LAPORAN.
-//    Folder perantara tanpa index.jsx = grup visual bersarang (boleh).
+//    Tidak ada folder perantara: menu child tetap satu level, hierarki
+//    parent/child berasal dari CPMENU.PARENT_CODE.
 // 3. Sesuaikan meta di bawah (label, icon, order).
 // 4. Ganti placeholder <menu> di api.js dan isi halaman dengan UI-mu.
 // 5. npm run build + restart backend; menu otomatis muncul di grup modulnya.

@@ -156,7 +156,7 @@ func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "User role updated"})
 }
 
-// --- Registry menu (CPMENU + CPMATRIX) ----------------------------------------
+// --- Registry menu (CPMENU + CPMODULE) ----------------------------------------
 
 func (h *Handler) ListMenus(w http.ResponseWriter, r *http.Request) {
 	menus, err := h.Service.ListMenus(r.Context())
@@ -194,7 +194,7 @@ func (h *Handler) CreateMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r, models.AuditMenuCreate, models.EntitySystem, menu.Code,
-		"Menu "+menu.Code+" dibuat di modul "+menu.MControl+" (tanpa auto-grant role)")
+		"Menu "+menu.Code+" dibuat di modul "+menu.Module+" (tanpa auto-grant role)")
 	web.WriteJSON(w, http.StatusCreated, menu)
 }
 
@@ -216,7 +216,7 @@ func (h *Handler) UpdateMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r, models.AuditMenuUpdate, models.EntitySystem, menu.Code,
-		"Menu "+menu.Code+" diperbarui (label/urutan/modul/parent)")
+		"Menu "+menu.Code+" diperbarui (label/urutan/modul/"+menu.Kind+"/parent)")
 	web.WriteJSON(w, http.StatusOK, menu)
 }
 
@@ -252,7 +252,7 @@ func (h *Handler) MyMenus(w http.ResponseWriter, r *http.Request) {
 	web.WriteJSON(w, http.StatusOK, entries)
 }
 
-// --- Master modul (CPMATRIX tabel) ---------------------------------------------
+// --- Master modul (CPMODULE tabel) ---------------------------------------------
 
 func (h *Handler) ListModules(w http.ResponseWriter, r *http.Request) {
 	modules, err := h.Service.ListModules(r.Context())

@@ -19,10 +19,14 @@ import {
 
 export const meta = { label: 'Modul & Menu', icon: 'list', order: 2 }
 
+// Menu bertipe PARENT saja yang boleh dipilih sebagai parent menu lain.
+const PARENT_KIND = 'PARENT'
+const CHILD_KIND = 'CHILD'
+
 function groupMenusByModule(menus) {
   const groups = {}
   for (const m of menus) {
-    const g = m.mcontrol || 'SYSTEM'
+    const g = m.module || 'SYSTEM'
     if (!groups[g]) groups[g] = []
     groups[g].push(m)
   }
@@ -32,7 +36,15 @@ function groupMenusByModule(menus) {
   return groups
 }
 
-// Halaman Modul & Menu (master CPMATRIX + registry CPMENU).
+// parentOptions: kandidat parent untuk form (modul sama, jenis PARENT,
+// bukan menu itu sendiri).
+function parentOptions(menus, module, selfCode) {
+  return menus.filter(
+    (m) => (m.module || 'SYSTEM') === module && m.kind === PARENT_KIND && m.code !== selfCode
+  )
+}
+
+// Halaman Modul & Menu (master CPMODULE + registry CPMENU).
 // Urut kerja: buat modul dulu, lalu menu di dalamnya, lalu centang role
 // di halaman Role. Tanpa auto-grant ke role mana pun. Menu tanpa folder
 // tampil sebagai halaman 404 pemandu (bukan hilang diam-diam).
@@ -48,6 +60,7 @@ export default function Modul() {
   const [mModule, setMModule] = useState('SYSTEM')
   const [mLabel, setMLabel] = useState('')
   const [mSort, setMSort] = useState('99')
+  const [mKind, setMKind] = useState(CHILD_KIND)
   const [mParent, setMParent] = useState('')
   const [creatingMenu, setCreatingMenu] = useState(false)
   const [deletingMenu, setDeletingMenu] = useState(null)
@@ -56,6 +69,7 @@ export default function Modul() {
   const [eModule, setEModule] = useState('')
   const [eLabel, setELabel] = useState('')
   const [eSort, setESort] = useState('99')
+  const [eKind, setEKind] = useState(CHILD_KIND)
   const [eParent, setEParent] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
   const [showModuleCreate, setShowModuleCreate] = useState(false)
@@ -96,13 +110,15 @@ export default function Modul() {
         code: mCode.trim(),
         module: mModule.trim(),
         label: mLabel.trim(),
+        kind: mKind,
         sort_order: Number(mSort) || 99,
-        parent_code: mParent.trim() || undefined,
+        parent_code: mKind === PARENT_KIND ? '' : mParent.trim(),
       })
-      toast.success(`Menu ${menu.code} dibuat di modul ${menu.mcontrol}. Centang role yang boleh akses, lalu buat foldernya.`)
+      toast.success(`Menu ${menu.code} dibuat di modul ${menu.module}. Centang role yang boleh akses, lalu buat foldernya.`)
       setMCode('')
       setMLabel('')
       setMSort('99')
+      setMKind(CHILD_KIND)
       setMParent('')
       setShowMenuCreate(false)
       load()
@@ -116,9 +132,10 @@ export default function Modul() {
   // Buka form edit: isi field dari menu yang dipilih (sama seperti form create).
   function openMenuEdit(menu) {
     setEditingMenu(menu)
-    setEModule(menu.mcontrol || 'SYSTEM')
+    setEModule(menu.module || 'SYSTEM')
     setELabel(menu.label || '')
     setESort(String(menu.sort_order ?? 99))
+    setEKind(menu.kind || CHILD_KIND)
     setEParent(menu.parent_code || '')
   }
 
@@ -133,8 +150,9 @@ export default function Modul() {
       const menu = await updateMenu(editingMenu.code, {
         module: eModule.trim(),
         label: eLabel.trim(),
+        kind: eKind,
         sort_order: Number(eSort) || 0,
-        parent_code: eParent.trim(),
+        parent_code: eKind === PARENT_KIND ? '' : eParent.trim(),
       })
       toast.success(`Menu ${menu.code} diperbarui.`)
       setEditingMenu(null)
@@ -264,9 +282,16 @@ export default function Modul() {
                         <div className="min-w-0 flex-1">
                           <p className="flex flex-wrap items-center gap-2 font-medium text-zinc-800 dark:text-zinc-100">
                             {m.label} <Badge tone="neutral">{m.code}</Badge>
+                            <Badge tone={m.kind === PARENT_KIND ? 'brand' : 'neutral'}>
+                              {m.kind || CHILD_KIND}
+                            </Badge>
                             {m.parent_code && <Badge>parent: {m.parent_code}</Badge>}
                           </p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">urutan {m.sort_order ?? 99}</p>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                            urutan {m.sort_order ?? 99}
+                            {m.kind === PARENT_KIND ? ' • menu parent (bisa punya anak)' : ''}
+                            {m.parent_code ? ' • anak dari parent di atas' : ''}
+                          </p>
                         </div>
                         <Tooltip label="Edit menu">
                           <button
@@ -322,7 +347,7 @@ export default function Modul() {
             hint="Wajib prefix MENU_, huruf besar/angka/underscore, maks 40 karakter."
           />
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Modul (MCONTROL)</span>
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Modul (MODULE)</span>
             <select
               value={mModule}
               onChange={(e) => setMModule(e.target.value)}
@@ -336,8 +361,8 @@ export default function Modul() {
               ))}
             </select>
             <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
-              Modul wajib sudah terdaftar di CPMATRIX (buat dulu via tombol Modul baru).
-              UPPERCASE persis = nama folder menus/&lt;MODUL&gt;/.
+              Modul wajib sudah terdaftar di CPMODULE (buat dulu via tombol Modul baru).
+              UPPERCASE persis = nama folder menus/&lt;MODUL&gt;/ di frontend.
             </span>
           </label>
           <TextField
@@ -346,22 +371,54 @@ export default function Modul() {
             onChange={(e) => setMLabel(e.target.value)}
             placeholder="mis. Laporan"
           />
-          <div className="grid grid-cols-2 gap-4">
-            <TextField
-              label="Urutan"
-              value={mSort}
-              onChange={(e) => setMSort(e.target.value)}
-              placeholder="99"
-              hint="0–9999."
-            />
-            <TextField
-              label="Parent (opsional)"
-              value={mParent}
-              onChange={(e) => setMParent(e.target.value.toUpperCase())}
-              placeholder="biasanya kosong"
-              hint="Menu induk se-modul. Grup visual di sidebar lebih mudah dibuat lewat folder perantara tanpa index.jsx."
-            />
-          </div>
+          <TextField
+            label="Urutan"
+            value={mSort}
+            onChange={(e) => setMSort(e.target.value)}
+            placeholder="99"
+            hint="0–9999. Urutan sidebar ikut nilai ini."
+          />
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Jenis menu</span>
+            <select
+              value={mKind}
+              onChange={(e) => {
+                setMKind(e.target.value)
+                if (e.target.value === PARENT_KIND) setMParent('')
+              }}
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            >
+              <option value={CHILD_KIND}>CHILD — menu biasa</option>
+              <option value={PARENT_KIND}>PARENT — menu yang bisa punya anak</option>
+            </select>
+            <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
+              Ditulis ke kolom MENU_KIND di CPMENU. Menu PARENT tampil expandable di
+              sidebar dan harus punya halaman sendiri (folder sendiri).
+            </span>
+          </label>
+          {mKind === CHILD_KIND && (
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                Parent (menu induk, opsional)
+              </span>
+              <select
+                value={mParent}
+                onChange={(e) => setMParent(e.target.value)}
+                className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+              >
+                <option value="">— tanpa parent (menu tingkat modul) —</option>
+                {parentOptions(menus, mModule).map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.code} — {p.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                Hanya menu ber-KIND = PARENT di modul {mModule} yang bisa dipilih.
+                Nilainya ditulis ke kolom PARENT_CODE.
+              </span>
+            </label>
+          )}
           <Alert tone="info">
             Menu baru tidak otomatis diberi ke role mana pun. Centang manual di halaman Role, lalu buat
             foldernya — halaman 404 pemandu menunjukkan path persisnya.
@@ -391,7 +448,7 @@ export default function Modul() {
             role. Ingin ganti kode? Buat menu baru, lalu hapus yang ini.
           </Alert>
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Modul (MCONTROL)</span>
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Modul (MODULE)</span>
             <select
               value={eModule}
               onChange={(e) => setEModule(e.target.value)}
@@ -405,7 +462,7 @@ export default function Modul() {
               ))}
             </select>
             <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
-              Pindah modul = pindahkan folder frontend ke menus/&lt;MODUL&gt;/, lalu build ulang.
+              Pindah modul = pindahkan folder frontend ke menus/&lt;MODUL&gt;/&lt;menu&gt;/, lalu build ulang.
             </span>
           </label>
           <TextField
@@ -415,22 +472,52 @@ export default function Modul() {
             placeholder="mis. Laporan"
             hint="Nama yang tampil di sidebar dan matriks Role."
           />
-          <div className="grid grid-cols-2 gap-4">
-            <TextField
-              label="Urutan"
-              value={eSort}
-              onChange={(e) => setESort(e.target.value)}
-              placeholder="99"
-              hint="0–9999. Urutan sidebar ikut nilai ini."
-            />
-            <TextField
-              label="Parent (opsional)"
-              value={eParent}
-              onChange={(e) => setEParent(e.target.value.toUpperCase())}
-              placeholder="kosongkan untuk lepas parent"
-              hint="Menu induk se-modul (harus satu modul)."
-            />
-          </div>
+          <TextField
+            label="Urutan"
+            value={eSort}
+            onChange={(e) => setESort(e.target.value)}
+            placeholder="99"
+            hint="0–9999. Urutan sidebar ikut nilai ini."
+          />
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Jenis menu</span>
+            <select
+              value={eKind}
+              onChange={(e) => {
+                setEKind(e.target.value)
+                if (e.target.value === PARENT_KIND) setEParent('')
+              }}
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            >
+              <option value={CHILD_KIND}>CHILD — menu biasa</option>
+              <option value={PARENT_KIND}>PARENT — menu yang bisa punya anak</option>
+            </select>
+            <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
+              Menu yang sudah punya anak tidak boleh diubah jadi CHILD.
+            </span>
+          </label>
+          {eKind === CHILD_KIND && (
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                Parent (menu induk, opsional)
+              </span>
+              <select
+                value={eParent}
+                onChange={(e) => setEParent(e.target.value)}
+                className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+              >
+                <option value="">— tanpa parent (menu tingkat modul) —</option>
+                {parentOptions(menus, eModule, editingMenu?.code).map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.code} — {p.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                Pilih parent untuk melepas menu ini dari induknya (PARENT_CODE = kosong).
+              </span>
+            </label>
+          )}
         </div>
       </Modal>
 

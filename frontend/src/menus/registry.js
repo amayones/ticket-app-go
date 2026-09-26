@@ -1,17 +1,19 @@
-// Registry menu modular + bersarang: folder pertama adalah modul (MCONTROL,
-// UPPERCASE, mis. SYSTEM/REPORT), segmen terakhir adalah key menu, segmen
-// tengah adalah parent grup visual (boleh tanpa index.jsx).
-// Modul hanya untuk pengelompokan, bukan pembatasan role. Akses menu
-// sepenuhnya ditentukan oleh permission MENU_<NAMA_MENU> + baris CPMENU.
+// Registry menu modular: folder pertama adalah modul (MODULE, UPPERCASE,
+// mis. SYSTEM/REPORT), folder kedua adalah menu itu sendiri. Tidak ada
+// folder perantara: struktur ini datar per modul.
 //
-// | Folder                          | Modul  | Key      | Parent     |
-// |---------------------------------|--------|----------|------------|
-// | menus/SYSTEM/users/index.jsx    | SYSTEM | users    | -          |
-// | menus/REPORT/keu/laporan/idx   | REPORT | laporan  | [keu]      |
+// | Folder                       | Modul  | Key      |
+// |------------------------------|--------|----------|
+// | menus/SYSTEM/users/index.jsx | SYSTEM | users    |
+// | menus/REPORT/arus-kas/index.jsx | REPORT | arus-kas |
 //
-// Tambah menu = INSERT CPMENU/CPPERMISSION (via UI Role) + folder
-// menus/<MCONTROL>/[parent/]<key>/index.jsx. Permission tanpa folder cocok
-// Terdeteksi missingMenus() dan dirender sebagai halaman 404 pemandu.
+// Akses menu sepenuhnya ditentukan permission MENU_<NAMA_MENU> + baris CPMENU.
+// Tambah menu = buat baris CPMENU (UI Modul & Menu) + folder
+// menus/<MODULE>/<menu>/index.jsx. Permission tanpa folder cocok akan
+// terdeteksi missingMenus() dan dirender sebagai halaman 404 pemandu.
+//
+// Hierarki parent/child TIDAK berasal dari folder, melainkan dari CPMENU:
+// MENU_KIND = PARENT (bisa punya anak) dan PARENT_CODE (kode menu parent).
 const modules = import.meta.glob('./*/**/index.jsx', { eager: true })
 
 function permissionFor(key) {
@@ -35,20 +37,20 @@ function titleCase(key) {
 function loadMenus() {
   const menus = []
   for (const [path, mod] of Object.entries(modules)) {
-    const m = path.match(/^\.\/([^/]+)\/(.+)\/index\.jsx$/)
+    // Hanya <module>/<menu>/index.jsx. Folder anak (mis. components/) dilewati.
+    const m = path.match(/^\.\/([^/]+)\/([^/]+)\/index\.jsx$/)
     if (!m || typeof mod.default !== 'function') continue
-    const [, moduleName, rest] = m
-    const segs = rest.split('/')
-    const key = segs[segs.length - 1]
-    const parents = segs.slice(0, -1)
+    const [, moduleName, key] = m
     const meta = mod.meta || {}
     menus.push({
       key,
       module: moduleName.toUpperCase(),
-      parents,
       label: meta.label || titleCase(key),
       icon: meta.icon || 'list',
       order: meta.order ?? 99,
+      // Parent & kind diisi dari CPMENU (lihat withHierarchy di bawah).
+      parent: '',
+      kind: 'CHILD',
       Component: mod.default,
     })
   }
@@ -71,28 +73,48 @@ export function missingMenus(myMenus = []) {
     .filter((e) => e && e.code && !known.has(e.code))
     .map((e) => {
       const key = keyFromCode(e.code)
-      const module = String(e.module || 'SYSTEM').toUpperCase()
       return {
         key,
         code: e.code,
-        module,
-        parents: [],
+        module: String(e.module || 'SYSTEM').toUpperCase(),
         label: e.label || titleCase(key),
         order: e.sort_order ?? 99,
+        parent: e.parent_code || '',
+        kind: e.kind || 'CHILD',
         missing: true,
       }
     })
     .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
 }
 
+// withHierarchy menggabungkan info parent dari CPMENU (backend) ke item menu
+// lokal. Sumber kebenaran hierarki = database, bukan nama folder.
+export function withHierarchy(items, myMenus = []) {
+  const meta = new Map()
+  for (const e of Array.isArray(myMenus) ? myMenus : []) {
+    if (e && e.code) meta.set(e.code, e)
+  }
+  return items.map((it) => {
+    const e = meta.get(permissionFor(it.key))
+    if (!e) return it
+    return {
+      ...it,
+      parent: e.parent_code || '',
+      kind: e.kind || 'CHILD',
+      label: e.label || it.label,
+      order: e.sort_order ?? it.order,
+    }
+  })
+}
+
 // suggestPath: path folder yang harus dibuat untuk entri yang hilang.
 export function suggestPath(entry) {
-  const parts = [entry.module, ...(entry.parents || []), entry.key].filter(Boolean)
+  const parts = [entry.module, entry.key].filter(Boolean)
   return `frontend/src/menus/${parts.join('/')}/`
 }
 
-// groupMenus: kelompokkan item per modul untuk sidebar (urut by order terkecil).
-export function groupMenus(items = []) {
+// groupMenus: kelompokkan item per modul (dipakai menuTree di bawah).
+function groupMenus(items = []) {
   const map = new Map()
   for (const it of items) {
     const mod = (it.module || 'SYSTEM').toUpperCase()
@@ -106,4 +128,21 @@ export function groupMenus(items = []) {
 
 function minOrder(items) {
   return items.reduce((m, it) => Math.min(m, it.order ?? 99), 99)
+}
+
+// menuTree: memecah item per modul menjadi root (tanpa parent) + childrenOf
+// (peta parent_code -> daftar anak). Parent yang tidak ada di daftar (mis.
+// belum di-grant role ini) tidak jadi root, jadi anak tetap tampil datar.
+export function menuTree(items = []) {
+  return groupMenus(items).map(({ module, items: list }) => {
+    const byKey = new Set(list.map((it) => it.key))
+    const roots = list.filter((it) => !it.parent || !byKey.has(it.parent))
+    const childrenOf = new Map()
+    for (const it of list) {
+      if (!it.parent || !byKey.has(it.parent)) continue
+      if (!childrenOf.has(it.parent)) childrenOf.set(it.parent, [])
+      childrenOf.get(it.parent).push(it)
+    }
+    return { module, roots, childrenOf }
+  })
 }

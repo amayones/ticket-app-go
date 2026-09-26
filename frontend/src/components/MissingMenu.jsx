@@ -68,9 +68,14 @@ export default function MissingMenu({ entry }) {
             <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
             <span>
               Modul <span className="font-mono">{entry.module}</span> wajib sama dengan kolom{' '}
-              <span className="font-mono">MCONTROL</span> di tabel{' '}
+              <span className="font-mono">MODULE</span> di tabel{' '}
               <span className="font-mono">CPMENU</span> (saat ini: {moduleFolder || entry.module}).
-              Parent bersarang boleh berupa grup visual tanpa <span className="font-mono">index.jsx</span>.
+              Folder menu cukup satu level: <span className="font-mono">menus/&lt;MODULE&gt;/&lt;menu&gt;/</span>.
+              {entry.parent_code && (
+                <>
+                  {' '}Menu ini anak dari <span className="font-mono">{entry.parent_code}</span>.
+                </>
+              )}
             </span>
           </li>
           <li className="flex items-start gap-2">

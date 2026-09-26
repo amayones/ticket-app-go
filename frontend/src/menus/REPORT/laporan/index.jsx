@@ -3,7 +3,8 @@ import { Card, CardTitle, EmptyState } from '../../../components'
 export const meta = { label: 'Laporan', icon: 'list', order: 1 }
 
 // Contoh menu BIASA: satu folder = satu halaman, tanpa parent.
-// Bandingkan dengan menus/REPORT/keuangan/arus-kas/ (menu di dalam grup).
+// Bandingkan dengan menus/REPORT/keuangan/ (PARENT) dan
+// menus/REPORT/arus-kas/ (CHILD dari MENU_KEUANGAN).
 // Lihat tutorial/README.md Bagian 2 untuk cara membuat menu seperti ini.
 export default function Laporan() {
   return (

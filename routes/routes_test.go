@@ -92,16 +92,16 @@ func (s *stubRoles) UpdateUserRole(ctx context.Context, userCode, roleCode strin
 }
 func (s *stubRoles) CountRoles(ctx context.Context) (int, error) { return 2, nil }
 func (s *stubRoles) ListMenus(ctx context.Context) ([]models.Menu, error) {
-	return []models.Menu{{Code: models.MenuUsers, MControl: "SYSTEM", Label: "User Account", SortOrder: 1}}, nil
+	return []models.Menu{{Code: models.MenuUsers, Module: "SYSTEM", Label: "User Account", SortOrder: 1}}, nil
 }
 func (s *stubRoles) GetMenu(ctx context.Context, code string) (*models.Menu, error) {
-	return &models.Menu{Code: code, MControl: "SYSTEM", Label: "Test"}, nil
+	return &models.Menu{Code: code, Module: "SYSTEM", Label: "Test"}, nil
 }
 func (s *stubRoles) CreateMenu(ctx context.Context, in models.MenuInput) (*models.Menu, error) {
-	return &models.Menu{Code: "MENU_TEST", MControl: "SYSTEM", Label: "Test"}, nil
+	return &models.Menu{Code: "MENU_TEST", Module: "SYSTEM", Label: "Test"}, nil
 }
 func (s *stubRoles) UpdateMenu(ctx context.Context, code string, in models.MenuUpdateInput) (*models.Menu, error) {
-	return &models.Menu{Code: code, MControl: in.Module, Label: in.Label}, nil
+	return &models.Menu{Code: code, Module: in.Module, Label: in.Label}, nil
 }
 func (s *stubRoles) DeleteMenu(ctx context.Context, code string) error { return nil }
 func (s *stubRoles) GetMatrix(ctx context.Context, role string) ([]models.MatrixRow, error) {
