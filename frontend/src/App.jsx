@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, onSessionExpired } from './api/client.js'
-import { Badge, Button, Icon, MissingMenu, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
+import { AppLogo, Badge, Button, Icon, MissingMenu, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
+import { APP_NAME } from './brand.js'
 import { groupMenus, menusForPermissions, missingMenus } from './menus/registry.js'
 import { LoginForm } from './pages/Auth.jsx'
 
@@ -290,7 +291,7 @@ function Shell() {
         <div className="w-full max-w-sm">
           <LoginForm onDone={handleAuth} />
           <p className="mt-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
-            Go Core — hubungi admin bila belum punya akun
+            {APP_NAME} — hubungi admin bila belum punya akun
           </p>
         </div>
       </div>
@@ -309,15 +310,13 @@ function Shell() {
             (tengah-tengah tinggi baris logo). */}
         <div className="pb-4">
           <div className={`relative flex items-center ${collapsed ? 'justify-center px-0' : 'gap-2 px-1'}`}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">
-              G
-            </span>
+            <AppLogo className="h-8 w-8" />
             <span
               className={`grid whitespace-nowrap text-sm font-bold tracking-tight transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
                 collapsed ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'
               }`}
             >
-              <span className="min-w-0 overflow-hidden">Go Core</span>
+              <span className="min-w-0 overflow-hidden">{APP_NAME}</span>
             </span>
             <Tooltip
               label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
@@ -423,9 +422,7 @@ function Shell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/90 backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-950/90">
           <div className="flex items-center gap-2 px-3 py-2.5">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 text-xs text-white">
-              G
-            </span>
+            <AppLogo className="h-7 w-7" />
             <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
               {allNodes.map((n) => (
                 <button
@@ -474,7 +471,7 @@ function Shell() {
           </div>
         </main>
         <footer className="border-t border-zinc-200 py-3 text-center text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
-          Go Core — Go + React dalam satu binary
+          {APP_NAME} — Go + React dalam satu binary
         </footer>
       </div>
 

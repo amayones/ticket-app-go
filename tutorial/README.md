@@ -134,9 +134,20 @@ Cukup ubah satu baris di `.env`, lalu build ulang frontend:
 APP_NAME=Toko Saya
 ```
 
-Ikut berubah: judul tab browser dan nama pada kartu login. Yang **tidak**
-ikut berubah dan boleh Anda edit manual bila perlu: `frontend/index.html`
-(`<title>`, favicon), `frontend/public/favicon.svg`, serta isi email di
+Ikut berubah: judul tab browser, nama di sidebar, nama di kartu login, dan
+teks footer.
+
+Logo/favicon diatur terpisah lewat `APP_LOGO` di `.env` yang menunjuk file di
+`frontend/public/`:
+
+```env
+APP_LOGO=/favicon.svg
+```
+
+Ganti `frontend/public/favicon.svg` dengan logo Anda (rasio 1:1), atau simpan
+file lain di folder yang sama lalu arahkan `APP_LOGO` ke sana. Favicon tab,
+logo sidebar, dan logo kartu login memakai file yang sama. Yang **tidak**
+ikut berubah: `frontend/index.html` (`<title>` fallback) dan isi email di
 `CPNOTIFTEMPLATE` (bisa diedit dari menu **Notifikasi**).
 
 Detail lengkap ada di README bagian

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api/client.js'
-import { APP_NAME } from '../appName.js'
-import { Alert, Button, Card, CardTitle, PasswordInput, TextField } from '../components'
+import { Alert, AppLogo, Button, Card, CardTitle, PasswordInput, TextField } from '../components'
+import { APP_NAME } from '../brand.js'
 
 // Form login. Mode penuh (default) = kartu ber-branding untuk halaman login.
 // Mode bare = hanya field + tombol (untuk di dalam modal), tanpa Card/branding.
@@ -64,9 +64,7 @@ export function LoginForm({ onDone, bare = false }) {
   return (
     <Card className="w-full">
       <div className="mb-5 flex flex-col items-center gap-2 text-center">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-xl font-bold text-white">
-          {APP_NAME.charAt(0).toUpperCase()}
-        </span>
+        <AppLogo className="h-12 w-12" />
         <CardTitle description="Masuk untuk mengelola aplikasi. Akun dibuatkan oleh admin.">
           {APP_NAME}
         </CardTitle>

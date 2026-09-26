@@ -2,6 +2,7 @@
 // Urut: komponen A-Z, lalu helper/hook. Jangan import langsung per-file
 // dari halaman menu — semua lewat barrel ini.
 export { default as Alert } from './Alert.jsx'
+export { default as AppLogo } from './AppLogo.jsx'
 export { default as Avatar } from './Avatar.jsx'
 export { default as Badge } from './Badge.jsx'
 export { default as Button } from './Button.jsx'

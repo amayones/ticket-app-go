@@ -55,7 +55,7 @@ func Load() (Config, error) {
 	_ = godotenv.Load()
 
 	cfg := Config{
-		AppName:        getEnvDefault("APP_NAME", "GoBackend"),
+		AppName:        getEnvDefault("APP_NAME", "Go Core"),
 		AppEnv:         getEnvDefault("APP_ENV", "development"),
 		AppPort:        getEnvDefault("APP_PORT", "1067"),
 		DBConnection:   normalizeDriver(getEnvDefault("DB_CONNECTION", DBSQLServer)),

@@ -439,21 +439,57 @@ Yang otomatis mengikuti `APP_NAME`:
 | Yang berubah | Keterangan |
 |---|---|
 | Judul tab browser | Di-set runtime oleh `main.jsx` |
-| Kartu di halaman login | Nama + huruf awal pada logo |
+| Nama di sidebar aplikasi | `App.jsx` (desktop + topbar mobile) |
+| Nama di kartu login | `pages/Auth.jsx` |
+| Teks "hubungi admin" & footer | `App.jsx` |
 | `Config.AppName` backend | Dibaca `config/env.go` |
 
 Setelah mengubah `.env`, **build ulang frontend** (`task build-frontend`),
 lalu restart backend. Clone lama yang masih punya `APP_NAME=GoBackend` (nilai
-default lama) ikut diganti ke nama yang Anda pilih. `frontend/index.html` masih berisi `<title>Go Core</title>`
-sebagai fallback sebelum JavaScript berjalan — ganti juga file itu bila ingin
-judulnya benar sejak awal.
+default lama) ikut diganti ke nama yang Anda pilih. `frontend/index.html`
+masih berisi `<title>Go Core</title>` sebagai fallback sebelum JavaScript
+berjalan — ganti juga file itu bila ingin judulnya benar sejak awal.
 
-Branding lain yang **tidak** ikut `APP_NAME` dan boleh Anda edit bebas:
+### Mengganti favicon / logo
+
+Favicon berada di:
+
+```text
+frontend/public/favicon.svg
+```
+
+Folder `public/` disalin apa adanya ke `dist/`, jadi file di sana bisa
+dipakai langsung tanpa import. Ganti file `favicon.svg` (atau tambah file
+lain, mis. `logo-toko.png`) lalu arahkan `APP_LOGO` di `.env`:
+
+```env
+APP_LOGO=/favicon.svg
+# atau
+APP_LOGO=/logo-toko.png
+```
+
+`APP_LOGO` dipakai di dua tempat sekaligus:
+
+| Tempat | Keterangan |
+|---|---|
+| Favicon tab browser | Di-set runtime oleh `main.jsx` |
+| Logo di sidebar, topbar mobile, dan kartu login | `components/AppLogo.jsx` |
+
+Jadi **tidak ada huruf logo lagi** — semuanya gambar favicon. Kalau file
+gambar rusak/hilang, `AppLogo` otomatis jatuh ke huruf pertama `APP_NAME`.
+
+Saran gambar: rasio 1:1 (persis), bentuk persegi, latar transparan atau
+putih, minimal 64×64 px. Format bebas (SVG, PNG, WebP).
+
+Cache browser untuk favicon sangat agresif. Kalau logo tidak berubah setelah
+ganti file, pakai nama file baru (mis. `favicon-toko.svg`) atau hard refresh
+(`Ctrl+Shift+R`).
+
+### Branding lain yang tidak ikut `.env`
 
 | File | Isi |
 |---|---|
-| `frontend/index.html` | `<title>` dan referensi favicon |
-| `frontend/public/favicon.svg` | Ikon tab |
+| `frontend/index.html` | `<title>` + `<link rel="icon">` fallback |
 | `README.md` | Judul & deskripsi proyek |
 | `Dockerfile`, `Taskfile.yml` | Nama binary bila ingin `toko.exe` |
 | Tabel `CPNOTIFTEMPLATE` | Teks email (bisa diedit dari menu **Notifikasi**) |
