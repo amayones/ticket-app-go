@@ -30,8 +30,8 @@ func newFakeRoleRepo() *fakeRoleRepo {
 			models.RoleUser:  {},
 		},
 		menus: map[string]*models.Menu{
-			models.MenuUsers: {Code: models.MenuUsers, Module: "SYSTEM", Label: "User Account", SortOrder: 1},
-			models.MenuRoles: {Code: models.MenuRoles, Module: "SYSTEM", Label: "Role & Permission", SortOrder: 2},
+			models.MenuUsers: {Code: models.MenuUsers, Module: "SYSTEM", Label: "User Account", Mcontrol: "users", Kind: models.MenuKindChild, SortOrder: 1},
+			models.MenuRoles: {Code: models.MenuRoles, Module: "SYSTEM", Label: "Role & Permission", Mcontrol: "role_permission", Kind: models.MenuKindChild, SortOrder: 2},
 		},
 		modules: map[string]*models.Module{
 			"SYSTEM": {Code: "SYSTEM", Label: "System", SortOrder: 1},
@@ -80,7 +80,10 @@ func (f *fakeRoleRepo) Count(ctx context.Context) (int, error) { return len(f.ro
 func (f *fakeRoleRepo) ListPermissions(ctx context.Context) ([]models.Permission, error) {
 	out := make([]models.Permission, 0, len(f.menus))
 	for _, m := range f.menus {
-		out = append(out, models.Permission{Code: m.Code, Name: "Akses " + m.Label, Group: m.Module})
+		out = append(out, models.Permission{
+			Code: m.Code, Name: "Akses " + m.Label, Group: m.Module,
+			Kind: m.Kind, Parent: m.Parent,
+		})
 	}
 	return out, nil
 }
@@ -135,6 +138,8 @@ func (f *fakeRoleRepo) UpdateMenu(ctx context.Context, menu *models.Menu) error 
 	}
 	cur.Module = menu.Module
 	cur.Label = menu.Label
+	cur.Mcontrol = menu.Mcontrol
+	cur.Kind = menu.Kind
 	cur.SortOrder = menu.SortOrder
 	cur.Parent = menu.Parent
 	return nil
@@ -184,7 +189,10 @@ func (f *fakeRoleRepo) QueryMatrix(ctx context.Context, roleFilter string) ([]mo
 					has = true
 				}
 			}
-			out = append(out, models.MatrixRow{RoleCode: rc, Module: m.Module, MenuCode: m.Code, MenuLabel: m.Label, HasAccess: has})
+			out = append(out, models.MatrixRow{
+				RoleCode: rc, Module: m.Module, MenuCode: m.Code, MenuLabel: m.Label,
+				Kind: m.Kind, Parent: m.Parent, HasAccess: has,
+			})
 		}
 	}
 	return out, nil
@@ -360,14 +368,14 @@ func TestMenuLifecycle(t *testing.T) {
 	svc, _, _ := newTestService()
 	ctx := context.Background()
 	// Modul wajib ada dulu (urut: modul -> menu).
-	badMod := models.MenuInput{Code: "MENU_LAPORAN", Name: "Akses menu Laporan", Module: "report", Label: "Laporan"}
+	badMod := models.MenuInput{Code: "MENU_LAPORAN", Name: "Akses menu Laporan", Module: "report", Label: "Laporan", Mcontrol: "laporan"}
 	if _, err := svc.CreateMenu(ctx, badMod); !errors.Is(err, services.ErrInvalidMenu) {
 		t.Fatalf("expected ErrInvalidMenu for unknown module, got %v", err)
 	}
 	if _, err := svc.CreateModule(ctx, "report", "Report", 10); err != nil {
 		t.Fatalf("create module: %v", err)
 	}
-	in := models.MenuInput{Code: "menu_laporan", Name: "Akses menu Laporan", Module: "report", Label: "Laporan", SortOrder: 8}
+	in := models.MenuInput{Code: "menu_laporan", Name: "Akses menu Laporan", Module: "report", Label: "Laporan", Mcontrol: "laporan", SortOrder: 8}
 	menu, err := svc.CreateMenu(ctx, in)
 	if err != nil {
 		t.Fatalf("create menu: %v", err)
@@ -425,14 +433,14 @@ func TestUpdateMenu(t *testing.T) {
 	if _, err := svc.CreateModule(ctx, "toko", "Toko", 11); err != nil {
 		t.Fatalf("create module: %v", err)
 	}
-	// MENU_PAJU = menu parent (boleh punya anak), MENU_STOK = child biasa.
+	// MENU_PAJU = menu parent (tanpa mcontrol/folder, hanya header), MENU_STOK = child biasa.
 	if _, err := svc.CreateMenu(ctx, models.MenuInput{
 		Code: "MENU_PAJU", Module: "report", Label: "Paju", Kind: models.MenuKindParent, SortOrder: 5,
 	}); err != nil {
 		t.Fatalf("create parent menu: %v", err)
 	}
 	if _, err := svc.CreateMenu(ctx, models.MenuInput{
-		Code: "MENU_STOK", Module: "report", Label: "Stok", Kind: models.MenuKindChild, SortOrder: 4,
+		Code: "MENU_STOK", Module: "report", Label: "Stok", Mcontrol: "stok", Kind: models.MenuKindChild, SortOrder: 4,
 		Parent: "MENU_PAJU",
 	}); err != nil {
 		t.Fatalf("create child menu: %v", err)
@@ -447,15 +455,27 @@ func TestUpdateMenu(t *testing.T) {
 	}); !errors.Is(err, services.ErrInvalidMenu) {
 		t.Fatalf("PARENT tidak boleh punya parent, got %v", err)
 	}
+	// PARENT wajib tanpa mcontrol.
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{
+		Code: "MENU_XP", Module: "report", Label: "XP", Mcontrol: "xp", Kind: models.MenuKindParent,
+	}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("PARENT tidak boleh punya mcontrol, got %v", err)
+	}
 	// Parent harus bertipe PARENT.
 	if _, err := svc.CreateMenu(ctx, models.MenuInput{
-		Code: "MENU_Y", Module: "report", Label: "Y", Parent: "MENU_STOK",
+		Code: "MENU_Y", Module: "report", Label: "Y", Mcontrol: "y", Parent: "MENU_STOK",
 	}); !errors.Is(err, services.ErrInvalidMenu) {
 		t.Fatalf("parent harus kind PARENT, got %v", err)
 	}
+	// CHILD wajib punya mcontrol.
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{
+		Code: "MENU_Y2", Module: "report", Label: "Y2",
+	}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("CHILD tanpa mcontrol harus ditolak, got %v", err)
+	}
 	// Kind tidak dikenal ditolak.
 	if _, err := svc.CreateMenu(ctx, models.MenuInput{
-		Code: "MENU_Z", Module: "report", Label: "Z", Kind: "INDUK",
+		Code: "MENU_Z", Module: "report", Label: "Z", Mcontrol: "z", Kind: "INDUK",
 	}); !errors.Is(err, services.ErrInvalidMenu) {
 		t.Fatalf("kind tidak dikenal harus ditolak, got %v", err)
 	}
@@ -490,8 +510,8 @@ func TestUpdateMenu(t *testing.T) {
 	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Parent: strPtr("MENU_STOK")}); !errors.Is(err, services.ErrInvalidMenu) {
 		t.Fatalf("PARENT tidak boleh punya parent, got %v", err)
 	}
-	// Menu yang punya anak tidak boleh diubah jadi CHILD.
-	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Kind: models.MenuKindChild}); !errors.Is(err, services.ErrMenuHasChildren) {
+	// Menu yang punya anak tidak boleh diubah jadi CHILD (butuh mcontrol juga).
+	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Kind: models.MenuKindChild, Mcontrol: strPtr("paju")}); !errors.Is(err, services.ErrMenuHasChildren) {
 		t.Fatalf("parent beranak tidak boleh jadi CHILD, got %v", err)
 	}
 	// Menu tidak boleh jadi parent dirinya sendiri.
@@ -547,6 +567,94 @@ func TestMatrix(t *testing.T) {
 	}
 }
 
+// Menu PARENT tidak bisa di-grant: hanya CHILD yang boleh dicentang di matriks
+// (grant parent ditolak, bukan disimpan diam-diam).
+func TestGrantParentMenuRejected(t *testing.T) {
+	svc, repo, _ := newTestService()
+	ctx := context.Background()
+	if _, err := svc.CreateRole(ctx, "editor", "Editor"); err != nil {
+		t.Fatalf("create role: %v", err)
+	}
+	const parent, child = "MENU_KEUANGAN", "MENU_ARUS_KAS"
+	repo.menus[parent] = &models.Menu{
+		Code: parent, Module: "REPORT", Label: "Keuangan",
+		Kind: models.MenuKindParent, SortOrder: 2,
+	}
+	repo.menus[child] = &models.Menu{
+		Code: child, Module: "REPORT", Label: "Arus Kas", Mcontrol: "arus_kas",
+		Kind: models.MenuKindChild, SortOrder: 3, Parent: parent,
+	}
+
+	err := svc.SetRolePermissions(ctx, "EDITOR", []string{models.MenuUsers, parent})
+	if !errors.Is(err, services.ErrInvalidRole) {
+		t.Fatalf("expected ErrInvalidRole for PARENT grant, got %v", err)
+	}
+	if _, ok := repo.perms["EDITOR"]; ok {
+		t.Fatalf("grant must not be stored when a PARENT menu is included: %v", repo.perms["EDITOR"])
+	}
+	if err := svc.SetRolePermissions(ctx, "EDITOR", []string{child}); err != nil {
+		t.Fatalf("child grant: %v", err)
+	}
+	if perms := repo.perms["EDITOR"]; len(perms) != 1 || perms[0] != child {
+		t.Fatalf("expected only the child grant, got %v", perms)
+	}
+	// Menu yang tidak dikenal tetap ditolak seperti sebelumnya.
+	if err := svc.SetRolePermissions(ctx, "EDITOR", []string{"MENU_TIDAK_ADA"}); !errors.Is(err, services.ErrInvalidRole) {
+		t.Fatalf("expected ErrInvalidRole for unknown menu, got %v", err)
+	}
+}
+
+// Matriks: baris PARENT bukan target grant (grantable=false) dan aksesnya
+// menyala otomatis saat minimal satu anaknya ter-grant.
+func TestMatrixParentAccessDerived(t *testing.T) {
+	svc, repo, _ := newTestService()
+	ctx := context.Background()
+	const parent, child = "MENU_KEUANGAN", "MENU_ARUS_KAS"
+	repo.menus[parent] = &models.Menu{
+		Code: parent, Module: "REPORT", Label: "Keuangan",
+		Kind: models.MenuKindParent, SortOrder: 2,
+	}
+	repo.menus[child] = &models.Menu{
+		Code: child, Module: "REPORT", Label: "Arus Kas", Mcontrol: "arus_kas",
+		Kind: models.MenuKindChild, SortOrder: 3, Parent: parent,
+	}
+	// ADMIN ter-grant menu anak itu (meniru centang di UI matriks).
+	repo.perms[models.RoleAdmin] = append(repo.perms[models.RoleAdmin], child)
+
+	rows, err := svc.GetMatrix(ctx, models.RoleAdmin)
+	if err != nil {
+		t.Fatalf("matrix: %v", err)
+	}
+	byCode := make(map[string]models.MatrixRow, len(rows))
+	for _, r := range rows {
+		byCode[r.MenuCode] = r
+	}
+	p := byCode[parent]
+	if p.Grantable {
+		t.Fatal("PARENT row must not be grantable")
+	}
+	if !p.HasAccess {
+		t.Fatal("PARENT row must inherit access from its granted child")
+	}
+	if c := byCode[child]; !c.Grantable || !c.HasAccess {
+		t.Fatalf("child row must be grantable + accessible: %+v", c)
+	}
+
+	// Role tanpa grant: header PARENT tidak menyala (tidak ada anak ter-grant).
+	userRows, err := svc.GetMatrix(ctx, models.RoleUser)
+	if err != nil {
+		t.Fatalf("matrix user: %v", err)
+	}
+	for _, r := range userRows {
+		if r.HasAccess {
+			t.Fatalf("USER must have no access, got %+v", r)
+		}
+		if r.Kind == models.MenuKindParent && r.Grantable {
+			t.Fatalf("PARENT must never be grantable: %+v", r)
+		}
+	}
+}
+
 func TestModuleLifecycle(t *testing.T) {
 	svc, _, _ := newTestService()
 	ctx := context.Background()
@@ -564,7 +672,7 @@ func TestModuleLifecycle(t *testing.T) {
 		t.Fatalf("expected ErrInvalidModule, got %v", err)
 	}
 	// Modul berisi menu tidak boleh dihapus.
-	if _, err := svc.CreateMenu(ctx, models.MenuInput{Code: "MENU_X", Name: "X", Module: "REPORT", Label: "X"}); err != nil {
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{Code: "MENU_X", Name: "X", Module: "REPORT", Label: "X", Mcontrol: "x"}); err != nil {
 		t.Fatalf("create menu: %v", err)
 	}
 	if err := svc.DeleteModule(ctx, "REPORT"); !errors.Is(err, services.ErrModuleInUse) {

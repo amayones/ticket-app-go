@@ -92,7 +92,7 @@ func (s *stubRoles) UpdateUserRole(ctx context.Context, userCode, roleCode strin
 }
 func (s *stubRoles) CountRoles(ctx context.Context) (int, error) { return 2, nil }
 func (s *stubRoles) ListMenus(ctx context.Context) ([]models.Menu, error) {
-	return []models.Menu{{Code: models.MenuUsers, Module: "SYSTEM", Label: "User Account", SortOrder: 1}}, nil
+	return []models.Menu{{Code: models.MenuUsers, Module: "SYSTEM", Label: "User Account", Mcontrol: "users", SortOrder: 1}}, nil
 }
 func (s *stubRoles) GetMenu(ctx context.Context, code string) (*models.Menu, error) {
 	return &models.Menu{Code: code, Module: "SYSTEM", Label: "Test"}, nil

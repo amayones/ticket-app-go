@@ -146,8 +146,16 @@ func (r *Repository) ListPermissions(ctx context.Context) ([]models.Permission, 
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	// Definisi permission = registry menu (1:1): CODE/Nama/Grup dari CPMENU.
+	// Urutan "per section": tiap PARENT langsung diikuti anak-anaknya
+	// (GROUP_SORT = urutan parent; menu tanpa parent memakai urutannya
+	// sendiri) supaya UI matriks tinggal menyusun header + anaknya berurutan.
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT CODE, LABEL, MODULE, CREATED_AT FROM `+r.menuTable()+` ORDER BY MODULE ASC, CODE ASC`)
+		`SELECT m.CODE, m.LABEL, m.MODULE, m.MENU_KIND, m.PARENT_CODE, m.CREATED_AT
+		FROM `+r.menuTable()+` m
+		LEFT JOIN `+r.menuTable()+` p ON p.CODE = m.PARENT_CODE
+		ORDER BY m.MODULE ASC, COALESCE(p.SORT_ORDER, m.SORT_ORDER) ASC,
+		  CASE WHEN m.MENU_KIND = 'PARENT' THEN 0 ELSE 1 END ASC,
+		  m.SORT_ORDER ASC, m.CODE ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -155,12 +163,14 @@ func (r *Repository) ListPermissions(ctx context.Context) ([]models.Permission, 
 	perms := make([]models.Permission, 0)
 	for rows.Next() {
 		var p models.Permission
-		if err := rows.Scan(&p.Code, &p.Name, &p.Group, &p.CreatedAt); err != nil {
+		var parent sql.NullString
+		if err := rows.Scan(&p.Code, &p.Name, &p.Group, &p.Kind, &parent, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		if !strings.HasPrefix(p.Code, "MENU_") {
 			continue
 		}
+		p.Parent = parent.String
 		perms = append(perms, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -172,8 +182,14 @@ func (r *Repository) ListPermissions(ctx context.Context) ([]models.Permission, 
 func (r *Repository) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
+	// JOIN ke CPMENU: hanya menu CHILD yang berarti sebagai akses. Grant yang
+	// menempel di baris PARENT (sisa data lama — baris header tidak bisa
+	// dicentang lagi) disaring agar tidak muncul sebagai permission role.
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(
-		`SELECT MENU_CODE FROM `+r.grantTable()+` WHERE ROLE_CODE = ? ORDER BY MENU_CODE ASC`), roleCode)
+		`SELECT g.MENU_CODE FROM `+r.grantTable()+` g
+		JOIN `+r.menuTable()+` m ON m.CODE = g.MENU_CODE
+		WHERE g.ROLE_CODE = ? AND m.MENU_KIND <> 'PARENT'
+		ORDER BY g.MENU_CODE ASC`), roleCode)
 	if err != nil {
 		return nil, err
 	}
@@ -230,26 +246,38 @@ func (r *Repository) HasPermission(ctx context.Context, roleCode, permCode strin
 	return n > 0, nil
 }
 
-// --- Registry menu (CPMENU) + matriks (JOIN CPMATRIX) ------------------------
+// --- Registry menu (CPMENU) + JOIN modul untuk label section -------------
 
-const menuColumns = `CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE, CREATED_AT, UPDATED_AT`
+const menuColumns = `m.CODE, m.MODULE, mod.LABEL, mod.SORT_ORDER, m.LABEL, m.MCONTROL, m.MENU_KIND, m.SORT_ORDER, m.PARENT_CODE, m.CREATED_AT, m.UPDATED_AT`
 
 func scanMenu(row interface {
 	Scan(dest ...any) error
 }, m *models.Menu) error {
 	var parent sql.NullString
-	err := row.Scan(&m.Code, &m.Module, &m.Label, &m.Kind, &m.SortOrder, &parent, &m.CreatedAt, &m.UpdatedAt)
+	var mcontrol sql.NullString
+	var moduleLabel sql.NullString
+	var moduleSort sql.NullInt64
+	err := row.Scan(&m.Code, &m.Module, &moduleLabel, &moduleSort, &m.Label, &mcontrol, &m.Kind, &m.SortOrder, &parent, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return err
 	}
 	m.Parent = parent.String
+	m.Mcontrol = mcontrol.String
+	m.ModuleLabel = moduleLabel.String
+	if moduleSort.Valid {
+		m.ModuleSort = int(moduleSort.Int64)
+	}
 	return nil
+}
+
+func (r *Repository) menuFrom() string {
+	return r.menuTable() + ` m LEFT JOIN ` + r.moduleTable() + ` mod ON mod.CODE = m.MODULE`
 }
 
 func (r *Repository) ListMenus(ctx context.Context) ([]models.Menu, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `SELECT ` + menuColumns + ` FROM ` + r.menuTable() + ` ORDER BY MODULE ASC, SORT_ORDER ASC, CODE ASC`
+	query := `SELECT ` + menuColumns + ` FROM ` + r.menuFrom() + ` ORDER BY mod.SORT_ORDER ASC, m.MODULE ASC, m.SORT_ORDER ASC, m.CODE ASC`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -272,7 +300,7 @@ func (r *Repository) ListMenus(ctx context.Context) ([]models.Menu, error) {
 func (r *Repository) GetMenu(ctx context.Context, code string) (*models.Menu, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `SELECT ` + menuColumns + ` FROM ` + r.menuTable() + ` WHERE CODE = ?`
+	query := `SELECT ` + menuColumns + ` FROM ` + r.menuFrom() + ` WHERE m.CODE = ?`
 	var m models.Menu
 	if err := scanMenu(r.db.QueryRowContext(ctx, r.dialect.Bind(query), code), &m); err != nil {
 		return nil, err
@@ -282,32 +310,41 @@ func (r *Repository) GetMenu(ctx context.Context, code string) (*models.Menu, er
 
 // CreateMenu menulis satu baris registry CPMENU. Permission = menu itu
 // sendiri (1:1); grant role diatur terpisah via SetRolePermissions.
+// MCONTROL NULL untuk PARENT (tanpa folder), wajib isi untuk CHILD.
 func (r *Repository) CreateMenu(ctx context.Context, menu *models.Menu) error {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `INSERT INTO ` + r.menuTable() + ` (CODE, MODULE, LABEL, MENU_KIND, SORT_ORDER, PARENT_CODE) VALUES (?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO ` + r.menuTable() + ` (CODE, MODULE, LABEL, MCONTROL, MENU_KIND, SORT_ORDER, PARENT_CODE) VALUES (?, ?, ?, ?, ?, ?, ?)`
 	var parent any
 	if menu.Parent != "" {
 		parent = menu.Parent
 	}
+	var mcontrol any
+	if strings.TrimSpace(menu.Mcontrol) != "" {
+		mcontrol = strings.ToLower(strings.TrimSpace(menu.Mcontrol))
+	}
 	_, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
-		menu.Code, menu.Module, menu.Label, menu.Kind, menu.SortOrder, parent)
+		menu.Code, menu.Module, menu.Label, mcontrol, menu.Kind, menu.SortOrder, parent)
 	return err
 }
 
-// UpdateMenu mengubah label/urutan/modul/parent sebuah menu.
-// CODE tidak diubah: ia adalah permission yang jadi acuan folder frontend
-// dan grant CPPERMISSION, jadi memindahkannya = buat menu baru.
+// UpdateMenu mengubah label/urutan/modul/mcontrol/parent sebuah menu.
+// CODE tidak diubah: ia adalah permission yang jadi acuan grant
+// CPPERMISSION, jadi memindahkannya = buat menu baru.
 func (r *Repository) UpdateMenu(ctx context.Context, menu *models.Menu) error {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `UPDATE ` + r.menuTable() + ` SET MODULE = ?, LABEL = ?, MENU_KIND = ?, SORT_ORDER = ?, PARENT_CODE = ? WHERE CODE = ?`
+	query := `UPDATE ` + r.menuTable() + ` SET MODULE = ?, LABEL = ?, MCONTROL = ?, MENU_KIND = ?, SORT_ORDER = ?, PARENT_CODE = ? WHERE CODE = ?`
 	var parent any
 	if menu.Parent != "" {
 		parent = menu.Parent
 	}
+	var mcontrol any
+	if strings.TrimSpace(menu.Mcontrol) != "" {
+		mcontrol = strings.ToLower(strings.TrimSpace(menu.Mcontrol))
+	}
 	res, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
-		menu.Module, menu.Label, menu.Kind, menu.SortOrder, parent, menu.Code)
+		menu.Module, menu.Label, mcontrol, menu.Kind, menu.SortOrder, parent, menu.Code)
 	if err != nil {
 		return err
 	}
@@ -367,7 +404,7 @@ func (r *Repository) CountMenuUsage(ctx context.Context, code string) (int, erro
 func (r *Repository) ListChildren(ctx context.Context, code string) ([]models.Menu, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `SELECT ` + menuColumns + ` FROM ` + r.menuTable() + ` WHERE PARENT_CODE = ? ORDER BY SORT_ORDER ASC, CODE ASC`
+	query := `SELECT ` + menuColumns + ` FROM ` + r.menuFrom() + ` WHERE m.PARENT_CODE = ? ORDER BY m.SORT_ORDER ASC, m.CODE ASC`
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), code)
 	if err != nil {
 		return nil, err
@@ -387,15 +424,17 @@ func (r *Repository) ListChildren(ctx context.Context, code string) ([]models.Me
 	return out, nil
 }
 
-// QueryMatrix membaca matriks via JOIN eksplisit (CPMODULE tabel modul,
+// QueryMatrix membaca matriks via JOIN eksplisit (CPMODULE label modul,
 // CPROLE x CPMENU LEFT JOIN CPPERMISSION grant). roleFilter kosong = semua role.
 func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `SELECT r.CODE AS ROLE_CODE, r.NAME AS ROLE_NAME, m.MODULE AS MODULE,
-		m.CODE AS MENU_CODE, m.LABEL AS MENU_LABEL, m.MENU_KIND, m.SORT_ORDER, m.PARENT_CODE,
+		mod.LABEL AS MODULE_LABEL,
+		m.CODE AS MENU_CODE, m.LABEL AS MENU_LABEL, m.MCONTROL, m.MENU_KIND, m.SORT_ORDER, m.PARENT_CODE,
 		CASE WHEN pm.ROLE_CODE IS NULL THEN 0 ELSE 1 END AS HAS_ACCESS
 		FROM ` + r.roleTable() + ` r CROSS JOIN ` + r.menuTable() + ` m
+		LEFT JOIN ` + r.moduleTable() + ` mod ON mod.CODE = m.MODULE
 		LEFT JOIN ` + r.grantTable() + ` pm
 		  ON pm.ROLE_CODE = r.CODE AND pm.MENU_CODE = m.CODE`
 	var args []any
@@ -403,7 +442,7 @@ func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]mode
 		query += ` WHERE r.CODE = ?`
 		args = append(args, strings.ToUpper(strings.TrimSpace(roleFilter)))
 	}
-	query += ` ORDER BY ROLE_CODE ASC, MODULE ASC, SORT_ORDER ASC, MENU_CODE ASC`
+	query += ` ORDER BY ROLE_CODE ASC, mod.SORT_ORDER ASC, m.MODULE ASC, m.SORT_ORDER ASC, MENU_CODE ASC`
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), args...)
 	if err != nil {
 		return nil, err
@@ -413,12 +452,16 @@ func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]mode
 	for rows.Next() {
 		var row models.MatrixRow
 		var parent sql.NullString
+		var mcontrol sql.NullString
+		var moduleLabel sql.NullString
 		var access int
-		if err := rows.Scan(&row.RoleCode, &row.RoleName, &row.Module, &row.MenuCode,
-			&row.MenuLabel, &row.Kind, &row.SortOrder, &parent, &access); err != nil {
+		if err := rows.Scan(&row.RoleCode, &row.RoleName, &row.Module, &moduleLabel, &row.MenuCode,
+			&row.MenuLabel, &mcontrol, &row.Kind, &row.SortOrder, &parent, &access); err != nil {
 			return nil, err
 		}
 		row.Parent = parent.String
+		row.Mcontrol = mcontrol.String
+		row.ModuleLabel = moduleLabel.String
 		row.HasAccess = access != 0
 		out = append(out, row)
 	}
@@ -428,30 +471,93 @@ func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]mode
 	return out, nil
 }
 
-// MyMenusByRole mengembalikan menu yang boleh diakses satu role (ada grant di CPPERMISSION).
+// MyMenusByRole mengembalikan menu milik satu role untuk sidebar:
+// semua baris ter-grant + ancestor PARENT dari menu ter-grant (rekursif di
+// memori agar jalan identik di mssql/postgres/sqlite tanpa CTE rekursif).
+// PARENT tidak butuh grant sendiri: selama minimal satu keturunannya punya
+// akses, header-nya ikut tampil.
 func (r *Repository) MyMenusByRole(ctx context.Context, roleCode string) ([]models.MenuEntry, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `SELECT m.CODE, m.MODULE, m.LABEL, m.MENU_KIND, m.SORT_ORDER, m.PARENT_CODE
+	query := `SELECT m.CODE, m.MODULE, mod.LABEL, mod.SORT_ORDER, m.LABEL, m.MCONTROL, m.MENU_KIND, m.SORT_ORDER, m.PARENT_CODE
 		FROM ` + r.menuTable() + ` m JOIN ` + r.grantTable() + ` pm ON pm.MENU_CODE = m.CODE
-		WHERE pm.ROLE_CODE = ? ORDER BY m.MODULE ASC, m.SORT_ORDER ASC, m.CODE ASC`
+		LEFT JOIN ` + r.moduleTable() + ` mod ON mod.CODE = m.MODULE
+		WHERE pm.ROLE_CODE = ?`
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), roleCode)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]models.MenuEntry, 0)
+	granted := make([]models.MenuEntry, 0)
 	for rows.Next() {
 		var e models.MenuEntry
 		var parent sql.NullString
-		if err := rows.Scan(&e.Code, &e.Module, &e.Label, &e.Kind, &e.SortOrder, &parent); err != nil {
+		var mcontrol sql.NullString
+		var moduleLabel sql.NullString
+		var moduleSort sql.NullInt64
+		if err := rows.Scan(&e.Code, &e.Module, &moduleLabel, &moduleSort, &e.Label, &mcontrol, &e.Kind, &e.SortOrder, &parent); err != nil {
 			return nil, err
 		}
+		// PARENT = header buka-tutup, tidak pernah jadi akar tampilan: grant
+		// lama yang menempel di baris PARENT diabaikan (baris itu tetap masuk
+		// lewat ancestor-walk di bawah bila ada anak yang ter-grant). Jadi yang
+		// tampil = cabang PARENT yang benar-benar punya menu CHILD ter-grant.
+		if e.Kind == models.MenuKindParent {
+			continue
+		}
 		e.Parent = parent.String
-		out = append(out, e)
+		e.Mcontrol = mcontrol.String
+		e.ModuleLabel = moduleLabel.String
+		if moduleSort.Valid {
+			e.ModuleSort = int(moduleSort.Int64)
+		}
+		granted = append(granted, e)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if len(granted) == 0 {
+		return []models.MenuEntry{}, nil
+	}
+	// Peta semua menu (untuk menaikkan ancestor) — murah: tabel menu kecil.
+	all, err := r.ListMenus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byCode := make(map[string]models.Menu, len(all))
+	for _, m := range all {
+		byCode[m.Code] = m
+	}
+	out := make([]models.MenuEntry, 0, len(granted)+4)
+	seen := make(map[string]bool, len(granted)+4)
+	for _, g := range granted {
+		if !seen[g.Code] {
+			seen[g.Code] = true
+			out = append(out, g)
+		}
+		// Naik ke parent sampai akar; setiap ancestor ikut tampil walau
+		// tanpa grant (header buka-tutup, tanpa halaman).
+		for p := g.Parent; p != ""; {
+			if seen[p] {
+				// Lanjut naik walau sudah terlihat (kakeknya mungkin belum).
+				if pm, ok := byCode[p]; ok {
+					p = pm.Parent
+					continue
+				}
+				break
+			}
+			pm, ok := byCode[p]
+			if !ok {
+				break
+			}
+			seen[p] = true
+			out = append(out, models.MenuEntry{
+				Code: pm.Code, Module: pm.Module, ModuleLabel: pm.ModuleLabel,
+				ModuleSort: pm.ModuleSort, Label: pm.Label, Mcontrol: pm.Mcontrol,
+				Kind: pm.Kind, SortOrder: pm.SortOrder, Parent: pm.Parent,
+			})
+			p = pm.Parent
+		}
 	}
 	return out, nil
 }

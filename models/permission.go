@@ -20,12 +20,17 @@ const (
 )
 
 // Permission adalah permission tampil satu menu (kode MENU_* dari CPMENU);
-// grant per role tercatat di tabel CPPERMISSION.
+// grant per role tercatat di tabel CPPERMISSION. Kind/Parent dibaca dari
+// CPMENU supaya UI matriks tahu baris mana yang hanya header PARENT: baris
+// PARENT tidak punya centang akses (grant-nya menyusul otomatis dari menu
+// anak yang dicentang, lihat MyMenusByRole).
 type Permission struct {
 	ID          int       `json:"-"`
 	Code        string    `json:"code"`
 	Name        string    `json:"name"`
 	Group       string    `json:"group"`
+	Kind        string    `json:"kind"`
+	Parent      string    `json:"parent_code,omitempty"`
 	Description string    `json:"description,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }

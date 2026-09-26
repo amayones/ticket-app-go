@@ -201,18 +201,26 @@ func (s *Service) SetRolePermissions(ctx context.Context, roleCode string, permC
 	if err != nil {
 		return fmt.Errorf("list permissions: %w", err)
 	}
-	known := make(map[string]bool, len(all))
+	known := make(map[string]models.Permission, len(all))
 	for _, p := range all {
 		if strings.HasPrefix(p.Code, "MENU_") {
-			known[p.Code] = true
+			known[p.Code] = p
 		}
 	}
 	cleaned := make([]string, 0, len(permCodes))
 	seen := make(map[string]bool, len(permCodes))
 	for _, pc := range permCodes {
 		pc = strings.TrimSpace(strings.ToUpper(pc))
-		if !strings.HasPrefix(pc, "MENU_") || !known[pc] {
+		p, ok := known[pc]
+		if !ok {
 			return fmt.Errorf("%w: unknown menu permission: %s", services.ErrInvalidRole, pc)
+		}
+		// Menu PARENT = header buka-tutup, bukan menu yang bisa dibuka: aksesnya
+		// menyusul otomatis dari menu CHILD di bawahnya (lihat MyMenusByRole),
+		// jadi grant untuk kode PARENT ditolak — bukan disimpan diam-diam.
+		if p.Kind == models.MenuKindParent {
+			return fmt.Errorf("%w: PARENT menu is a header without its own page, grant its child menus instead: %s",
+				services.ErrInvalidRole, pc)
 		}
 		if seen[pc] {
 			continue
@@ -304,14 +312,16 @@ func (s *Service) GetMenu(ctx context.Context, code string) (*models.Menu, error
 // CreateMenu menulis registry menu (permission + tampilan) dalam 1 baris.
 // Tanpa auto-grant ke role mana pun (admin mencentang manual via matriks).
 //
-// Kind menentukan peran baris: MenuKindParent (menu yang bisa punya anak,
-// tampil expandable di sidebar) atau MenuKindChild (menu biasa, boleh punya
-// PARENT_CODE). Menu parent tidak boleh punya parent.
+// Kind menentukan peran baris: MenuKindParent (header buka-tutup di sidebar,
+// TANPA mcontrol/folder, tidak boleh punya parent) atau MenuKindChild
+// (item biasa: mcontrol wajib = nama folder frontend/src/app/<mcontrol>/,
+// boleh punya PARENT_CODE). Judul tampil = LABEL.
 func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*models.Menu, error) {
 	code := strings.TrimSpace(strings.ToUpper(input.Code))
 	name := strings.TrimSpace(input.Name)
 	module := strings.TrimSpace(strings.ToUpper(input.Module))
 	label := strings.TrimSpace(input.Label)
+	mcontrol := strings.ToLower(strings.TrimSpace(input.Mcontrol))
 	if err := validMenuCode(code); err != nil {
 		return nil, err
 	}
@@ -342,6 +352,9 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 	if err != nil {
 		return nil, err
 	}
+	if err := validMcontrol(kind, mcontrol); err != nil {
+		return nil, err
+	}
 	parent := strings.TrimSpace(strings.ToUpper(input.Parent))
 	if err := s.validateParent(ctx, &models.Menu{
 		Code: code, Module: module, Kind: kind, Parent: parent,
@@ -349,7 +362,7 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 		return nil, err
 	}
 	menu := &models.Menu{
-		Code: code, Module: module, Label: label,
+		Code: code, Module: module, Label: label, Mcontrol: mcontrol,
 		Kind: kind, SortOrder: sortOrder, Parent: parent,
 	}
 	if err := s.roles.CreateMenu(ctx, menu); err != nil {
@@ -359,6 +372,33 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 		return nil, fmt.Errorf("create menu: %w", err)
 	}
 	return menu, nil
+}
+
+// validMcontrol memastikan aturan folder: CHILD wajib punya mcontrol
+// (snake_case, dipakai sebagai nama folder frontend/src/app/<mcontrol>/),
+// PARENT wajib kosong (header buka-tutup tanpa halaman).
+func validMcontrol(kind, mcontrol string) error {
+	if kind == models.MenuKindParent {
+		if mcontrol != "" {
+			return fmt.Errorf("%w: a PARENT menu must not have mcontrol (no folder)", services.ErrInvalidMenu)
+		}
+		return nil
+	}
+	if mcontrol == "" {
+		return fmt.Errorf("%w: mcontrol is required for CHILD menu (folder name)", services.ErrInvalidMenu)
+	}
+	if len(mcontrol) > 40 {
+		return fmt.Errorf("%w: mcontrol must be at most 40 characters", services.ErrInvalidMenu)
+	}
+	for _, r := range mcontrol {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
+			return fmt.Errorf("%w: mcontrol must be snake_case (a-z, 0-9, _)", services.ErrInvalidMenu)
+		}
+	}
+	if strings.HasPrefix(mcontrol, "_") || strings.HasSuffix(mcontrol, "_") || strings.Contains(mcontrol, "__") {
+		return fmt.Errorf("%w: mcontrol must not start/end with _ or contain __", services.ErrInvalidMenu)
+	}
+	return nil
 }
 
 // normalizeKind menerima PARENT/CHILD (case-insensitive); kosong = CHILD.
@@ -420,12 +460,13 @@ func (s *Service) validateParent(ctx context.Context, m *models.Menu) error {
 }
 
 // UpdateMenu mengubah data menu yang boleh diubah: label, urutan, modul,
-// jenis (PARENT/CHILD), dan parent. CODE (permission) tidak bisa diubah
-// karena jadi acuan folder frontend + grant CPPERMISSION; untuk mengganti
-// permission, buat menu baru lalu hapus yang lama.
+// mcontrol, jenis (PARENT/CHILD), dan parent. CODE (permission) tidak bisa
+// diubah karena jadi acuan grant CPPERMISSION; untuk mengganti permission,
+// buat menu baru lalu hapus yang lama.
 //
 // Field yang dikosongkan pada input tidak di-update (patch semantik),
-// kecuali Parent: string kosong di sana berarti "lepas parent".
+// kecuali Parent dan Mcontrol: pointer non-nil berarti "setel ke nilai ini"
+// (string kosong = lepas parent / kosongkan mcontrol — khusus PARENT).
 func (s *Service) UpdateMenu(ctx context.Context, code string, input models.MenuUpdateInput) (*models.Menu, error) {
 	code = strings.TrimSpace(strings.ToUpper(code))
 	current, err := s.GetMenu(ctx, code)
@@ -435,6 +476,9 @@ func (s *Service) UpdateMenu(ctx context.Context, code string, input models.Menu
 	updated := *current
 	if v := strings.TrimSpace(input.Label); v != "" {
 		updated.Label = v
+	}
+	if input.Mcontrol != nil {
+		updated.Mcontrol = strings.ToLower(strings.TrimSpace(*input.Mcontrol))
 	}
 	if v := strings.TrimSpace(strings.ToUpper(input.Module)); v != "" {
 		updated.Module = v
@@ -455,6 +499,9 @@ func (s *Service) UpdateMenu(ctx context.Context, code string, input models.Menu
 	// Parent hanya berubah bila dikirim: string kosong = lepas parent.
 	if input.Parent != nil {
 		updated.Parent = strings.TrimSpace(strings.ToUpper(*input.Parent))
+	}
+	if err := validMcontrol(updated.Kind, updated.Mcontrol); err != nil {
+		return nil, err
 	}
 	if updated.Label == "" {
 		return nil, fmt.Errorf("%w: menu label is required", services.ErrInvalidMenu)
@@ -571,7 +618,46 @@ func (s *Service) GetMatrix(ctx context.Context, roleFilter string) ([]models.Ma
 	if err != nil {
 		return nil, fmt.Errorf("query matrix: %w", err)
 	}
-	return rows, nil
+	return decorateMatrix(rows), nil
+}
+
+// decorateMatrix menerapkan aturan menu PARENT pada matriks:
+//
+//   - Grantable = false untuk PARENT: baris header tidak punya centang akses
+//     (grant ditolak SetRolePermissions), hanya CHILD yang bisa di-grant;
+//   - HasAccess PARENT diturunkan dari keturunannya: bila minimal satu menu
+//     CHILD di bawahnya ter-grant, header itu ikut ter-include — sama seperti
+//     MyMenusByRole yang menaikkan ancestor untuk sidebar.
+func decorateMatrix(rows []models.MatrixRow) []models.MatrixRow {
+	index := make(map[string]map[string]int, 4)
+	for i := range rows {
+		if rows[i].Kind != models.MenuKindParent {
+			rows[i].Grantable = true
+		}
+		byCode := index[rows[i].RoleCode]
+		if byCode == nil {
+			byCode = make(map[string]int, len(rows))
+			index[rows[i].RoleCode] = byCode
+		}
+		byCode[rows[i].MenuCode] = i
+	}
+	for i := range rows {
+		if !rows[i].HasAccess {
+			continue
+		}
+		byCode := index[rows[i].RoleCode]
+		// Naik ke atas: anak ter-grant menyalakan header PARENT-nya (berlapis
+		// pun aman; guard mencegah siklus bila data di luar aturan).
+		for parent, guard := rows[i].Parent, 0; parent != "" && guard < 10; guard++ {
+			pi, ok := byCode[parent]
+			if !ok {
+				break
+			}
+			rows[pi].HasAccess = true
+			parent = rows[pi].Parent
+		}
+	}
+	return rows
 }
 
 // MyMenus mengembalikan menu milik user (untuk sidebar + halaman kosong).
