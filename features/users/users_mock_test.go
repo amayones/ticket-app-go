@@ -128,6 +128,18 @@ func (m *MockUserRepository) Delete(ctx context.Context, code string) error {
 	return nil
 }
 
+// DeleteByRole meniru cascade hapus role: semua user pada role itu dihapus.
+func (m *MockUserRepository) DeleteByRole(ctx context.Context, roleCode string) (int, error) {
+	n := 0
+	for code, u := range m.Users {
+		if u.RoleCode == roleCode {
+			delete(m.Users, code)
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (m *MockUserRepository) UpdateRole(ctx context.Context, code, roleCode string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -373,6 +385,14 @@ func (m *MockRoleRepository) GetMenu(ctx context.Context, code string) (*models.
 }
 
 func (m *MockRoleRepository) CreateMenu(ctx context.Context, menu *models.Menu) error {
+	return nil
+}
+
+func (m *MockRoleRepository) UpdateMenu(ctx context.Context, menu *models.Menu) error {
+	return nil
+}
+
+func (m *MockRoleRepository) DeleteGrants(ctx context.Context, roleCode string) error {
 	return nil
 }
 

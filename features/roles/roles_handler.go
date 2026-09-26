@@ -1,12 +1,13 @@
 package roles
 
 import (
+	"fmt"
 	"net/http"
 
 	"golang-backend/features/audit"
 	"golang-backend/internal/web"
-	"golang-backend/models"
 	"golang-backend/middleware"
+	"golang-backend/models"
 	"golang-backend/utils"
 )
 
@@ -80,12 +81,20 @@ func (h *Handler) DeleteRole(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, http.StatusBadRequest, "Invalid role code")
 		return
 	}
-	if err := h.Service.DeleteRole(r.Context(), code); err != nil {
+	deletedUsers, err := h.Service.DeleteRole(r.Context(), code)
+	if err != nil {
 		web.ServiceError(w, err)
 		return
 	}
-	h.audit(r, models.AuditRoleDelete, models.EntityRole, code, "Role "+code+" dihapus")
-	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "Role deleted successfully"})
+	detail := "Role " + code + " dihapus"
+	if deletedUsers > 0 {
+		detail += fmt.Sprintf(" (+%d user ikut terhapus)", deletedUsers)
+	}
+	h.audit(r, models.AuditRoleDelete, models.EntityRole, code, detail)
+	web.WriteJSON(w, http.StatusOK, map[string]any{
+		"message":       "Role deleted successfully",
+		"deleted_users": deletedUsers,
+	})
 }
 
 func (h *Handler) ListPermissions(w http.ResponseWriter, r *http.Request) {
@@ -187,6 +196,28 @@ func (h *Handler) CreateMenu(w http.ResponseWriter, r *http.Request) {
 	h.audit(r, models.AuditMenuCreate, models.EntitySystem, menu.Code,
 		"Menu "+menu.Code+" dibuat di modul "+menu.MControl+" (tanpa auto-grant role)")
 	web.WriteJSON(w, http.StatusCreated, menu)
+}
+
+// UpdateMenu mengubah label/urutan/modul/parent menu (kode permission
+// tidak bisa diubah - buat menu baru bila perlu).
+func (h *Handler) UpdateMenu(w http.ResponseWriter, r *http.Request) {
+	code, ok := web.PathCode(r, "code")
+	if !ok {
+		web.WriteError(w, http.StatusBadRequest, "Invalid menu code")
+		return
+	}
+	var req models.MenuUpdateInput
+	if !web.DecodeJSON(w, r, &req) {
+		return
+	}
+	menu, err := h.Service.UpdateMenu(r.Context(), code, req)
+	if err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	h.audit(r, models.AuditMenuUpdate, models.EntitySystem, menu.Code,
+		"Menu "+menu.Code+" diperbarui (label/urutan/modul/parent)")
+	web.WriteJSON(w, http.StatusOK, menu)
 }
 
 func (h *Handler) DeleteMenu(w http.ResponseWriter, r *http.Request) {

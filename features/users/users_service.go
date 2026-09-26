@@ -50,12 +50,12 @@ type refreshStore interface {
 }
 
 type Service struct {
-	users       RepositoryInterface
-	refresh     refreshStore
-	roles       roleChecker
-	jwtSecret   string
-	accessTTL   time.Duration
-	refreshTTL  time.Duration
+	users      RepositoryInterface
+	refresh    refreshStore
+	roles      roleChecker
+	jwtSecret  string
+	accessTTL  time.Duration
+	refreshTTL time.Duration
 }
 
 func NewService(

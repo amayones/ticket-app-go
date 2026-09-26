@@ -33,7 +33,10 @@ Browser :1067 ─────────────────► app.exe :10
   (folder perantara tanpa `index.jsx`, bukan menu tersendiri)
 - Menu terdaftar tapi folder belum dibuat tampil sebagai **halaman 404
   pemandu** (menunjukkan path persis), bukan hilang diam-diam
-- Menu baru dibuat via UI Modul & Menu (tanpa auto-grant)
+- Menu baru dibuat via UI Modul & Menu (tanpa auto-grant), dan menu yang
+  sudah ada bisa diedit (label, urutan, modul, parent) tanpa dihapus-buat
+- Hapus role = cascade: seluruh user pada role itu ikut terhapus, grant
+  menunya hilang, refresh token dibersihkan
 - Role tanpa akses apa pun (mis. `USER` baru) mendapat halaman kosong
 - Tidak ada pembatasan berdasarkan nama role atau folder admin/user
 - Role & Permission: daftar role di kiri, matriks akses menu di kanan
@@ -254,13 +257,13 @@ Hasil yang benar (10 baris: 8 menu `SYSTEM` + 2 contoh `REPORT`):
 
 ```text
 MENU_USERS          SYSTEM  User Account       1
-MENU_ROLES          SYSTEM  Role & Permission  2
-MENU_SESSIONS       SYSTEM  Sesi & Auth        3
-MENU_AUDIT          SYSTEM  Audit Log          4
-MENU_SECURITY       SYSTEM  Security Center    5
-MENU_SYSLOG         SYSTEM  System Log         6
-MENU_NOTIFICATIONS  SYSTEM  Notifikasi         7
-MENU_MODUL          SYSTEM  Modul & Menu       8
+MENU_MODUL          SYSTEM  Modul & Menu       2
+MENU_ROLES          SYSTEM  Role & Permission  3
+MENU_SESSIONS       SYSTEM  Sesi & Auth        4
+MENU_AUDIT          SYSTEM  Audit Log          5
+MENU_SECURITY       SYSTEM  Security Center    6
+MENU_SYSLOG         SYSTEM  System Log         7
+MENU_NOTIFICATIONS  SYSTEM  Notifikasi         8
 MENU_LAPORAN        REPORT  Laporan            1
 MENU_ARUS_KAS       REPORT  Arus Kas           2
 ```
@@ -630,6 +633,9 @@ kosong.
 ## 2.2. Alur Memberi Akses Menu
 
 1. Admin membuat menu via **Modul & Menu** (atau memilih menu bawaan).
+   Menu yang sudah ada bisa diedit di halaman yang sama: label, urutan,
+   modul, dan parent. Kode permission tidak bisa diubah — buat menu baru
+   bila perlu.
 2. Admin membuat atau memilih role.
 3. Matriks menampilkan menu per module (`SYSTEM`, `REPORT`, ...).
 4. Admin centang menu yang boleh diakses role tersebut.

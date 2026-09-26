@@ -84,19 +84,29 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CPMENU_MODULE')
 DECLARE @menus TABLE (CODE NVARCHAR(40), MCONTROL NVARCHAR(40), LABEL NVARCHAR(100), SORT_ORDER INT, PARENT_CODE NVARCHAR(40));
 INSERT INTO @menus VALUES
   (N'MENU_USERS',         N'SYSTEM', N'User Account',       1, NULL),
-  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission',  2, NULL),
-  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',        3, NULL),
-  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',          4, NULL),
-  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',    5, NULL),
-  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',         6, NULL),
-  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',         7, NULL),
-  (N'MENU_MODUL',         N'SYSTEM', N'Modul & Menu',       8, NULL),
+  (N'MENU_MODUL',         N'SYSTEM', N'Modul & Menu',       2, NULL),
+  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission',  3, NULL),
+  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',        4, NULL),
+  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',          5, NULL),
+  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',    6, NULL),
+  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',         7, NULL),
+  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',         8, NULL),
   (N'MENU_LAPORAN',       N'REPORT', N'Laporan',            1, NULL),
   (N'MENU_ARUS_KAS',      N'REPORT', N'Arus Kas',           2, NULL);
 
 INSERT INTO dbo.CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE)
 SELECT CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE FROM @menus m
 WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMENU x WHERE x.CODE = m.CODE);
+
+-- Sinkronkan urutan menu bawaan (penting untuk instalasi lama yang sudah
+-- menjalankan migrasi ini sebelum urutan_sidebar berubah). Hanya 8 kode
+-- bawaan yang disentuh; menu buatan sendiri tidak terpengaruh.
+UPDATE m
+SET m.SORT_ORDER = s.SORT_ORDER, m.LABEL = s.LABEL
+FROM dbo.CPMENU m
+JOIN @menus s ON s.CODE = m.CODE
+WHERE m.MCONTROL = N'SYSTEM'
+  AND (m.SORT_ORDER <> s.SORT_ORDER OR m.LABEL <> s.LABEL);
 GO
 
 -- 2d. CPPERMISSION (grant role -> menu) --------------------------------------------

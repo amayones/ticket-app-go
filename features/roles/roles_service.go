@@ -22,7 +22,7 @@ type ServiceInterface interface {
 	GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error)
 	GetRolePermissions(ctx context.Context, roleCode string) ([]string, error)
 	CreateRole(ctx context.Context, code, name string) (*models.Role, error)
-	DeleteRole(ctx context.Context, code string) error
+	DeleteRole(ctx context.Context, code string) (int, error)
 	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
 	UpdateUserRole(ctx context.Context, userCode, roleCode string) error
 	CountRoles(ctx context.Context) (int, error)
@@ -30,6 +30,7 @@ type ServiceInterface interface {
 	ListMenus(ctx context.Context) ([]models.Menu, error)
 	GetMenu(ctx context.Context, code string) (*models.Menu, error)
 	CreateMenu(ctx context.Context, input models.MenuInput) (*models.Menu, error)
+	UpdateMenu(ctx context.Context, code string, input models.MenuUpdateInput) (*models.Menu, error)
 	DeleteMenu(ctx context.Context, code string) error
 	GetMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error)
 	MyMenus(ctx context.Context, userCode string) ([]models.MenuEntry, error)
@@ -44,6 +45,9 @@ type userStore interface {
 	GetByCode(ctx context.Context, code string) (*models.User, error)
 	UpdateRole(ctx context.Context, code, roleCode string) error
 	CountByRole(ctx context.Context, roleCode string) (int, error)
+	// DeleteByRole menghapus semua user pada satu role dan mengembalikan
+	// jumlah yang terhapus (dipakai cascade hapus role).
+	DeleteByRole(ctx context.Context, roleCode string) (int, error)
 }
 
 type Service struct {
@@ -149,36 +153,40 @@ func (s *Service) CreateRole(ctx context.Context, code, name string) (*models.Ro
 	return role, nil
 }
 
-func (s *Service) DeleteRole(ctx context.Context, code string) error {
+// DeleteRole menghapus role beserta seluruh user yang memakainya.
+// Grant role->menu (CPPERMISSION) dan refresh token ikut terhapus
+// (FK ON DELETE CASCADE; penghapusan eksplisit dipakai sebagai fallback untuk
+// engine yang tidak menegakkan FK, mis. sqlite tanpa pragma foreign_keys).
+// Return: jumlah user yang ikut terhapus (0 bila role memang tak terpakai).
+func (s *Service) DeleteRole(ctx context.Context, code string) (int, error) {
 	code = strings.TrimSpace(strings.ToUpper(code))
 	if code == models.RoleAdmin || code == models.RoleUser {
-		return services.ErrRoleProtected
+		return 0, services.ErrRoleProtected
 	}
 	if _, err := s.roles.GetByCode(ctx, code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return services.ErrRoleNotFound
+			return 0, services.ErrRoleNotFound
 		}
-		return fmt.Errorf("get role: %w", err)
+		return 0, fmt.Errorf("get role: %w", err)
 	}
-	// Portabel lintas engine: cek pemakaian eksplisit (beberapa engine
-	// tidak menegakkan FK, mis. sqlite tanpa pragma foreign_keys).
-	used, err := s.users.CountByRole(ctx, code)
+	// Urutan: user dulu (CPUSER.ROLE_CODE FK ke CPROLE), baru role-nya.
+	// Sesi/refresh token user ikut terhapus lewat CASCADE CPREFRESHTOKEN.
+	deleted, err := s.users.DeleteByRole(ctx, code)
 	if err != nil {
-		return fmt.Errorf("check role usage: %w", err)
+		return 0, fmt.Errorf("delete role users: %w", err)
 	}
-	if used > 0 {
-		return services.ErrRoleInUse
+	if err := s.roles.DeleteGrants(ctx, code); err != nil {
+		return 0, fmt.Errorf("delete role grants: %w", err)
 	}
 	if err := s.roles.Delete(ctx, code); err != nil {
-		// FK dari CPUSER sebagai backstop (mssql 547, pg foreign key, sqlite FK).
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "fk_") || strings.Contains(msg, "547") ||
 			strings.Contains(msg, "foreign key") {
-			return services.ErrRoleInUse
+			return 0, services.ErrRoleInUse
 		}
-		return fmt.Errorf("delete role: %w", err)
+		return 0, fmt.Errorf("delete role: %w", err)
 	}
-	return nil
+	return deleted, nil
 }
 
 func (s *Service) SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error {
@@ -313,8 +321,11 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 		}
 		return nil, fmt.Errorf("get module: %w", err)
 	}
-	if name == "" || label == "" {
-		return nil, fmt.Errorf("%w: menu name and label are required", services.ErrInvalidMenu)
+	// Catatan: input.Name tidak disimpan. Nama permission di matriks diambil
+	// dari LABEL (lihat ListPermissions), jadi cukup label yang wajib.
+	_ = name
+	if label == "" {
+		return nil, fmt.Errorf("%w: menu label is required", services.ErrInvalidMenu)
 	}
 	if len(name) > 100 || len(label) > 100 {
 		return nil, fmt.Errorf("%w: name/label must be at most 100 characters", services.ErrInvalidMenu)
@@ -344,6 +355,106 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 		return nil, fmt.Errorf("create menu: %w", err)
 	}
 	return menu, nil
+}
+
+// UpdateMenu mengubah data menu yang boleh diubah: nama permission, label
+// tampil, urutan, modul, dan parent. CODE (permission) tidak bisa diubah
+// karena jadi acuan folder frontend + grant CPPERMISSION; untuk mengganti
+// permission, buat menu baru lalu hapus yang lama.
+//
+// Field yang dikosongkan pada input tidak di-update (patch semantik),
+// kecuali Parent: string kosong di sana berarti "lepas parent".
+func (s *Service) UpdateMenu(ctx context.Context, code string, input models.MenuUpdateInput) (*models.Menu, error) {
+	code = strings.TrimSpace(strings.ToUpper(code))
+	current, err := s.GetMenu(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+	updated := *current
+	if v := strings.TrimSpace(input.Label); v != "" {
+		updated.Label = v
+	}
+	if v := strings.TrimSpace(strings.ToUpper(input.Module)); v != "" {
+		updated.MControl = v
+	}
+	if input.SortOrder != nil {
+		updated.SortOrder = *input.SortOrder
+	}
+	if input.Parent != "" || strings.TrimSpace(input.Parent) == "" {
+		// Parent selalu disetel: string kosong = lepas parent.
+		updated.Parent = strings.TrimSpace(strings.ToUpper(input.Parent))
+	}
+	if updated.Label == "" {
+		return nil, fmt.Errorf("%w: menu label is required", services.ErrInvalidMenu)
+	}
+	if len(updated.Label) > 100 {
+		return nil, fmt.Errorf("%w: label must be at most 100 characters", services.ErrInvalidMenu)
+	}
+	if updated.SortOrder < 0 || updated.SortOrder > 9999 {
+		return nil, fmt.Errorf("%w: sort order must be 0-9999", services.ErrInvalidMenu)
+	}
+	if err := validModule(updated.MControl); err != nil {
+		return nil, err
+	}
+	if _, err := s.roles.GetModule(ctx, updated.MControl); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: module not found in CPMATRIX: %s (buat modul dulu)", services.ErrInvalidMenu, updated.MControl)
+		}
+		return nil, fmt.Errorf("get module: %w", err)
+	}
+	if updated.Parent != "" {
+		if updated.Parent == updated.Code {
+			return nil, fmt.Errorf("%w: menu cannot be its own parent", services.ErrInvalidMenu)
+		}
+		pm, err := s.roles.GetMenu(ctx, updated.Parent)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("%w: parent menu not found: %s", services.ErrInvalidMenu, updated.Parent)
+			}
+			return nil, fmt.Errorf("get parent menu: %w", err)
+		}
+		if pm.MControl != updated.MControl {
+			return nil, fmt.Errorf("%w: parent must be in the same module", services.ErrInvalidMenu)
+		}
+		// Cegah siklus: parent tidak boleh keturunan menu ini.
+		descendants, err := s.descendantsOf(ctx, updated.Code)
+		if err != nil {
+			return nil, err
+		}
+		if descendants[updated.Parent] {
+			return nil, fmt.Errorf("%w: parent would create a cycle", services.ErrInvalidMenu)
+		}
+	}
+	if err := s.roles.UpdateMenu(ctx, &updated); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, services.ErrMenuNotFound
+		}
+		return nil, fmt.Errorf("update menu: %w", err)
+	}
+	return &updated, nil
+}
+
+// descendantsOf mengembalikan kode menu yang berada di bawah `code`
+// (anak, cucu, dst) untuk mendeteksi siklus parent.
+func (s *Service) descendantsOf(ctx context.Context, code string) (map[string]bool, error) {
+	out := map[string]bool{}
+	queue := []string{code}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		children, err := s.roles.ListChildren(ctx, cur)
+		if err != nil {
+			return nil, fmt.Errorf("list children: %w", err)
+		}
+		for _, c := range children {
+			if out[c.Code] {
+				continue
+			}
+			out[c.Code] = true
+			queue = append(queue, c.Code)
+		}
+	}
+	return out, nil
 }
 
 // DeleteMenu menghapus menu + permission (mapping role ikut CASCADE).

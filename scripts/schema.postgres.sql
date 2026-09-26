@@ -69,13 +69,13 @@ CREATE TABLE IF NOT EXISTS CPMENU (
 
 INSERT INTO CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE) VALUES
   ('MENU_USERS',         'SYSTEM', 'User Account',       1, NULL),
-  ('MENU_ROLES',         'SYSTEM', 'Role & Permission',  2, NULL),
-  ('MENU_SESSIONS',      'SYSTEM', 'Sesi & Auth',        3, NULL),
-  ('MENU_AUDIT',         'SYSTEM', 'Audit Log',          4, NULL),
-  ('MENU_SECURITY',      'SYSTEM', 'Security Center',    5, NULL),
-  ('MENU_SYSLOG',        'SYSTEM', 'System Log',         6, NULL),
-  ('MENU_NOTIFICATIONS', 'SYSTEM', 'Notifikasi',         7, NULL),
-  ('MENU_MODUL',         'SYSTEM', 'Modul & Menu',       8, NULL),
+  ('MENU_MODUL',         'SYSTEM', 'Modul & Menu',       2, NULL),
+  ('MENU_ROLES',         'SYSTEM', 'Role & Permission',  3, NULL),
+  ('MENU_SESSIONS',      'SYSTEM', 'Sesi & Auth',        4, NULL),
+  ('MENU_AUDIT',         'SYSTEM', 'Audit Log',          5, NULL),
+  ('MENU_SECURITY',      'SYSTEM', 'Security Center',    6, NULL),
+  ('MENU_SYSLOG',        'SYSTEM', 'System Log',         7, NULL),
+  ('MENU_NOTIFICATIONS', 'SYSTEM', 'Notifikasi',         8, NULL),
   ('MENU_LAPORAN',       'REPORT', 'Laporan',            1, NULL),
   ('MENU_ARUS_KAS',      'REPORT', 'Arus Kas',           2, NULL)
 ON CONFLICT (CODE) DO NOTHING;

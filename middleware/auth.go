@@ -44,16 +44,16 @@ func NewAuth(jwtSecret string) func(http.Handler) http.Handler {
 				writeAuthError(w, "Invalid or expired token")
 				return
 			}
-		userCode, err := parseUserCodeClaim(claims)
-		if err != nil {
-			writeAuthError(w, "Invalid token claims")
-			return
-		}
-		ctx := context.WithValue(r.Context(), userIDKey, userCode)
-		if role, ok := claims["role"].(string); ok {
-			ctx = context.WithValue(ctx, userRoleKey, role)
-		}
-		next.ServeHTTP(w, r.WithContext(ctx))
+			userCode, err := parseUserCodeClaim(claims)
+			if err != nil {
+				writeAuthError(w, "Invalid token claims")
+				return
+			}
+			ctx := context.WithValue(r.Context(), userIDKey, userCode)
+			if role, ok := claims["role"].(string); ok {
+				ctx = context.WithValue(ctx, userRoleKey, role)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

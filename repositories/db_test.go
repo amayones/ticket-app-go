@@ -3,7 +3,10 @@ package repositories
 import "testing"
 
 func TestParseDialect(t *testing.T) {
-	cases := []struct{ in string; want Dialect }{
+	cases := []struct {
+		in   string
+		want Dialect
+	}{
 		{"sqlserver", DialectMSSQL},
 		{"mssql", DialectMSSQL},
 		{"", DialectMSSQL},

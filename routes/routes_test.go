@@ -74,7 +74,7 @@ func (s *stubRoles) ListRoles(ctx context.Context) ([]models.Role, error) {
 func (s *stubRoles) CreateRole(ctx context.Context, code, name string) (*models.Role, error) {
 	return &models.Role{Code: code, Name: name}, nil
 }
-func (s *stubRoles) DeleteRole(ctx context.Context, code string) error { return nil }
+func (s *stubRoles) DeleteRole(ctx context.Context, code string) (int, error) { return 0, nil }
 func (s *stubRoles) GetRoleDetail(ctx context.Context, code string) (*models.RoleDetail, error) {
 	return &models.RoleDetail{Role: models.Role{Code: code, Name: "Test"}, Permissions: []string{}}, nil
 }
@@ -99,6 +99,9 @@ func (s *stubRoles) GetMenu(ctx context.Context, code string) (*models.Menu, err
 }
 func (s *stubRoles) CreateMenu(ctx context.Context, in models.MenuInput) (*models.Menu, error) {
 	return &models.Menu{Code: "MENU_TEST", MControl: "SYSTEM", Label: "Test"}, nil
+}
+func (s *stubRoles) UpdateMenu(ctx context.Context, code string, in models.MenuUpdateInput) (*models.Menu, error) {
+	return &models.Menu{Code: code, MControl: in.Module, Label: in.Label}, nil
 }
 func (s *stubRoles) DeleteMenu(ctx context.Context, code string) error { return nil }
 func (s *stubRoles) GetMatrix(ctx context.Context, role string) ([]models.MatrixRow, error) {
@@ -319,6 +322,7 @@ func TestAdminRBAC(t *testing.T) {
 		{"GET", "/api/admin/menus", ""},
 		{"GET", "/api/admin/matrix", ""},
 		{"POST", "/api/admin/menus", `{"code":"MENU_TEST","name":"Test","module":"SYSTEM","label":"Test"}`},
+		{"PUT", "/api/admin/menus/MENU_TEST", `{"module":"SYSTEM","label":"Test Baru","sort_order":5}`},
 		{"DELETE", "/api/admin/menus/MENU_TEST", ""},
 		{"GET", "/api/admin/modules", ""},
 		{"POST", "/api/admin/modules", `{"code":"REPORT","label":"Report","sort_order":10}`},

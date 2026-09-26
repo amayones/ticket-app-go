@@ -27,7 +27,7 @@ import {
   useToast,
 } from '../../../components'
 
-export const meta = { label: 'Notifikasi', icon: 'bell', order: 7 }
+export const meta = { label: 'Notifikasi', icon: 'bell', order: 8 }
 
 const PAGE_SIZE = 15
 const CHANNELS = ['EMAIL', 'PUSH', 'INAPP']

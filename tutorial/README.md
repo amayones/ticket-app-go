@@ -211,12 +211,17 @@ via UI:
 1. Login `admin`, buka menu **Modul & Menu**.
 2. Klik **Menu baru**, isi:
    - Kode permission: `MENU_STOK` (wajib prefix `MENU_`, maks 40 karakter)
-   - Nama permission: `Akses menu Stok`
    - Modul (MCONTROL): pilih `TOKO` dari dropdown
    - Label tampil: `Stok`, Urutan: `1`, Parent: kosongkan
 3. Simpan. Menu tercatat di `CPMENU`
    **tanpa auto-grant ke role mana pun** — admin mencentang manual di
    halaman Role (Bagian 5).
+
+Menu yang sudah ada bisa diubah kapan saja: di daftar menu, klik ikon
+pensil untuk mengubah **label tampil**, **urutan**, **modul**, atau
+**parent**. Kode permission (`MENU_STOK`) tidak bisa diubah karena jadi
+acuan folder `menus/TOKO/stok/` dan grant role — untuk mengganti kode,
+buat menu baru lalu hapus yang lama.
 
 ✅ **Checkpoint 1.2**
 
@@ -844,7 +849,9 @@ via UI:
 5. Simpan.
 
 Role `ADMIN` dan `USER` bawaan tidak bisa dihapus. Role custom bisa dihapus
-kecuali sedang dipakai user.
+kapan saja, dan penghapusan bersifat **cascade**: seluruh user yang memakai
+role itu ikut terhapus, begitu juga grant menunya dan refresh token. Jadi
+pindah dulu user bila ingin menyimpan them.
 
 via SQL:
 
@@ -990,11 +997,13 @@ Modul & menu:
 - [ ] Menu diletakkan di `frontend/src/menus/<MCONTROL>/[<grup>/]<menu>/`.
 - [ ] `index.jsx` memiliki `export const meta` (setelah import) dan `export default`.
 - [ ] `api.js` memakai `auth: true` untuk endpoint privat, tanpa placeholder `<menu>`.
+- [ ] Menu bisa diedit dari **Modul & Menu** (label/urutan/modul/parent) tanpa dihapus-buat.
 - [ ] `npm run lint` dan `npm run build` berhasil tanpa error.
 
 Role, user, dan akses:
 
 - [ ] Role baru ada di `CPROLE` (dibuat via UI **Role & Permission**).
+- [ ] Menghapus role custom = user + grant role itu ikut terhapus (cascade).
 - [ ] Admin sudah memberi centang menu yang benar untuk role tersebut (tanpa auto-grant).
 - [ ] User baru ada di `CPUSER` dengan role yang benar.
 - [ ] User yang diizinkan login ulang dan melihat menu di grup modulnya.

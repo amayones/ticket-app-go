@@ -55,20 +55,20 @@ func Load() (Config, error) {
 	_ = godotenv.Load()
 
 	cfg := Config{
-		AppName:        getEnvDefault("APP_NAME", "Go Core"),
-		AppEnv:         getEnvDefault("APP_ENV", "development"),
-		AppPort:        getEnvDefault("APP_PORT", "1067"),
-		DBConnection:   normalizeDriver(getEnvDefault("DB_CONNECTION", DBSQLServer)),
-		DBHost:         strings.TrimSpace(os.Getenv("DB_HOST")),
-		DBPort:         strings.TrimSpace(os.Getenv("DB_PORT")),
-		DBDatabase:     strings.TrimSpace(os.Getenv("DB_DATABASE")),
-		DBUsername:     strings.TrimSpace(os.Getenv("DB_USERNAME")),
-		DBPassword:     os.Getenv("DB_PASSWORD"), // keep as-is; may contain spaces
-		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		AppName:         getEnvDefault("APP_NAME", "Go Core"),
+		AppEnv:          getEnvDefault("APP_ENV", "development"),
+		AppPort:         getEnvDefault("APP_PORT", "1067"),
+		DBConnection:    normalizeDriver(getEnvDefault("DB_CONNECTION", DBSQLServer)),
+		DBHost:          strings.TrimSpace(os.Getenv("DB_HOST")),
+		DBPort:          strings.TrimSpace(os.Getenv("DB_PORT")),
+		DBDatabase:      strings.TrimSpace(os.Getenv("DB_DATABASE")),
+		DBUsername:      strings.TrimSpace(os.Getenv("DB_USERNAME")),
+		DBPassword:      os.Getenv("DB_PASSWORD"), // keep as-is; may contain spaces
+		JWTSecret:       strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		AccessTokenTTL:  time.Duration(getEnvIntDefault("ACCESS_TOKEN_MINUTES", 15)) * time.Minute,
 		RefreshTokenTTL: time.Duration(getEnvIntDefault("REFRESH_TOKEN_DAYS", 7)) * 24 * time.Hour,
-		DBMaxOpenConns: getEnvIntDefault("DB_MAX_OPEN_CONNS", 25),
-		DBMaxIdleConns: getEnvIntDefault("DB_MAX_IDLE_CONNS", 10),
+		DBMaxOpenConns:  getEnvIntDefault("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConns:  getEnvIntDefault("DB_MAX_IDLE_CONNS", 10),
 	}
 
 	var missing []string

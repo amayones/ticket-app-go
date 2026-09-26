@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createMenu, createModule, deleteMenu, deleteModule, listMenus, listModules } from './api.js'
+import { createMenu, createModule, deleteMenu, deleteModule, listMenus, listModules, updateMenu } from './api.js'
 import {
   Alert,
   Badge,
@@ -17,7 +17,7 @@ import {
   useToast,
 } from '../../../components'
 
-export const meta = { label: 'Modul & Menu', icon: 'list', order: 8 }
+export const meta = { label: 'Modul & Menu', icon: 'list', order: 2 }
 
 function groupMenusByModule(menus) {
   const groups = {}
@@ -45,13 +45,19 @@ export default function Modul() {
   const [error, setError] = useState('')
   const [showMenuCreate, setShowMenuCreate] = useState(false)
   const [mCode, setMCode] = useState('')
-  const [mName, setMName] = useState('')
   const [mModule, setMModule] = useState('SYSTEM')
   const [mLabel, setMLabel] = useState('')
   const [mSort, setMSort] = useState('99')
   const [mParent, setMParent] = useState('')
   const [creatingMenu, setCreatingMenu] = useState(false)
   const [deletingMenu, setDeletingMenu] = useState(null)
+  // Form edit: field yang sama persis dengan form create, minus kode permission.
+  const [editingMenu, setEditingMenu] = useState(null)
+  const [eModule, setEModule] = useState('')
+  const [eLabel, setELabel] = useState('')
+  const [eSort, setESort] = useState('99')
+  const [eParent, setEParent] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
   const [showModuleCreate, setShowModuleCreate] = useState(false)
   const [modCode, setModCode] = useState('')
   const [modLabel, setModLabel] = useState('')
@@ -80,15 +86,14 @@ export default function Modul() {
   const menuGroups = useMemo(() => groupMenusByModule(menus), [menus])
 
   async function createMenuItem() {
-    if (!mCode.trim() || !mName.trim() || !mModule.trim() || !mLabel.trim()) {
-      toast.warning('Kode, nama, modul, dan label menu wajib diisi.')
+    if (!mCode.trim() || !mModule.trim() || !mLabel.trim()) {
+      toast.warning('Kode, modul, dan label menu wajib diisi.')
       return
     }
     setCreatingMenu(true)
     try {
       const menu = await createMenu({
         code: mCode.trim(),
-        name: mName.trim(),
         module: mModule.trim(),
         label: mLabel.trim(),
         sort_order: Number(mSort) || 99,
@@ -96,7 +101,6 @@ export default function Modul() {
       })
       toast.success(`Menu ${menu.code} dibuat di modul ${menu.mcontrol}. Centang role yang boleh akses, lalu buat foldernya.`)
       setMCode('')
-      setMName('')
       setMLabel('')
       setMSort('99')
       setMParent('')
@@ -106,6 +110,39 @@ export default function Modul() {
       toast.error(err.message, { title: 'Gagal membuat menu' })
     } finally {
       setCreatingMenu(false)
+    }
+  }
+
+  // Buka form edit: isi field dari menu yang dipilih (sama seperti form create).
+  function openMenuEdit(menu) {
+    setEditingMenu(menu)
+    setEModule(menu.mcontrol || 'SYSTEM')
+    setELabel(menu.label || '')
+    setESort(String(menu.sort_order ?? 99))
+    setEParent(menu.parent_code || '')
+  }
+
+  async function saveMenuEdit() {
+    if (!editingMenu) return
+    if (!eModule.trim() || !eLabel.trim()) {
+      toast.warning('Modul dan label menu wajib diisi.')
+      return
+    }
+    setSavingEdit(true)
+    try {
+      const menu = await updateMenu(editingMenu.code, {
+        module: eModule.trim(),
+        label: eLabel.trim(),
+        sort_order: Number(eSort) || 0,
+        parent_code: eParent.trim(),
+      })
+      toast.success(`Menu ${menu.code} diperbarui.`)
+      setEditingMenu(null)
+      load()
+    } catch (err) {
+      toast.error(err.message, { title: 'Gagal memperbarui menu' })
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -231,6 +268,16 @@ export default function Modul() {
                           </p>
                           <p className="text-xs text-zinc-500 dark:text-zinc-400">urutan {m.sort_order ?? 99}</p>
                         </div>
+                        <Tooltip label="Edit menu">
+                          <button
+                            type="button"
+                            aria-label={`Edit ${m.code}`}
+                            onClick={() => openMenuEdit(m)}
+                            className="shrink-0 rounded-lg p-2 text-zinc-500 transition-colors hover:bg-white hover:text-violet-600 hover:shadow-sm dark:hover:bg-zinc-800"
+                          >
+                            <Icon name="pencil" className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
                         <Tooltip label="Hapus menu">
                           <button
                             type="button"
@@ -274,12 +321,6 @@ export default function Modul() {
             placeholder="mis. MENU_LAPORAN"
             hint="Wajib prefix MENU_, huruf besar/angka/underscore, maks 40 karakter."
           />
-          <TextField
-            label="Nama permission"
-            value={mName}
-            onChange={(e) => setMName(e.target.value)}
-            placeholder="mis. Akses menu Laporan"
-          />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Modul (MCONTROL)</span>
             <select
@@ -317,14 +358,79 @@ export default function Modul() {
               label="Parent (opsional)"
               value={mParent}
               onChange={(e) => setMParent(e.target.value.toUpperCase())}
-              placeholder="mis. MENU_LAPORAN"
-              hint="Kode menu induk se-modul."
+              placeholder="biasanya kosong"
+              hint="Menu induk se-modul. Grup visual di sidebar lebih mudah dibuat lewat folder perantara tanpa index.jsx."
             />
           </div>
           <Alert tone="info">
             Menu baru tidak otomatis diberi ke role mana pun. Centang manual di halaman Role, lalu buat
             foldernya — halaman 404 pemandu menunjukkan path persisnya.
           </Alert>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!editingMenu}
+        onClose={savingEdit ? undefined : () => setEditingMenu(null)}
+        title={`Edit menu ${editingMenu?.code || ''}`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditingMenu(null)} disabled={savingEdit}>
+              Batal
+            </Button>
+            <Button onClick={saveMenuEdit} loading={savingEdit}>
+              Simpan perubahan
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Alert tone="info">
+            Kode permission <span className="font-mono">{editingMenu?.code}</span> tidak bisa
+            diubah — ia acuan folder frontend (menus/&lt;MODUL&gt;/&lt;menu&gt;/) dan grant
+            role. Ingin ganti kode? Buat menu baru, lalu hapus yang ini.
+          </Alert>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-200">Modul (MCONTROL)</span>
+            <select
+              value={eModule}
+              onChange={(e) => setEModule(e.target.value)}
+              className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            >
+              {!modules.some((mod) => mod.code === eModule) && <option value={eModule}>{eModule}</option>}
+              {modules.map((mod) => (
+                <option key={mod.code} value={mod.code}>
+                  {mod.code}{mod.label ? ` — ${mod.label}` : ''}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
+              Pindah modul = pindahkan folder frontend ke menus/&lt;MODUL&gt;/, lalu build ulang.
+            </span>
+          </label>
+          <TextField
+            label="Label tampil"
+            value={eLabel}
+            onChange={(e) => setELabel(e.target.value)}
+            placeholder="mis. Laporan"
+            hint="Nama yang tampil di sidebar dan matriks Role."
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <TextField
+              label="Urutan"
+              value={eSort}
+              onChange={(e) => setESort(e.target.value)}
+              placeholder="99"
+              hint="0–9999. Urutan sidebar ikut nilai ini."
+            />
+            <TextField
+              label="Parent (opsional)"
+              value={eParent}
+              onChange={(e) => setEParent(e.target.value.toUpperCase())}
+              placeholder="kosongkan untuk lepas parent"
+              hint="Menu induk se-modul (harus satu modul)."
+            />
+          </div>
         </div>
       </Modal>
 

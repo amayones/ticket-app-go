@@ -19,6 +19,7 @@ type RepositoryInterface interface {
 	Update(ctx context.Context, user *models.User) error
 	UpdateRole(ctx context.Context, code, roleCode string) error
 	Delete(ctx context.Context, code string) error
+	DeleteByRole(ctx context.Context, roleCode string) (int, error)
 	Count(ctx context.Context) (int, error)
 	CountByRole(ctx context.Context, roleCode string) (int, error)
 }
@@ -163,6 +164,31 @@ func (r *Repository) Delete(ctx context.Context, code string) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// DeleteByRole menghapus semua user yang memakai satu role (cascade hapus
+// role). Refresh token ikut terhapus lewat FK CPREFRESHTOKEN -> CPUSER;
+// pada engine tanpa FK aktif, hapus token dilakukan eksplisit lebih dulu
+// supaya tidak ada token yatim. Return jumlah user yang terhapus.
+func (r *Repository) DeleteByRole(ctx context.Context, roleCode string) (int, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	if _, err := r.db.ExecContext(ctx, r.dialect.Bind(
+		`DELETE FROM `+r.dialect.Table("CPREFRESHTOKEN")+
+			` WHERE USER_CODE IN (SELECT CODE FROM `+r.dialect.Table("CPUSER")+` WHERE ROLE_CODE = ?)`),
+		roleCode); err != nil {
+		return 0, err
+	}
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(
+		`DELETE FROM `+r.dialect.Table("CPUSER")+` WHERE ROLE_CODE = ?`), roleCode)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
 }
 
 func (r *Repository) userBy(ctx context.Context, where string, arg any) (*models.User, error) {

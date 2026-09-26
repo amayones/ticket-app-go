@@ -17,7 +17,7 @@ import {
   useToast,
 } from '../../../components'
 
-export const meta = { label: 'System Log', icon: 'terminal', order: 6 }
+export const meta = { label: 'System Log', icon: 'terminal', order: 7 }
 
 const PAGE_SIZE = 20
 const LEVELS = ['', 'ERROR', 'WARN', 'INFO']

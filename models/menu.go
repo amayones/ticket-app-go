@@ -40,6 +40,17 @@ type MenuInput struct {
 	Parent    string `json:"parent_code,omitempty"`
 }
 
+// MenuUpdateInput adalah payload PUT /api/admin/menus/{code} (patch semantik).
+// Field kosong berarti tidak diubah, kecuali Parent: string kosong = lepas parent.
+// SortOrder pointer supaya "0" (posisi teratas) bisa dikirim dan dibedakan
+// dari "tidak diisi".
+type MenuUpdateInput struct {
+	Module    string `json:"module"`
+	Label     string `json:"label"`
+	SortOrder *int   `json:"sort_order"`
+	Parent    string `json:"parent_code"`
+}
+
 // MenuEntry adalah menu milik user (ada grant di CPPERMISSION).
 // Frontend membandingkan dengan folder registry: yang tidak punya folder
 // dirender sebagai halaman 404 pemandu (tahu harus bikin di mana).

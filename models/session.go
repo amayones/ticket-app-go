@@ -14,10 +14,10 @@ type Session struct {
 
 // SecuritySummary adalah ringkasan menu Security Center.
 type SecuritySummary struct {
-	TotalUsers      int `json:"total_users"`
-	TotalRoles      int `json:"total_roles"`
-	ActiveSessions  int `json:"active_sessions"`
-	AuditLast24h    int `json:"audit_last_24h"`
-	ErrorsLast24h   int `json:"errors_last_24h"`
+	TotalUsers       int `json:"total_users"`
+	TotalRoles       int `json:"total_roles"`
+	ActiveSessions   int `json:"active_sessions"`
+	AuditLast24h     int `json:"audit_last_24h"`
+	ErrorsLast24h    int `json:"errors_last_24h"`
 	NotifSentLast24h int `json:"notif_sent_last_24h"`
 }

@@ -70,6 +70,11 @@ func (f *fakeRoleRepo) Delete(ctx context.Context, code string) error {
 	return nil
 }
 
+func (f *fakeRoleRepo) DeleteGrants(ctx context.Context, roleCode string) error {
+	delete(f.perms, roleCode)
+	return nil
+}
+
 func (f *fakeRoleRepo) Count(ctx context.Context) (int, error) { return len(f.roles), nil }
 
 func (f *fakeRoleRepo) ListPermissions(ctx context.Context) ([]models.Permission, error) {
@@ -120,6 +125,18 @@ func (f *fakeRoleRepo) CreateMenu(ctx context.Context, menu *models.Menu) error 
 	}
 	cp := *menu
 	f.menus[menu.Code] = &cp
+	return nil
+}
+
+func (f *fakeRoleRepo) UpdateMenu(ctx context.Context, menu *models.Menu) error {
+	cur, ok := f.menus[menu.Code]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	cur.MControl = menu.MControl
+	cur.Label = menu.Label
+	cur.SortOrder = menu.SortOrder
+	cur.Parent = menu.Parent
 	return nil
 }
 
@@ -243,6 +260,17 @@ func (f *fakeUserStore) UpdateRole(ctx context.Context, code, roleCode string) e
 	return nil
 }
 
+func (f *fakeUserStore) DeleteByRole(ctx context.Context, roleCode string) (int, error) {
+	n := 0
+	for code, u := range f.users {
+		if u.RoleCode == roleCode {
+			delete(f.users, code)
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (f *fakeUserStore) CountByRole(ctx context.Context, roleCode string) (int, error) {
 	n := 0
 	for _, u := range f.users {
@@ -278,7 +306,7 @@ func TestCheckPermission(t *testing.T) {
 }
 
 func TestRoleLifecycle(t *testing.T) {
-	svc, _, store := newTestService()
+	svc, repo, store := newTestService()
 	ctx := context.Background()
 	if _, err := svc.CreateRole(ctx, "editor", "Editor"); err != nil {
 		t.Fatalf("create: %v", err)
@@ -292,17 +320,28 @@ func TestRoleLifecycle(t *testing.T) {
 	if store.users["USR-00001"].RoleCode != "EDITOR" {
 		t.Fatal("role not assigned")
 	}
-	if err := svc.DeleteRole(ctx, "EDITOR"); err == nil {
-		t.Fatal("expected delete blocked while in use")
+	// Hapus role = cascade: user yang memakainya ikut terhapus.
+	deleted, err := svc.DeleteRole(ctx, "EDITOR")
+	if err != nil {
+		t.Fatalf("delete role: %v", err)
 	}
-	if err := svc.UpdateUserRole(ctx, "USR-00001", models.RoleUser); err != nil {
-		t.Fatalf("unassign: %v", err)
+	if deleted != 1 {
+		t.Fatalf("expected 1 user deleted with role, got %d", deleted)
 	}
-	if err := svc.DeleteRole(ctx, "EDITOR"); err != nil {
-		t.Fatalf("delete: %v", err)
+	if _, ok := store.users["USR-00001"]; ok {
+		t.Fatal("user with deleted role must be removed")
 	}
-	if err := svc.DeleteRole(ctx, models.RoleAdmin); err == nil {
-		t.Fatal("expected system role protected")
+	if _, ok := repo.perms["EDITOR"]; ok {
+		t.Fatal("grants of deleted role must be removed")
+	}
+	if _, err := svc.DeleteRole(ctx, "EDITOR"); !errors.Is(err, services.ErrRoleNotFound) {
+		t.Fatalf("expected ErrRoleNotFound for missing role, got %v", err)
+	}
+	if _, err := svc.DeleteRole(ctx, models.RoleAdmin); !errors.Is(err, services.ErrRoleProtected) {
+		t.Fatalf("expected system role protected, got %v", err)
+	}
+	if _, err := svc.DeleteRole(ctx, models.RoleUser); !errors.Is(err, services.ErrRoleProtected) {
+		t.Fatalf("expected system role protected, got %v", err)
 	}
 }
 
@@ -371,6 +410,96 @@ func TestMenuLifecycle(t *testing.T) {
 	}
 	if _, err := svc.GetMenu(ctx, "MENU_LAPORAN"); !errors.Is(err, services.ErrMenuNotFound) {
 		t.Fatalf("expected ErrMenuNotFound, got %v", err)
+	}
+}
+
+func intPtr(v int) *int { return &v }
+
+func TestUpdateMenu(t *testing.T) {
+	svc, _, _ := newTestService()
+	ctx := context.Background()
+	if _, err := svc.CreateModule(ctx, "report", "Report", 10); err != nil {
+		t.Fatalf("create module: %v", err)
+	}
+	if _, err := svc.CreateModule(ctx, "toko", "Toko", 11); err != nil {
+		t.Fatalf("create module: %v", err)
+	}
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{
+		Code: "MENU_STOK", Module: "report", Label: "Stok", SortOrder: 4,
+	}); err != nil {
+		t.Fatalf("create menu: %v", err)
+	}
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{
+		Code: "MENU_PAJU", Module: "report", Label: "Paju", SortOrder: 5,
+	}); err != nil {
+		t.Fatalf("create menu 2: %v", err)
+	}
+
+	// Ubah label + urutan (patch: field lain kosong tidak boleh berubah).
+	got, err := svc.UpdateMenu(ctx, "menu_stok", models.MenuUpdateInput{Label: "Stok Barang", SortOrder: intPtr(1)})
+	if err != nil {
+		t.Fatalf("update label/sort: %v", err)
+	}
+	if got.Label != "Stok Barang" || got.SortOrder != 1 || got.MControl != "REPORT" {
+		t.Fatalf("unexpected update result: %+v", got)
+	}
+
+	// Pindah modul.
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Module: "toko"}); err != nil {
+		t.Fatalf("pindah modul: %v", err)
+	}
+	if cur, _ := svc.GetMenu(ctx, "MENU_STOK"); cur.MControl != "TOKO" {
+		t.Fatalf("modul tidak berubah: %+v", cur)
+	}
+	// Parent harus se-modul.
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: "menu_paju"}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("parent beda modul harus ditolak, got %v", err)
+	}
+	// Parent valid se-modul, lalu dilepas dengan string kosong.
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Module: "report", Parent: "MENU_PAJU"}); err != nil {
+		t.Fatalf("set parent: %v", err)
+	}
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: ""}); err != nil {
+		t.Fatalf("lepas parent: %v", err)
+	}
+	if cur, _ := svc.GetMenu(ctx, "MENU_STOK"); cur.Parent != "" {
+		t.Fatalf("parent belum lepas: %+v", cur)
+	}
+	// Siklus: STOK jadi anak PAJU, lalu PAJU tidak boleh jadi anak STOK.
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Parent: "MENU_PAJU"}); err != nil {
+		t.Fatalf("set parent PAJU: %v", err)
+	}
+	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Parent: "MENU_STOK"}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("siklus parent harus ditolak, got %v", err)
+	}
+	// Menu tidak boleh jadi parent dirinya sendiri.
+	if _, err := svc.UpdateMenu(ctx, "MENU_PAJU", models.MenuUpdateInput{Parent: "MENU_PAJU"}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("parent diri sendiri harus ditolak, got %v", err)
+	}
+	// Modul tak dikenal dan menu tak ada.
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Module: "hantu"}); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("modul tak dikenal harus ditolak, got %v", err)
+	}
+	if _, err := svc.UpdateMenu(ctx, "MENU_HANTU", models.MenuUpdateInput{Label: "X"}); !errors.Is(err, services.ErrMenuNotFound) {
+		t.Fatalf("menu tak ada harus 404, got %v", err)
+	}
+	// Patch semantik: label kosong = tidak diubah (bukan dihapus).
+	before, _ := svc.GetMenu(ctx, "MENU_STOK")
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Label: "   "}); err != nil {
+		t.Fatalf("label kosong harus diabaikan, bukan error: %v", err)
+	}
+	if after, _ := svc.GetMenu(ctx, "MENU_STOK"); after.Label != before.Label {
+		t.Fatalf("label berubah padahal tidak dikirim: %q -> %q", before.Label, after.Label)
+	}
+	// Grant role tidak boleh hilang karena edit menu.
+	if err := svc.SetRolePermissions(ctx, models.RoleUser, []string{"MENU_STOK"}); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	if _, err := svc.UpdateMenu(ctx, "MENU_STOK", models.MenuUpdateInput{Label: "Stok Akhir"}); err != nil {
+		t.Fatalf("update after grant: %v", err)
+	}
+	if perms, _ := svc.GetRolePermissions(ctx, models.RoleUser); len(perms) != 1 || perms[0] != "MENU_STOK" {
+		t.Fatalf("grant hilang setelah edit menu: %v", perms)
 	}
 }
 

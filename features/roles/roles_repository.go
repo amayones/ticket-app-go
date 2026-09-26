@@ -16,6 +16,7 @@ type RepositoryInterface interface {
 	RoleExists(ctx context.Context, code string) (bool, error)
 	Create(ctx context.Context, role *models.Role) error
 	Delete(ctx context.Context, code string) error
+	DeleteGrants(ctx context.Context, roleCode string) error
 	Count(ctx context.Context) (int, error)
 	ListPermissions(ctx context.Context) ([]models.Permission, error)
 	GetRolePermissions(ctx context.Context, roleCode string) ([]string, error)
@@ -25,6 +26,7 @@ type RepositoryInterface interface {
 	ListMenus(ctx context.Context) ([]models.Menu, error)
 	GetMenu(ctx context.Context, code string) (*models.Menu, error)
 	CreateMenu(ctx context.Context, menu *models.Menu) error
+	UpdateMenu(ctx context.Context, menu *models.Menu) error
 	DeleteMenu(ctx context.Context, code string) error
 	CountMenuUsage(ctx context.Context, code string) (int, error)
 	ListChildren(ctx context.Context, code string) ([]models.Menu, error)
@@ -290,6 +292,43 @@ func (r *Repository) CreateMenu(ctx context.Context, menu *models.Menu) error {
 	}
 	_, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
 		menu.Code, menu.MControl, menu.Label, menu.SortOrder, parent)
+	return err
+}
+
+// UpdateMenu mengubah label/urutan/modul/parent sebuah menu.
+// CODE tidak diubah: ia adalah permission yang jadi acuan folder frontend
+// dan grant CPPERMISSION, jadi memindahkannya = buat menu baru.
+func (r *Repository) UpdateMenu(ctx context.Context, menu *models.Menu) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	query := `UPDATE ` + r.menuTable() + ` SET MCONTROL = ?, LABEL = ?, SORT_ORDER = ?, PARENT_CODE = ? WHERE CODE = ?`
+	var parent any
+	if menu.Parent != "" {
+		parent = menu.Parent
+	}
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
+		menu.MControl, menu.Label, menu.SortOrder, parent, menu.Code)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteGrants menghapus semua grant menu milik satu role.
+// Dipakai saat hapus role; DB juga punya ON DELETE CASCADE, jadi pernyataan
+// ini hanya jaminan untuk engine yang tidak menegakkan FK.
+func (r *Repository) DeleteGrants(ctx context.Context, roleCode string) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	_, err := r.db.ExecContext(ctx, r.dialect.Bind(
+		`DELETE FROM `+r.grantTable()+` WHERE ROLE_CODE = ?`), roleCode)
 	return err
 }
 

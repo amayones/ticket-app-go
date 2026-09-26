@@ -18,7 +18,7 @@ import {
   useToast,
 } from '../../../components'
 
-export const meta = { label: 'Sesi & Auth', icon: 'key', order: 3 }
+export const meta = { label: 'Sesi & Auth', icon: 'key', order: 4 }
 
 const PAGE_SIZE = 15
 

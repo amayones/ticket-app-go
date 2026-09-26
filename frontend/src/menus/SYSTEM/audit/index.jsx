@@ -15,7 +15,7 @@ import {
   formatTime,
 } from '../../../components'
 
-export const meta = { label: 'Audit Log', icon: 'list', order: 4 }
+export const meta = { label: 'Audit Log', icon: 'list', order: 5 }
 
 const PAGE_SIZE = 20
 const ACTIONS = [

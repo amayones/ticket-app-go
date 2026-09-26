@@ -3,7 +3,7 @@ import { securitySummary } from './api.js'
 import { listAudit } from '../audit/api.js'
 import { Alert, Badge, Button, Card, CardTitle, Icon, Skeleton, useSmoothLoading, useToast } from '../../../components'
 
-export const meta = { label: 'Security Center', icon: 'shield', order: 5 }
+export const meta = { label: 'Security Center', icon: 'shield', order: 6 }
 
 function StatCard({ icon, label, value, tone }) {
   const tones = {

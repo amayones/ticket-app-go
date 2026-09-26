@@ -7,12 +7,12 @@ import (
 
 // Format kode publik: PREFIX-XXXXXXXX (ID numerik tidak diekspos ke luar).
 const (
-	UserCodePrefix     = "USR-"
-	AuditCodePrefix    = "AUD-"
-	SyslogCodePrefix   = "SYS-"
-	NotifLogPrefix     = "NTF-"
+	UserCodePrefix      = "USR-"
+	AuditCodePrefix     = "AUD-"
+	SyslogCodePrefix    = "SYS-"
+	NotifLogPrefix      = "NTF-"
 	NotifTemplatePrefix = "NTM-"
-	codeRandLen        = 8
+	codeRandLen         = 8
 )
 
 // codeAlphabet menghindari karakter ambigu (0/O, 1/I/L).

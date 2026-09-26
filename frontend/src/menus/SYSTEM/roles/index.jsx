@@ -17,7 +17,7 @@ import {
   useToast,
 } from '../../../components'
 
-export const meta = { label: 'Role & Permission', icon: 'shield', order: 2 }
+export const meta = { label: 'Role & Permission', icon: 'shield', order: 3 }
 
 function groupPermissions(perms) {
   const groups = {}
@@ -34,7 +34,7 @@ function RoleList({ roles, selected, showLoading, error, onCreate, onSelect, onE
   return (
     <Card className="h-full flex flex-col">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <CardTitle description="Buat role, hapus role custom, dan pilih role untuk mengatur akses menu di kanan. Role ADMIN & USER bawaan tidak bisa dihapus.">
+        <CardTitle description="Buat role, hapus role custom, dan pilih role untuk mengatur akses menu di kanan. Role ADMIN & USER bawaan tidak bisa dihapus. Menghapus role custom juga menghapus semua user yang memakainya beserta grant menunya.">
           Daftar Role
         </CardTitle>
         <Button size="sm" onClick={onCreate}>
@@ -267,8 +267,13 @@ export default function Roles() {
   async function remove() {
     if (!deleting) return
     try {
-      await deleteRole(deleting.code)
-      toast.success(`Role ${deleting.code} dihapus.`)
+      const res = await deleteRole(deleting.code)
+      const affected = res?.deleted_users || 0
+      toast.success(
+        affected > 0
+          ? `Role ${deleting.code} dihapus, ${affected} user ikut terhapus.`
+          : `Role ${deleting.code} dihapus.`
+      )
       setDeleting(null)
       setSelected(null)
       load()
@@ -341,7 +346,7 @@ export default function Roles() {
       <ConfirmDialog
         open={!!deleting}
         title={`Hapus role ${deleting?.code}?`}
-        message="Role akan dihapus permanen. Gagal bila masih dipakai user — pindahkan dulu user-nya ke role lain."
+        message="Role, semua user yang memakainya, dan seluruh grant menu role ini akan dihapus permanen. Tindakan ini tidak bisa dibatalkan."
         confirmLabel="Ya, hapus"
         danger
         onConfirm={remove}

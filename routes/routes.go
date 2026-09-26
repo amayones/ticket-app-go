@@ -112,6 +112,7 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 			// Registry menu (CPMENU + CPMATRIX). Buat/hapus tanpa auto-grant role.
 			r.With(auth, need(models.MenuRoles)).Get("/menus", d.Roles.ListMenus)
 			r.With(auth, need(models.MenuRoles)).Post("/menus", d.Roles.CreateMenu)
+			r.With(auth, need(models.MenuRoles)).Put("/menus/{code}", d.Roles.UpdateMenu)
 			r.With(auth, need(models.MenuRoles)).Delete("/menus/{code}", d.Roles.DeleteMenu)
 			r.With(auth, need(models.MenuRoles)).Get("/matrix", d.Roles.GetMatrix)
 			// Master modul (CPMATRIX tabel). Urut: modul -> menu -> permission.
