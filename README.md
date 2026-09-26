@@ -32,6 +32,9 @@ Browser :1067 ─────────────────► app.exe :10
 - Sidebar dikelompokkan per modul (tombol +/−); menu **parent/child**
   ditentukan database lewat `CPMENU.MENU_KIND` (`PARENT`/`CHILD`) +
   `CPMENU.PARENT_CODE`, bukan dari nama folder
+- Di matriks akses, menu **PARENT** tampil sebagai header **tanpa centang**:
+  yang dicentang hanya menu CHILD (grant ke kode PARENT ditolak 400), dan
+  header induknya ikut ter-include otomatis bila minimal satu anaknya dicentang
 - Menu terdaftar tapi folder belum dibuat tampil sebagai **halaman 404
   pemandu** (menunjukkan path persis), bukan hilang diam-diam
 - Menu baru dibuat via UI Modul & Menu (tanpa auto-grant), dan menu yang
@@ -45,16 +48,43 @@ Browser :1067 ─────────────────► app.exe :10
 - Popup login ulang ketika sesi habis tanpa pindah halaman
 - Build frontend dan backend dalam satu binary
 
-> Mau memakai untuk proyek Anda sendiri? Urutan yang benar:
-> [ganti nama aplikasi & database](#19-mengganti-nama-aplikasi) →
-> [tambah role, user, modul, menu](#7-resep-cepat-role-user-modul-menu) →
-> [tutorial lengkap](tutorial/README.md).
+> Mau memakai untuk proyek Anda sendiri? Baca sesuai kebutuhan:
+>
+> | Tujuan | Langsung ke |
+> |---|---|
+> | Dari clone sampai aplikasi jalan | [1. Setup dari Nol](#1-setup-dari-nol-sampai-aplikasi-jalan) |
+> | Mengganti nama aplikasi | [1.9](#19-mengganti-nama-aplikasi) |
+> | Mengganti favicon & logo | [1.9 Mengganti favicon / logo](#19-mengganti-nama-aplikasi) |
+> | Menambah role | [7. Resep Cepat](#7-resep-cepat-role-user-modul-menu) |
+> | Menambah user | [7. Resep Cepat](#7-resep-cepat-role-user-modul-menu) |
+> | Menambah modul | [tutorial 1.1](tutorial/README.md#bagian-0--dari-clone-sampai-aplikasi-jalan) |
+> | Menambah menu (folder + halaman + akses) | [tutorial Bagian 1–4](tutorial/README.md#bagian-1--daftarkan-modul-dan-menu-di-database) |
+> | Step-by-step lengkap dari clone sampai jadi | [tutorial lengkap](tutorial/README.md) |
 
 ---
 
 # 1. Setup dari Nol sampai Aplikasi Jalan
 
 Ikuti bagian ini secara berurutan.
+
+## 1.0. Peta Jalan (Clone → Aplikasi Jadi)
+
+| # | Langkah | Perintah utama | Selesai bila |
+|---|---|---|---|
+| 1 | [1.1](#11-prepare-komputer) Prepare komputer + clone | `git clone` | folder `go-core/` ada |
+| 2 | [1.2](#12-install-dependency-frontend) Install dependency frontend | `task install` | `frontend/node_modules/` ada |
+| 3 | [1.3](#13-membuat-file-env) Membuat `.env` | `copy .env.example .env` | `DB_DATABASE` + `JWT_SECRET` terisi |
+| 4 | [1.4](#14-membuat-database-sql-server) Buat DB + migrasi + akun awal | `task migrate`, `sqlcmd -i scripts/seed-admin.sql` | 10 tabel `CP%` |
+| 5 | [1.5](#15-verifikasi-database) Verifikasi data | query `CPMENU`/`CPPERMISSION` | 2 modul, 11 menu, 8 grant |
+| 6 | [1.6](#16-menjalankan-development) Jalankan development | `task start` | login di `localhost:5173` |
+| 7 | [1.7](#17-menjalankan-production) Build + jalankan production | `task build`, `./app.exe` | aplikasi di `localhost:1067` |
+| 8 | [1.8](#18-health-check) Health check | `curl .../healthz` | `{"status":"ok"}` |
+| 9 | [1.9](#19-mengganti-nama-aplikasi) Ganti nama & favicon | ubah `APP_NAME`/`APP_LOGO` | judul tab & logo ikut berubah |
+| 10 | [7](#7-resep-cepat-role-user-modul-menu) Tambah role/user/modul/menu | UI atau SQL | menu baru tampil setelah login ulang |
+
+Tutorial versi panjang (termasuk clone dari nol, ganti favicon, tambah
+role/user/modul/menu, dan troubleshooting) ada di
+[tutorial/README.md](tutorial/README.md).
 
 ## 1.1. Prepare Komputer
 
@@ -161,17 +191,31 @@ yang sama. Task ini menjalankan:
 
 1. `scripts/migrate.sql`
 2. `scripts/migrate2_rbac.sql`
+3. `scripts/migrate3_mcontrol.sql`
 
 Tanpa Task CLI (ganti `<USER>`, `<PASSWORD>`, `<NAMA_DB>`):
 
 ```bash
 sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/migrate.sql
 sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/migrate2_rbac.sql
+sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/migrate3_mcontrol.sql
 ```
 
 Migrasi aman diulang (boleh dijalankan berkali-kali). `migrate2_rbac.sql`
  membersihkan definisi permission lama per-fitur, lalu membuat master modul
 (`CPMODULE`), registry menu (`CPMENU`), dan grant default `CPPERMISSION`.
+`migrate3_mcontrol.sql` menambah kolom `CPMENU.MCONTROL` (nama folder frontend
+per menu CHILD) berikut unique index dan CHECK `MENU_KIND`/`MCONTROL`.
+
+Catatan `QUOTED_IDENTIFIER`: karena `MCONTROL` memakai *filtered unique index*
+(`UQ_CPMENU_MCONTROL`), SQL Server menolak INSERT/UPDATE ke `CPMENU` bila
+`QUOTED_IDENTIFIER` OFF — dan default `sqlcmd` memang OFF. Skrip di `scripts/`
+sudah men-set opsinya sendiri; hanya query manual ke `CPMENU` yang perlu flag
+`-I`:
+
+```bash
+sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -I -Q "UPDATE dbo.CPMENU SET SORT_ORDER = 5 WHERE CODE = N'MENU_USERS'"
+```
 
 ### Membuat akun awal
 
@@ -278,8 +322,9 @@ Tiga kolom penting di `CPMENU`:
 
 | Kolom | Isi |
 |---|---|
-| `MODULE` | Folder modul di frontend: `menus/<MODULE>/<menu>/`, huruf besar, wajib ada di `CPMODULE` |
-| `MENU_KIND` | `PARENT` (bisa punya anak, expandable di sidebar) atau `CHILD` (menu biasa) |
+| `MODULE` | Section sidebar (FK ke `CPMODULE.CODE`); label section = `CPMODULE.LABEL` |
+| `MCONTROL` | Nama folder frontend `app/<mcontrol>/` (snake_case); CHILD wajib isi, PARENT wajib NULL |
+| `MENU_KIND` | `PARENT` (header buka-tutup, tanpa folder/halaman) atau `CHILD` (item biasa) |
 | `PARENT_CODE` | Kode menu parent; hanya boleh menunjuk menu `PARENT` satu modul yang sama |
 
 ### Verifikasi grant role -> menu (CPPERMISSION)
@@ -323,8 +368,10 @@ ADMIN  8
 ```
 
 `USER` tidak memiliki baris (nol menu) — akses diberikan manual oleh admin
-via matriks. Setelah admin mencentang menu untuk suatu role, query JOIN
-berikut menampilkannya (modul otomatis ketahuan dari `CPMENU`):
+via matriks. Hanya menu **CHILD** yang di-grant: header `PARENT` tidak punya
+baris di sini karena tidak punya halaman sendiri. Setelah admin mencentang
+menu CHILD untuk suatu role, query JOIN berikut menampilkannya (modul
+otomatis ketahuan dari `CPMENU`):
 
 ```sql
 SELECT g.ROLE_CODE, m.MODULE, g.MENU_CODE
@@ -392,9 +439,13 @@ sengaja belum di-grant — perhatikan bahwa mencentang di matriks lalu
 1. Menu pertama otomatis terbuka, sidebar dikelompokkan per modul (SYSTEM).
 2. Buka **Role & Permission**.
 3. Role `ADMIN` dan `USER` harus terlihat.
-4. Matriks harus menampilkan 11 menu, bukan permission per fungsi.
+4. Matriks menampilkan 11 menu, bukan permission per fungsi. `MENU_KEUANGAN`
+   tampil sebagai **header tanpa centang** dengan anaknya `MENU_ARUS_KAS`
+   di bawahnya.
 5. Menu **Modul & Menu** menampilkan 2 modul + 10 baris `CPMENU`.
-6. Centang menu untuk role yang membutuhkan (tanpa auto-grant).
+6. Centang menu CHILD untuk role yang membutuhkan (tanpa auto-grant). Contoh:
+   centang `MENU_ARUS_KAS` → header **Keuangan** ikut ter-include di sidebar
+   user role itu, dan yang tampil hanya `Arus Kas`.
 7. Klik **Simpan permission**.
 8. User dengan role tersebut harus logout/login ulang agar permission terbaru dimuat.
 9. Login sebagai `user`/`user` (nol menu) → halaman kosong "hubungi admin".
@@ -466,38 +517,40 @@ berjalan — ganti juga file itu bila ingin judulnya benar sejak awal.
 
 ### Mengganti favicon / logo
 
-Favicon berada di:
+Satu file untuk dua tempat: **favicon tab browser** dan **logo di sidebar,
+topbar mobile, serta kartu login**.
 
-```text
-frontend/public/favicon.svg
-```
+Langkah praktis:
 
-Folder `public/` disalin apa adanya ke `dist/`, jadi file di sana bisa
-dipakai langsung tanpa import. Ganti file `favicon.svg` (atau tambah file
-lain, mis. `logo-toko.png`) lalu arahkan `APP_LOGO` di `.env`:
+1. Siapkan file gambar: rasio **1:1** (persis persegi), minimal 64×64 px,
+   latar transparan atau putih. Format bebas (SVG, PNG, WebP).
+2. Simpan di `frontend/public/`, misalnya `frontend/public/logo-toko.png`.
+   Folder `public/` disalin apa adanya ke `dist/`, jadi file di sana bisa
+   dipakai langsung tanpa import.
+3. Arahkan `APP_LOGO` di `.env` ke nama file tersebut (harus diawali `/`):
 
 ```env
-APP_LOGO=/favicon.svg
-# atau
 APP_LOGO=/logo-toko.png
 ```
 
-`APP_LOGO` dipakai di dua tempat sekaligus:
+4. Build ulang frontend lalu restart backend:
 
-| Tempat | Keterangan |
-|---|---|
-| Favicon tab browser | Di-set runtime oleh `main.jsx` |
-| Logo di sidebar, topbar mobile, dan kartu login | `components/AppLogo.jsx` |
+```bash
+task build-frontend
+```
 
-Jadi **tidak ada huruf logo lagi** — semuanya gambar favicon. Kalau file
-gambar rusak/hilang, `AppLogo` otomatis jatuh ke huruf pertama `APP_NAME`.
+5. Hard refresh browser (`Ctrl+Shift+R`).
 
-Saran gambar: rasio 1:1 (persis), bentuk persegi, latar transparan atau
-putih, minimal 64×64 px. Format bebas (SVG, PNG, WebP).
+Cek cepat: judul tab, logo sidebar, topbar mobile, dan kartu login semuanya
+sudah memakai gambar/nama Anda. Kalau file gambar rusak atau hilang,
+`AppLogo` otomatis jatuh ke huruf pertama `APP_NAME`.
 
 Cache browser untuk favicon sangat agresif. Kalau logo tidak berubah setelah
 ganti file, pakai nama file baru (mis. `favicon-toko.svg`) atau hard refresh
 (`Ctrl+Shift+R`).
+
+Langkah nomor + tabel masalah umum ada di tutorial bagian
+[0.9. Mengganti favicon dan logo](tutorial/README.md#09-mengganti-favicon-dan-logo).
 
 ### Branding lain yang tidak ikut `.env`
 
@@ -618,32 +671,34 @@ NOTIF_SEND
 
 ## 2.1. Struktur Module Menu
 
-Folder pertama adalah module/kategori (UPPERCASE, bebas tambah modul baru),
-bukan batas role:
+Sidebar 100% dari database (MODULE section -> PARENT header -> CHILD item).
+Folder frontend DATAR: satu folder = satu menu CHILD, tanpa folder modul:
 
 ```text
-frontend/src/menus/SYSTEM/<menu>/     -> MODULE SYSTEM
-frontend/src/menus/REPORT/<menu>/     -> MODULE REPORT
+frontend/src/app/users/          -> MCONTROL users          (MENU_USERS)
+frontend/src/app/role_permission/ -> MCONTROL role_permission (MENU_ROLES)
+frontend/src/app/laporan/        -> MCONTROL laporan        (MENU_LAPORAN)
+frontend/src/app/arus_kas/       -> MCONTROL arus_kas       (MENU_ARUS_KAS, anak MENU_KEUANGAN)
 ```
 
-Tidak ada folder perantara: semua menu satu level di dalam folder modul.
-Menu parent/child ditentukan `CPMENU.MENU_KIND` + `PARENT_CODE`, jadi
-`menus/REPORT/keuangan/` dan `menus/REPORT/arus-kas/` berdua-dua berada di
-level yang sama.
+`CPMENU.MODULE` hanya menentukan section sidebar (FK ke `CPMENU` ->
+`CPMODULE.CODE`; label section = `CPMODULE.LABEL`). Menu PARENT
+(MENU_KEUANGAN) TANPA folder/mcontrol — hanya header buka-tutup.
 
-Frontend otomatis memindai semua module melalui `menus/registry.js`
-(glob `./*/**/index.jsx`). Module hanya mengelompokkan menu di sidebar dan
-matriks. Akses tetap ditentukan oleh permission menu + baris `CPMENU`.
+Frontend memindai folder datar via `app/registry.js` (glob `./*/index.jsx`)
+lalu menggabungkannya dengan entri DB (`buildSidebar`). Akses tetap
+ditentukan grant `CPPERMISSION` + baris `CPMENU`; PARENT ikut tampil otomatis
+bila minimal satu keturunannya ter-grant (tanpa grant sendiri).
 
 ```text
-menus/SYSTEM/users       -> MENU_USERS     (MODULE SYSTEM)
-menus/SYSTEM/roles       -> MENU_ROLES     (MODULE SYSTEM)
-menus/REPORT/laporan     -> MENU_LAPORAN   (MODULE REPORT)
-menus/REPORT/keuangan   -> MENU_KEUANGAN  (MODULE REPORT, KIND PARENT)
-menus/REPORT/arus-kas   -> MENU_ARUS_KAS  (MODULE REPORT, PARENT MENU_KEUANGAN)
+MENU_USERS         (SYSTEM, MCONTROL users)            -> app/users/
+MENU_ROLES         (SYSTEM, MCONTROL role_permission)  -> app/role_permission/
+MENU_LAPORAN       (REPORT, MCONTROL laporan)          -> app/laporan/
+MENU_KEUANGAN      (REPORT, PARENT, tanpa mcontrol)    -> header saja
+MENU_ARUS_KAS      (REPORT, MCONTROL arus_kas)         -> app/arus_kas/ (anak MENU_KEUANGAN)
 ```
 
-Tidak ada lagi folder `menus/account` atau menu dashboard. Semua
+Tidak ada lagi folder `app/account` atau menu dashboard. Semua
 role—ADMIN, USER, dan role custom—boleh memakai menu yang sama bila role
 tersebut memiliki `MENU_*` yang sesuai; role tanpa akses mendapat halaman
 kosong.
@@ -651,25 +706,39 @@ kosong.
 ## 2.2. Alur Memberi Akses Menu
 
 1. Admin membuat menu via **Modul & Menu** (atau memilih menu bawaan).
-   Menu yang sudah ada bisa diedit di halaman yang sama: label, urutan,
-   modul, dan parent. Kode permission tidak bisa diubah — buat menu baru
+   Menu yang sudah ada bisa diedit di halaman yang sama: label, mcontrol,
+   urutan, modul, dan parent. Kode permission tidak bisa diubah — buat menu baru
    bila perlu.
 2. Admin membuat atau memilih role.
-3. Matriks menampilkan menu per module (`SYSTEM`, `REPORT`, ...).
-4. Admin centang menu yang boleh diakses role tersebut.
+3. Matriks menampilkan menu per module (`SYSTEM`, `REPORT`, ...). Menu
+   `PARENT` tampil sebagai **header tanpa centang**; hanya menu `CHILD` di
+   bawahnya yang punya checkbox.
+4. Admin centang menu CHILD yang boleh diakses role tersebut.
 5. Admin klik **Simpan permission**.
-6. Grant tersimpan di `CPPERMISSION` (ROLE_CODE -> MENU_CODE).
+6. Grant tersimpan di `CPPERMISSION` (ROLE_CODE -> MENU_CODE) — hanya untuk
+   menu CHILD. Grant ke kode `PARENT` ditolak `400` (`invalid role: PARENT menu
+   is a header without its own page, grant its child menus instead`), dan
+   baris grant PARENT sisa instalasi lama diabaikan/dibersihkan migrasi.
 7. Saat login, frontend mengambil permission + entri menu user dari `GET /api/users/me`.
-8. Sidebar hanya menampilkan menu yang permission-nya dimiliki user; menu
-   terdaftar tapi folder belum dibuat tampil sebagai halaman 404 pemandu.
+8. Sidebar hanya menampilkan menu yang permission-nya dimiliki user; parent
+   header ikut ter-include otomatis dari anaknya, sehingga yang tampil tetap
+   hanya anak yang dicentang. Menu terdaftar tapi folder belum dibuat tampil
+   sebagai halaman 404 pemandu.
 9. Backend juga memeriksa permission yang sama pada endpoint menu.
+
+Endpoint matriks (`GET /api/admin/matrix`) menandai aturan itu: baris `PARENT`
+punya `"grantable": false` dan `has_access`-nya `true` begitu ada anak/keturunan
+yang ter-grant.
 
 Contoh:
 
 ```text
-Role EDITOR + MENU_LAPORAN -> menu Laporan tampil
-Role EDITOR tanpa akses    -> menu Laporan tidak tampil
-Role ADMIN                 -> semua menu yang dicentang
+Role EDITOR + MENU_LAPORAN        -> menu Laporan tampil
+Role EDITOR + MENU_ARUS_KAS       -> header Keuangan + menu Arus Kas tampil
+Role EDITOR + MENU_KEUANGAN saja  -> ditolak 400 (header tidak bisa di-grant;
+                                     centang menu anaknya)
+Role EDITOR tanpa akses           -> menu Laporan tidak tampil
+Role ADMIN                        -> semua menu CHILD yang dicentang
 ```
 
 ## 2.3. Kenapa User Harus Login Ulang?
@@ -691,10 +760,10 @@ go-core/
 ├── features/               # service, repository, handler backend
 ├── frontend/
 │   ├── src/api/client.js   # request, login, session, getMe
-│   ├── src/menus/
-│   │   ├── registry.js     # auto-scan menu nested per module + 404 pemandu
-│   │   └── SYSTEM/         # MODULE SYSTEM (8 menu: operasional + Modul & Menu)
-│   │   └── REPORT/         # MODULE REPORT (3 contoh: biasa, parent, child)
+│   ├── src/app/
+│   │   ├── registry.js     # scan datar app/<mcontrol>/ + buildSidebar 3 level + 404 pemandu
+│   │   ├── users/          # MCONTROL users (MENU_USERS, MODULE SYSTEM)
+│   │   ├── ...             # tiap CHILD = 1 folder; PARENT tanpa folder
 │   ├── src/components/     # UI kit (termasuk MissingMenu)
 │   └── src/pages/          # LoginForm
 ├── scripts/                # migrate*.sql (SQL Server) dan build script
@@ -708,7 +777,7 @@ go-core/
 ```text
 Frontend menu
     ↓
-menus/<module>/<menu>/api.js
+app/<mcontrol>/api.js
     ↓
 apiRequest dari api/client.js
     ↓
@@ -754,9 +823,10 @@ task build
 | Gejala | Penyebab dan solusi |
 |---|---|
 | `Matriks akses menu kosong` | Database belum menjalankan `migrate2_rbac.sql` → jalankan `task migrate`, restart backend, lalu refresh browser. |
-| `Tercatat 0 dari 0 permission` | `CPPERMISSION` masih kosong/permission lama belum dimigrasi → jalankan `task migrate`. |
+| `Tercatat 0 dari 0 menu CHILD` | `CPPERMISSION` masih kosong/permission lama belum dimigrasi → jalankan `task migrate`. |
 | Login berhasil tetapi sidebar kosong | Wajar bila role memang nol menu (mis. `USER` baru) → buka Role & Permission, centang menu, simpan, lalu login ulang. |
-| Menu terdaftar tapi tampil 404 | Folder `frontend/src/menus/<MODULE>/<menu>/` belum dibuat → ikuti petunjuk di halaman 404 (copy template, `npm run build`, restart). |
+| `Msg 1934 ... incorrect settings: 'QUOTED_IDENTIFIER'` | Query manual ke `CPMENU` (punya filtered unique index `UQ_CPMENU_MCONTROL`) dijalankan dari `sqlcmd` yang default `QUOTED_IDENTIFIER` OFF → tambahkan flag `-I` (atau `SET QUOTED_IDENTIFIER ON;`). Skrip di `scripts/` sudah men-set sendiri. |
+| Menu terdaftar tapi tampil 404 | Folder `frontend/src/app/<mcontrol>/` belum dibuat → ikuti petunjuk di halaman 404 (copy template, `npm run build`, restart). |
 | Menu baru tidak muncul sama sekali | Permission belum dicentang ke role tersebut, atau user belum login ulang. |
 | Menu baru muncul untuk semua role | Permission menu belum diberikan/di-filter dengan benar; cek `CPPERMISSION` role tersebut. |
 | Permission endpoint 403 | User belum memiliki `MENU_<MENU>` atau request dikirim ke role/menu yang salah. |
@@ -781,7 +851,7 @@ Tutorial terbaru menjelaskan:
 
 1. Membuat modul baru di `CPMODULE` (UI **Modul & Menu**).
 2. Mendaftarkan menu di `CPMENU` via UI yang sama (tanpa auto-grant).
-3. Menambah folder `menus/<MODULE>/<menu>/` (modul UPPERCASE, tanpa folder perantara).
+3. Menambah folder `app/<mcontrol>/` (datar, MCONTROL snake_case).
 4. Mengisi `index.jsx` + `api.js` (termasuk pola tabel, skeleton, paginasi).
 5. Memahami halaman 404 pemandu sebagai kompas lokasi folder.
 6. Menambah endpoint backend (opsional) dengan permission menu yang sama.
@@ -800,21 +870,29 @@ folder → role → grant.
 | 1 | Role baru | **Role & Permission** → **Role baru** → kode `EDITOR` | `SELECT * FROM dbo.CPROLE WHERE CODE='EDITOR'` |
 | 2 | User baru | **User Account** → **Tambah user** → pilih role `EDITOR` | `SELECT USERNAME, ROLE_CODE FROM dbo.CPUSER` |
 | 3 | Modul baru | **Modul & Menu** → **Modul baru** → kode `TOKO` | `SELECT * FROM dbo.CPMODULE` |
-| 4 | Menu baru | **Modul & Menu** → **Menu baru** → `MENU_STOK`, modul `TOKO`, jenis `CHILD`/`PARENT` | `SELECT * FROM dbo.CPMENU WHERE CODE='MENU_STOK'` |
-| 5 | Isi menu | `cp -r tutorial/templates/frontend-menu frontend/src/menus/TOKO/stok`, lalu isi `index.jsx` + `api.js` | `npm run lint && npm run build` |
+| 4 | Menu baru | **Modul & Menu** → **Menu baru** → `MENU_STOK`, modul `TOKO`, mcontrol `stok`, jenis `CHILD`/`PARENT` | `SELECT * FROM dbo.CPMENU WHERE CODE='MENU_STOK'` |
+| 5 | Isi menu | `cp -r tutorial/templates/frontend-menu frontend/src/app/stok`, lalu isi `index.jsx` + `api.js` | `npm run lint && npm run build` |
 | 6 | Beri akses | **Role & Permission** → pilih `EDITOR` → centang `MENU_STOK` → **Simpan permission** | `SELECT * FROM dbo.CPPERMISSION WHERE MENU_CODE='MENU_STOK'` |
 | 7 | Cek hasil | `task build` + restart, login user role `EDITOR` | Menu **Stok** muncul di sidebar modul `TOKO` |
 
 Catatan penting:
 
 - Kode menu **wajib** `MENU_` + huruf besar/angka/underscore, maksimal 40 karakter.
-- Nama folder frontend **wajib sama** dengan kode menu setelah `MENU_`:
-  `MENU_STOK` ↔ `menus/TOKO/stok/`. Tidak ada folder perantara.
+- Folder frontend **datar** dan mengikuti `CPMENU.MCONTROL` (snake_case):
+  `MENU_STOK` + mcontrol `stok` ↔ `frontend/src/app/stok/`. Tidak ada folder
+  modul/perantara; `MODULE` hanya section sidebar.
+- Menu `PARENT` = header buka-tutup: tanpa `MCONTROL`, tidak butuh folder, dan
+  **tidak punya centang** di matriks (yang dicentang hanya CHILD); header itu
+  ikut ter-include otomatis bila minimal satu anaknya dicentang.
 - Menu child butuh `PARENT_CODE` yang menunjuk menu `PARENT` di modul yang
   sama; menu `PARENT` tidak boleh punya parent dan tidak bisa diubah jadi
   `CHILD` selama masih punya anak.
 - Menu baru **tidak** dapat diakses role mana pun sampai dicentang di langkah 6.
 - User harus **logout/login ulang** setelah akses berubah.
+- Ganti password user: **User Account** → ikon edit → kolom **Password baru**
+  (kosongkan bila tidak diganti). Untuk memaksa user keluar, klik tombol
+  **K mengeluarkan semua sesi**. Detail + aturan validasi ada di
+  [tutorial 5.5–5.6](tutorial/README.md#55-admin-mengganti-password-user).
 - Menambah menu tanpa endpoint backend sendiri? Lewati saja — pakai endpoint
   yang sudah ada (mis. `/api/admin/menus`).
 - Menghapus menu: UI **Modul & Menu** (grant ikut terhapus), atau lihat

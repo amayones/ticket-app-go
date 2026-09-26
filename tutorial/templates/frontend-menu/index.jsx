@@ -13,17 +13,17 @@ import {
 } from '../../../components'
 
 // TEMPLATE mainpage menu baru. Cara pakai:
-// 1. Daftarkan dulu lewat UI Modul & Menu (atau SQL ke CPMENU) agar
-//    MODULE + kode MENU_<NAMA> ada. Pilih jenis menu: PARENT (bisa punya
-//    anak) atau CHILD (bisa diisi PARENT_CODE).
-// 2. Copy folder ini ke menus/<MODULE>/<menu>/, misalnya
-//    menus/REPORT/laporan/ (modul UPPERCASE persis = MODULE).
-//    Nama folder menjadi kode permission otomatis, contoh laporan -> MENU_LAPORAN.
-//    Tidak ada folder perantara: menu child tetap satu level, hierarki
-//    parent/child berasal dari CPMENU.PARENT_CODE.
+// 1. Daftarkan dulu lewat UI Modul & Menu (atau SQL ke CPMENU): isi MODULE
+//    (section sidebar, mis. REPORT), CODE (mis. MENU_STOK), LABEL (judul),
+//    MCONTROL snake_case (mis. stok), KIND=CHILD + PARENT_CODE opsional.
+//    PARENT (header buka-tutup) TANPA mcontrol/folder.
+// 2. Copy folder ini ke app/<mcontrol>/, misalnya app/stok/.
+//    Judul tampil = LABEL di CPMENU; MCONTROL = nama folder.
+//    Sidebar 3 level MODULE -> PARENT -> CHILD murni dari database.
 // 3. Sesuaikan meta di bawah (label, icon, order).
 // 4. Ganti placeholder <menu> di api.js dan isi halaman dengan UI-mu.
-// 5. npm run build + restart backend; menu otomatis muncul di grup modulnya.
+// 5. npm run build + restart backend; menu otomatis muncul (bila role
+//    sudah di-grant via halaman Role).
 export const meta = { label: 'Menu Baru', icon: 'list', order: 50 }
 
 export default function MenuBaru() {
