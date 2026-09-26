@@ -856,6 +856,14 @@ WHERE NOT EXISTS (
 );
 ```
 
+Atau pakai template siap pakai yang sekaligus memuat grant menu, pemindahan
+user, dan cara hapus role:
+
+```bash
+# edit dulu nilai EDITOR di file, lalu:
+sqlcmd -S localhost,1433 -U <user> -P "<password>" -d <NAMA_DB> -C -i tutorial/templates/new-role.sql
+```
+
 ## 5.2. Beri Akses Menu ke Role Itu
 
 Centang menu yang boleh dipakai role `EDITOR` di halaman Role & Permission
