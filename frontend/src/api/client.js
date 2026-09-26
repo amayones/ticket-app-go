@@ -3,7 +3,7 @@
 //
 // Aturan modular: file ini HANYA berisi infrastruktur (request) + fungsi
 // inti (auth, sesi JWT, health). Fungsi tiap menu tinggal di
-// menus/<module>/<menu>/api.js dan memakai apiRequest dari sini.
+// app/<mcontrol>/api.js dan memakai apiRequest dari sini.
 const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 const store = {
@@ -104,7 +104,7 @@ function parseJwt(token) {
   }
 }
 
-// Low-level request untuk dipakai api.js tiap menu (menus/<module>/<menu>/api.js).
+// Low-level request untuk dipakai api.js tiap menu (app/<mcontrol>/api.js).
 export const apiRequest = request
 
 export const api = {

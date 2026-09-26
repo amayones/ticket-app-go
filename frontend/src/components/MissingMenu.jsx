@@ -3,18 +3,17 @@ import Alert from './Alert.jsx'
 import Button from './Button.jsx'
 import Card, { CardTitle } from './Card.jsx'
 import Icon from './icons.jsx'
-import { suggestPath } from '../menus/registry.js'
+import { suggestPath } from '../app/registry.js'
 
-// Halaman 404 pemandu: permission/menu sudah ada di database (CPMENU) tapi
-// folder frontend-nya belum dibuat. Memberi tahu programmer persis di mana
-// harus membuat file, bukan sekadar "Not found".
+// Halaman 404 pemandu: menu CHILD sudah ada di database (CPMENU + grant)
+// tapi folder frontend app/<mcontrol>/ belum dibuat. Memberi tahu
+// programmer persis di mana harus membuat file, bukan sekadar "Not found".
 export default function MissingMenu({ entry }) {
   const [copied, setCopied] = useState(false)
   if (!entry) return null
   const path = suggestPath(entry)
   const copyCmd = `cp -r tutorial/templates/frontend-menu ${path}`
-  const folder = entry.key
-  const moduleFolder = [entry.module, ...(entry.parents || [])].filter(Boolean).join('/')
+  const folder = entry.mcontrol || entry.key
 
   async function copy() {
     try {
@@ -59,21 +58,21 @@ export default function MissingMenu({ entry }) {
             <span>
               Di <span className="font-mono">index.jsx</span> isi{' '}
               <span className="font-mono">export const meta</span> (label: {entry.label}) dan{' '}
-              <span className="font-mono">export default</span>. Nama folder{' '}
-              <span className="font-mono">{folder}</span> otomatis menjadi permission{' '}
-              <span className="font-mono">{entry.code}</span>.
+              <span className="font-mono">export default</span>. MCONTROL{' '}
+              <span className="font-mono">{folder}</span> = nama folder; judul tampil diambil dari{' '}
+              <span className="font-mono">LABEL</span> di CPMENU ({entry.label}).
             </span>
           </li>
           <li className="flex items-start gap-2">
             <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
             <span>
-              Modul <span className="font-mono">{entry.module}</span> wajib sama dengan kolom{' '}
+              Section <span className="font-mono">{entry.module}</span> dari kolom{' '}
               <span className="font-mono">MODULE</span> di tabel{' '}
-              <span className="font-mono">CPMENU</span> (saat ini: {moduleFolder || entry.module}).
-              Folder menu cukup satu level: <span className="font-mono">menus/&lt;MODULE&gt;/&lt;menu&gt;/</span>.
-              {entry.parent_code && (
+              <span className="font-mono">CPMENU</span>. Folder menu datar:{' '}
+              <span className="font-mono">app/&lt;mcontrol&gt;/</span> (tanpa folder modul).
+              {entry.parent && (
                 <>
-                  {' '}Menu ini anak dari <span className="font-mono">{entry.parent_code}</span>.
+                  {' '}Menu ini anak dari <span className="font-mono">{entry.parent}</span>.
                 </>
               )}
             </span>

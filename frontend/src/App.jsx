@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, onSessionExpired } from './api/client.js'
 import { AppLogo, Badge, Button, Icon, MissingMenu, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
 import { APP_NAME } from './brand.js'
-import { menuTree, menusForPermissions, missingMenus, withHierarchy } from './menus/registry.js'
+import { buildSidebar } from './app/registry.js'
 import { LoginForm } from './pages/Auth.jsx'
 
 // Shell aplikasi: sidebar/topbar dibangun OTOMATIS dari registry menu
-// (src/menus/registry.js) + entri CPMENU milik user (GET /api/users/me).
+// (src/app/registry.js) + entri CPMENU milik user (GET /api/users/me).
 // Tambah menu = INSERT CPMENU (via UI Role) + tambah folder, tanpa sentuh file ini.
 function sidebarPref() {
   try {
@@ -32,12 +32,57 @@ function saveExpanded(key, value) {
   }
 }
 
-// Satu node menu di sidebar. Kalau CPMENU menandainya PARENT (atau punya
-// anak), node bisa dibuka-tutup; anak menanjak ke kanan. Hierarki ini
-// berasal dari CPMENU (MENU_KIND + PARENT_CODE), bukan dari nama folder.
+// Satu node menu di sidebar. Dua jenis:
+// - CHILD (punya Component/missing): item biasa, klik = buka halaman.
+// - PARENT header (node.header, tanpa Component): klik label = buka-tutup
+//   anak, tidak membuka halaman. Hierarki MODULE -> PARENT -> CHILD murni
+//   dari CPMENU (buildSidebar), bukan dari folder.
 function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggleParent, depth = 0 }) {
   const children = childrenOf.get(node.key) || []
-  const expandable = node.kind === 'PARENT' || children.length > 0
+  // Header PARENT: baris tunggal toggle (tanpa halaman).
+  if (node.header) {
+    const open = openParents[node.key] !== false
+    return (
+      <div className="flex flex-col gap-1">
+        {/* Header PARENT: slab warna (violet tipis) + border agar langsung
+            berbeda dari item menu biasa yang tetap transparan sampai hover
+            atau sedang aktif. Ukuran teks 13px (module 14px, child 12px). */}
+        <button
+          type="button"
+          onClick={() => onToggleParent(node.key)}
+          aria-expanded={open}
+          aria-label={`${open ? 'Tutup' : 'Buka'} submenu ${node.label}`}
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-violet-200 bg-violet-50 py-2 pl-3 pr-1 text-violet-800 transition-colors hover:bg-violet-100 dark:border-violet-900/80 dark:bg-violet-950/50 dark:text-violet-100 dark:hover:bg-violet-900/60"
+        >
+          <Icon name="folder" className="h-[18px] w-[18px] shrink-0" />
+          <span className="grid min-w-0 flex-1 whitespace-nowrap text-left text-[13px] font-semibold">
+            <span className="min-w-0 overflow-hidden">{node.label}</span>
+          </span>
+          <Icon
+            name="chevronRight"
+            className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
+          />
+        </button>
+        {open && children.length > 0 && (
+          <div className="ml-4 flex flex-col gap-1 border-l-2 border-violet-200 pl-1 dark:border-violet-900/70">
+            {children.map((child) => (
+              <MenuNode
+                key={child.key}
+                node={child}
+                childrenOf={childrenOf}
+                activeKey={activeKey}
+                onSelect={onSelect}
+                openParents={openParents}
+                onToggleParent={onToggleParent}
+                depth={depth + 1}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+  const expandable = children.length > 0
   const open = openParents[node.key] !== false
   return (
     <div className="flex flex-col gap-1">
@@ -45,7 +90,7 @@ function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggle
         <button
           type="button"
           onClick={() => onSelect(node.key)}
-          className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2.5 pr-1 transition-colors ${
+          className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2 pr-1 transition-colors ${
             depth > 0 ? 'pl-5' : 'pl-3'
           } ${
             activeKey === node.key
@@ -55,8 +100,8 @@ function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggle
                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
           }`}
         >
-          <Icon name={node.missing ? 'warning' : node.icon || 'list'} className="h-5 w-5 shrink-0" />
-          <span className="grid min-w-0 whitespace-nowrap text-[13px] font-medium">
+          <Icon name={node.missing ? 'warning' : node.icon || 'list'} className="h-4 w-4 shrink-0" />
+          <span className="grid min-w-0 whitespace-nowrap text-xs font-medium">
             <span className="min-w-0 overflow-hidden">
               {node.label}
               {node.missing && <span className="ml-1.5 font-mono text-[10px] opacity-70">404</span>}
@@ -98,20 +143,24 @@ function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggle
   )
 }
 
-// Section satu modul di sidebar (header + tombol +/−).
-function ModuleGroup({ module, roots, childrenOf, open, onToggle, activeKey, onSelect, openParents, onToggleParent }) {
+// Section satu modul di sidebar (header + tombol +/−). Label section =
+// CPMODULE.LABEL via buildSidebar (moduleLabel), fallback ke kode.
+function ModuleGroup({ moduleLabel, module, roots, childrenOf, open, onToggle, activeKey, onSelect, openParents, onToggleParent }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="mt-0.5 flex flex-col gap-1">
+      {/* Header MODULE: slab abu-abu + aksen kiri violet sebagai pembatas
+          section; level paling atas, beda dari header PARENT (violet tipis)
+          dan dari item menu (tanpa warna latar). */}
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-bold tracking-wide text-zinc-500 transition-colors hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+        className="flex w-full items-center gap-2 rounded-lg border-l-2 border-violet-500/70 bg-zinc-100 py-2 pl-2.5 pr-2 text-sm font-bold uppercase tracking-wide text-zinc-600 transition-colors hover:bg-zinc-200 dark:border-violet-400/60 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
       >
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current text-[10px] leading-none">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-current text-[11px] leading-none">
           {open ? '−' : '+'}
         </span>
-        <span className="truncate">MODULE {module}</span>
+        <span className="truncate">{moduleLabel || `MODULE ${module}`}</span>
       </button>
       {open && (
         <div className="flex flex-col gap-1">
@@ -155,14 +204,17 @@ function Shell() {
   const [openParents, setOpenParents] = useState(() => loadExpanded('go-core-parents'))
   const me = api.currentUser() || (sessionExpired ? lastMe : null)
   const isAdmin = me?.role === 'ADMIN'
-  const visibleMenus = menusForPermissions(permissions)
-  const missing = useMemo(() => missingMenus(myMenus), [myMenus])
-  // Parent/kind/label ikut dari CPMENU supaya sidebar persis sama dengan DB.
-  const allNodes = useMemo(
-    () => [...withHierarchy(visibleMenus, myMenus), ...missing],
-    [visibleMenus, missing, myMenus]
+  // Sidebar DB-driven: myMenus (CHILD ter-grant + ancestor PARENT) digabung
+  // folder lokal via buildSidebar -> 3 level MODULE -> PARENT -> CHILD.
+  // Tambah modul/menu di DB + grant role = langsung muncul; tambah folder
+  // app/<mcontrol>/ = halaman asli menggantikan 404 pemandu.
+  const groups = useMemo(() => buildSidebar(myMenus), [myMenus])
+  // Halaman yang bisa dibuka = node CHILD saja (header PARENT tak punya halaman).
+  const openableNodes = useMemo(
+    () => groups.flatMap((g) => [...g.roots, ...[...g.childrenOf.values()].flat()].filter((n) => !n.header)),
+    [groups]
   )
-  const groups = useMemo(() => menuTree(allNodes), [allNodes])
+  const allNodes = openableNodes
   const activeNode = allNodes.find((m) => m.key === view) || allNodes[0] || null
   const Active = activeNode && !activeNode.missing ? activeNode.Component : null
 
@@ -348,6 +400,7 @@ function Shell() {
               <ModuleGroup
                 key={g.module}
                 module={g.module}
+                moduleLabel={g.moduleLabel}
                 roots={g.roots}
                 childrenOf={g.childrenOf}
                 open={isOpen(openModules, g.module)}
