@@ -8,20 +8,24 @@ diizinkan. Setelah user login ulang, menu otomatis muncul di sidebar.
 
 ## Aturan Utama
 
-Struktur folder menu:
+Struktur folder menu (modul UPPERCASE, bebas tambah modul baru):
 
 ```text
-frontend/src/menus/<module>/<menu>/  -> semua role yang diberi akses menu
+frontend/src/menus/<MCONTROL>/[<parent>/]<menu>/  -> semua role yang diberi akses menu
 ```
 
-Module yang tersedia:
+Contoh bawaan:
 
 ```text
-menus/account/  -> ACCOUNT
-menus/system/   -> SYSTEM
+menus/SYSTEM/users/            -> modul SYSTEM, menu users
+menus/REPORT/keu/laporan/      -> modul REPORT, parent grup visual "keu", menu laporan
 ```
 
-Tutorial ini memakai `menus/system/`.
+Modul = kolom `MCONTROL` tabel `CPMENU`, wajib sama persis dengan nama
+folder (UPPERCASE). Folder perantara tanpa `index.jsx` = grup visual saja
+(di sidebar bisa dibuka-tutup dengan tombol +/−).
+
+Tutorial ini memakai modul `REPORT` dan menu `laporan`.
 
 Satu permission mewakili satu menu:
 
@@ -53,54 +57,40 @@ repository `go-core` menggunakan Git Bash.
 
 ---
 
-# bagian 1 — Tentukan Permission Menu
+# bagian 1 — Daftarkan Menu di Database
 
-Misalnya kita membuat menu `Laporan`.
+Misalnya kita membuat menu `Laporan` di modul `REPORT`.
 
-## 1.1. Tambahkan Konstanta Permission
+## 1.1. Buat via UI (disarankan)
 
-Buka `models/permission.go`, lalu tambahkan satu konstanta:
-
-```go
-const (
-  // Konstanta lain yang sudah ada...
-  MenuLaporan = "MENU_LAPORAN"
-)
-```
+1. Login `admin`, buka **Role & Permission**, scroll ke kartu **Registry Menu**.
+2. Klik **Menu baru**, isi:
+   - Kode permission: `MENU_LAPORAN` (wajib prefix `MENU_`, maks 40 karakter)
+   - Nama permission: `Akses menu Laporan`
+   - Modul (MCONTROL): `REPORT` (UPPERCASE = nama folder `menus/REPORT/`)
+   - Label tampil: `Laporan`, Urutan: `8`, Parent: kosongkan
+3. Simpan. Menu langsung tercatat di `CPMENU` + `CPPERMISSION`
+   **tanpa auto-grant ke role mana pun** — admin mencentang manual di matriks.
 
 ✅ **Checkpoint 1.1**
 
-```bash
-grep -n "MenuLaporan" models/permission.go
+```sql
+SELECT CODE, MCONTROL, LABEL FROM dbo.CPMENU WHERE CODE = 'MENU_LAPORAN';
 ```
 
-Harus ada satu hasil, misalnya:
+Harus menghasilkan satu baris (`REPORT`).
 
-```text
-17:  MenuLaporan = "MENU_LAPORAN"
-```
+## 1.2. Alternatif via SQL
 
-Nama permission harus sama dengan nama folder menu:
-
-```text
-laporan       -> MENU_LAPORAN
-laporan-penjualan -> MENU_LAPORAN_PENJUALAN
-```
-
-## 1.2. Tambahkan Seed Permission
-
-Buka `scripts/migrate2_rbac.sql`. Pada daftar `@perms`, tambahkan:
+Satu permission mewakili satu menu (`MENU_<NAMA_MENU>`); modul = nama
+folder (`REPORT` → `menus/REPORT/`):
 
 ```sql
-(N'MENU_LAPORAN', N'Akses menu Laporan', N'MENU', N'Seluruh fungsi menu Laporan'),
-```
+INSERT INTO dbo.CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION)
+VALUES (N'MENU_LAPORAN', N'Akses menu Laporan', N'REPORT', N'Seluruh fungsi menu Laporan');
 
-Contoh posisi di dalam `INSERT INTO @perms VALUES`:
-
-```sql
-INSERT INTO @perms VALUES
-  (N'MENU_DASHBOARD', N'Akses menu Dashboard', N'MENU', N'Seluruh fungsi dashboard'),
-  (N'MENU_LAPORAN', N'Akses menu Laporan', N'MENU', N'Seluruh fungsi menu Laporan');
+INSERT INTO dbo.CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER)
+VALUES (N'MENU_LAPORAN', N'REPORT', N'Laporan', 8);
 ```
 
 ✅ **Checkpoint 1.2**
@@ -109,32 +99,8 @@ INSERT INTO @perms VALUES
 grep -n "MENU_LAPORAN" scripts/migrate2_rbac.sql
 ```
 
- Harus ada minimal satu hasil.
-
-## 1.3. Jalankan Migrasi Database
-
-Jalankan dari folder root:
-
-```bash
-task migrate
-```
-
-Tanpa Task CLI:
-
-```bash
-sqlcmd -S localhost,1433 -U may -P "password-database-anda" -d Go -C -i scripts/migrate.sql
-sqlcmd -S localhost,1433 -U may -P "password-database-anda" -d Go -C -i scripts/migrate2_rbac.sql
-```
-
-✅ **Checkpoint 1.3**
-
-```sql
-SELECT CODE, NAME
-FROM dbo.CPPERMISSION
-WHERE CODE = 'MENU_LAPORAN';
-```
-
-Harus menghasilkan satu baris.
+Untuk menu permanen bawaan, tambahkan seed yang sama di
+`scripts/migrate2_rbac.sql` (proyek ini khusus SQL Server).
 
 ---
 
@@ -143,13 +109,13 @@ Harus menghasilkan satu baris.
 ## 2.1. Copy Template
 
 ```bash
-cp -r tutorial/templates/frontend-menu frontend/src/menus/system/laporan
+cp -r tutorial/templates/frontend-menu frontend/src/menus/REPORT/laporan
 ```
 
 ✅ **Checkpoint 2.1**
 
 ```bash
-ls frontend/src/menus/system/laporan
+ls frontend/src/menus/REPORT/laporan
 ```
 
 Harus ada:
@@ -161,7 +127,7 @@ index.jsx
 
 ## 2.2. Isi `index.jsx`
 
-Buka `frontend/src/menus/system/laporan/index.jsx`.
+Buka `frontend/src/menus/REPORT/laporan/index.jsx`.
 
 Atur metadata:
 
@@ -178,7 +144,7 @@ Ganti isi halaman dengan komponen yang dibutuhkan.
 ✅ **Checkpoint 2.2**
 
 ```bash
-grep -n "export default\|export const meta" frontend/src/menus/system/laporan/index.jsx
+grep -n "export default\|export const meta" frontend/src/menus/REPORT/laporan/index.jsx
 ```
 
 Harus ada dua baris export:
@@ -192,7 +158,7 @@ Jangan lupa membuat komponen utama dengan `export default`.
 
 ## 2.3. Isi `api.js`
 
-Buka `frontend/src/menus/system/laporan/api.js`.
+Buka `frontend/src/menus/REPORT/laporan/api.js`.
 
 Ganti placeholder `<menu>` dengan endpoint yang benar.
 
@@ -227,7 +193,7 @@ export async function createLaporan(payload) {
 ✅ **Checkpoint 2.3**
 
 ```bash
-grep -rn "<menu>" frontend/src/menus/system/laporan || echo OK-tidak-ada-placeholder
+grep -rn "<menu>" frontend/src/menus/REPORT/laporan || echo OK-tidak-ada-placeholder
 ```
 
 Harus menghasilkan:
@@ -241,20 +207,39 @@ OK-tidak-ada-placeholder
 Frontend otomatis mengubah nama folder menjadi permission:
 
 ```text
-frontend/src/menus/system/laporan/
-             ↓
-MENU_LAPORAN
+frontend/src/menus/REPORT/laporan/
+              ↓
+MENU_LAPORAN   (modul REPORT dari nama folder)
 ```
+
+Folder perantara tanpa `index.jsx` = grup visual bersarang, mis.
+`menus/REPORT/keu/laporan/` tetap memakai permission `MENU_LAPORAN`
+di bawah grup `keu` (bisa dibuka-tutup di sidebar).
 
 Jadi tidak perlu menambah daftar menu manual di `registry.js`.
 
 ✅ **Checkpoint 2.4**
 
 ```bash
-grep -n "permissionFor\|menus/system" frontend/src/menus/registry.js
+grep -n "import.meta.glob" frontend/src/menus/registry.js
 ```
 
-Pastikan `menus/system/` dipindai oleh `import.meta.glob`.
+Pastikan glob `./*/**/index.jsx` memindai semua modul (termasuk modul baru
+seperti `REPORT`).
+
+## 2.5. Pahami Alur 404 Pemandu
+
+Urutan yang benar: **daftar di database dulu (Bagian 1), folder belakangan
+(Bagian 2)**. Di jeda itu, bila menu sudah dicentang ke suatu role, user
+role tersebut melihat halaman **404 pemandu** (bukan menu hilang diam-diam):
+
+- Permission yang hilang + path folder persis yang harus dibuat, mis.
+  `frontend/src/menus/REPORT/laporan/`
+- Perintah copy template siap salin
+- Checklist rebuild (`npm run build` + restart backend)
+
+Setelah folder dibuat + rebuild, menu asli otomatis menggantikan halaman itu.
+Gunakan halaman 404 sebagai kompas: ia selalu menunjuk lokasi yang benar.
 
 ---
 
@@ -279,19 +264,20 @@ dan `r.dialect.Bind(query)`.
 Route menu dapat berada di path `/api/<menu>` atau `/api/admin/<menu>`.
 Nama path tidak membatasi role; yang membatasi hanya permission menu.
 
-Contoh route di `routes/routes.go`:
+Contoh route di `routes/routes.go` (tambah konstanta permission di
+`models/permission.go` hanya bila route backend membutuhkannya):
 
 ```go
-r.With(auth, need(models.MenuLaporan)).Get("/laporan", deps.Laporan.ListLaporan)
-r.With(auth, need(models.MenuLaporan)).Post("/laporan", deps.Laporan.CreateLaporan)
-r.With(auth, need(models.MenuLaporan)).Put("/laporan/{code}", deps.Laporan.UpdateLaporan)
-r.With(auth, need(models.MenuLaporan)).Delete("/laporan/{code}", deps.Laporan.DeleteLaporan)
+r.With(auth, need("MENU_LAPORAN")).Get("/laporan", deps.Laporan.ListLaporan)
+r.With(auth, need("MENU_LAPORAN")).Post("/laporan", deps.Laporan.CreateLaporan)
+r.With(auth, need("MENU_LAPORAN")).Put("/laporan/{code}", deps.Laporan.UpdateLaporan)
+r.With(auth, need("MENU_LAPORAN")).Delete("/laporan/{code}", deps.Laporan.DeleteLaporan)
 ```
 
 Semua fungsi menu wajib memakai permission yang sama:
 
 ```text
-models.MenuLaporan
+MENU_LAPORAN
 ```
 
 Jangan membuat `MenuLaporanRead`, `MenuLaporanCreate`, atau permission
@@ -444,7 +430,7 @@ Centang menu yang boleh dipakai role `EDITOR` di halaman Role & Permission.
 Contohnya centang:
 
 ```text
-MENU_DASHBOARD
+MENU_USERS
 MENU_LAPORAN
 ```
 
@@ -487,22 +473,29 @@ Setelah login ulang, menu harus hilang dari sidebar.
 
 # Bagian 7 — Menghapus Menu
 
-Jika menu tidak diperlukan:
+Jika menu tidak diperlukan, hapus via UI **Role & Permission → Registry Menu**
+(tombol hapus; gagal bila masih dipakai role atau punya menu anak). Itu
+menghapus baris `CPMENU` + `CPPERMISSION` sekaligus (mapping ikut CASCADE).
+
+Pembersihan manual (bila perlu):
 
 1. Hapus folder frontend:
 
 ```bash
-rm -r frontend/src/menus/system/laporan
+rm -r frontend/src/menus/REPORT/laporan
 ```
 
-2. Hapus konstanta `MenuLaporan` dari `models/permission.go`.
-3. Hapus seed `MENU_LAPORAN` dari `scripts/migrate2_rbac.sql` hanya jika
+2. Hapus seed `MENU_LAPORAN` dari `scripts/migrate2_rbac.sql` hanya jika
    tidak ada menu lain yang menggunakan permission tersebut.
-4. Jika memakai database yang sudah berjalan, bersihkan mapping dengan SQL:
+3. Konstanta di `models/permission.go` hanya perlu dihapus bila route backend
+   sempat memakainya.
+4. Jika memakai database yang sudah berjalan tanpa UI:
 
 ```sql
 DELETE FROM dbo.CPROLEPERMISSION
 WHERE PERMISSION_CODE = 'MENU_LAPORAN';
+
+DELETE FROM dbo.CPMENU WHERE CODE = 'MENU_LAPORAN';
 
 DELETE FROM dbo.CPPERMISSION
 WHERE CODE = 'MENU_LAPORAN';
@@ -515,16 +508,17 @@ WHERE CODE = 'MENU_LAPORAN';
 
 # Checklist Akhir
 
-- [ ] Menu diletakkan di `frontend/src/menus/<module>/<menu>/`.
+- [ ] Menu terdaftar di `CPMENU` (`MCONTROL` = nama folder modul, UPPERCASE).
+- [ ] Menu diletakkan di `frontend/src/menus/<MCONTROL>/[<parent>/]<menu>/`.
 - [ ] `index.jsx` memiliki `export default` dan `export const meta`.
 - [ ] `api.js` tidak memakai `apiRequest` tanpa `auth: true` untuk endpoint privat.
 - [ ] Tidak ada placeholder `<menu>`.
-- [ ] Permission `MENU_<MENU>` ada di `models/permission.go`.
-- [ ] Permission yang sama ada di seed `migrate2_rbac.sql`.
-- [ ] Semua route backend memakai `models.Menu<MENU>` yang sama.
-- [ ] `task migrate` sudah dijalankan.
+- [ ] Permission `MENU_<MENU>` ada di `CPPERMISSION` (dibuat via UI Registry Menu).
+- [ ] Semua route backend memakai permission `MENU_<MENU>` yang sama.
+- [ ] `task migrate` sudah dijalankan (untuk seed bawaan).
 - [ ] `npm run lint` dan `npm run build` berhasil.
-- [ ] Admin sudah memberi centang role yang benar.
-- [ ] User yang diizinkan login ulang dan melihat menu.
+- [ ] Admin sudah memberi centang role yang benar (tanpa auto-grant).
+- [ ] User yang diizinkan login ulang dan melihat menu (di grup modulnya).
 - [ ] User yang tidak diizinkan login ulang dan tidak melihat menu.
+- [ ] Menu tanpa folder tampil sebagai halaman 404 pemandu (bukan hilang diam-diam).
 - [ ] Request endpoint tanpa akses mendapat `403`.

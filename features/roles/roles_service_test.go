@@ -3,14 +3,19 @@ package roles
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	"golang-backend/models"
+	"golang-backend/services"
 )
+
+var errFakeDuplicate = errors.New("duplicate key value violates unique constraint")
 
 type fakeRoleRepo struct {
 	roles map[string]*models.Role
 	perms map[string][]string
+	menus map[string]*models.Menu
 }
 
 func newFakeRoleRepo() *fakeRoleRepo {
@@ -20,8 +25,12 @@ func newFakeRoleRepo() *fakeRoleRepo {
 			models.RoleUser:  {Code: models.RoleUser, Name: "Pengguna"},
 		},
 		perms: map[string][]string{
-			models.RoleAdmin: {models.MenuDashboard, models.MenuUsers, models.MenuRoles, models.MenuSessions, models.MenuAudit, models.MenuSecurity, models.MenuSyslog, models.MenuNotifications},
-			models.RoleUser:  {models.MenuDashboard},
+			models.RoleAdmin: {models.MenuUsers, models.MenuRoles, models.MenuSessions, models.MenuAudit, models.MenuSecurity, models.MenuSyslog, models.MenuNotifications},
+			models.RoleUser:  {},
+		},
+		menus: map[string]*models.Menu{
+			models.MenuUsers: {Code: models.MenuUsers, MControl: "SYSTEM", Label: "User Account", SortOrder: 1},
+			models.MenuRoles: {Code: models.MenuRoles, MControl: "SYSTEM", Label: "Role & Permission", SortOrder: 2},
 		},
 	}
 }
@@ -60,7 +69,11 @@ func (f *fakeRoleRepo) Delete(ctx context.Context, code string) error {
 func (f *fakeRoleRepo) Count(ctx context.Context) (int, error) { return len(f.roles), nil }
 
 func (f *fakeRoleRepo) ListPermissions(ctx context.Context) ([]models.Permission, error) {
-	return []models.Permission{{Code: models.MenuDashboard, Name: "Lihat dashboard", Group: "MENU"}}, nil
+	out := make([]models.Permission, 0, len(f.menus))
+	for _, m := range f.menus {
+		out = append(out, models.Permission{Code: m.Code, Name: "Akses " + m.Label, Group: m.MControl})
+	}
+	return out, nil
 }
 
 func (f *fakeRoleRepo) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
@@ -79,6 +92,91 @@ func (f *fakeRoleRepo) HasPermission(ctx context.Context, roleCode, permCode str
 		}
 	}
 	return false, nil
+}
+
+func (f *fakeRoleRepo) ListMenus(ctx context.Context) ([]models.Menu, error) {
+	out := make([]models.Menu, 0, len(f.menus))
+	for _, m := range f.menus {
+		out = append(out, *m)
+	}
+	return out, nil
+}
+
+func (f *fakeRoleRepo) GetMenu(ctx context.Context, code string) (*models.Menu, error) {
+	if m, ok := f.menus[code]; ok {
+		cp := *m
+		return &cp, nil
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (f *fakeRoleRepo) CreateMenuFull(ctx context.Context, permCode, permName, permGroup, permDesc string, menu *models.Menu) error {
+	if _, ok := f.menus[menu.Code]; ok {
+		return errFakeDuplicate
+	}
+	cp := *menu
+	f.menus[menu.Code] = &cp
+	return nil
+}
+
+func (f *fakeRoleRepo) DeleteMenu(ctx context.Context, code string) error {
+	if _, ok := f.menus[code]; !ok {
+		return sql.ErrNoRows
+	}
+	delete(f.menus, code)
+	return nil
+}
+
+func (f *fakeRoleRepo) CountMenuUsage(ctx context.Context, code string) (int, error) {
+	n := 0
+	for _, perms := range f.perms {
+		for _, p := range perms {
+			if p == code {
+				n++
+			}
+		}
+	}
+	return n, nil
+}
+
+func (f *fakeRoleRepo) ListChildren(ctx context.Context, code string) ([]models.Menu, error) {
+	out := make([]models.Menu, 0)
+	for _, m := range f.menus {
+		if m.Parent == code {
+			out = append(out, *m)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRoleRepo) QueryMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error) {
+	out := make([]models.MatrixRow, 0)
+	roles := []string{models.RoleAdmin, models.RoleUser}
+	if roleFilter != "" {
+		roles = []string{roleFilter}
+	}
+	for _, rc := range roles {
+		for _, m := range f.menus {
+			has := false
+			for _, p := range f.perms[rc] {
+				if p == m.Code {
+					has = true
+				}
+			}
+			out = append(out, models.MatrixRow{RoleCode: rc, Module: m.MControl, MenuCode: m.Code, MenuLabel: m.Label, HasAccess: has})
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRoleRepo) MyMenusByRole(ctx context.Context, roleCode string) ([]models.MenuEntry, error) {
+	out := make([]models.MenuEntry, 0)
+	for _, p := range f.perms[roleCode] {
+		if m, ok := f.menus[p]; ok {
+			out = append(out, models.MenuEntry{Code: m.Code, Module: m.MControl, Label: m.Label, SortOrder: m.SortOrder})
+		}
+	}
+	return out, nil
 }
 
 type fakeUserStore struct {
@@ -123,8 +221,9 @@ func TestCheckPermission(t *testing.T) {
 	if err := svc.CheckPermission(ctx, "USR-ADMIN", models.MenuAudit); err != nil {
 		t.Fatalf("admin menu access: %v", err)
 	}
-	if err := svc.CheckPermission(ctx, "USR-00001", models.MenuDashboard); err != nil {
-		t.Fatalf("user read: %v", err)
+	// USER nol menu: semua akses harus ditolak.
+	if err := svc.CheckPermission(ctx, "USR-00001", models.MenuUsers); err == nil {
+		t.Fatal("expected forbidden for user without menus")
 	}
 	if err := svc.CheckPermission(ctx, "USR-00001", models.MenuAudit); err == nil {
 		t.Fatal("expected forbidden for missing permission")
@@ -137,7 +236,7 @@ func TestRoleLifecycle(t *testing.T) {
 	if _, err := svc.CreateRole(ctx, "editor", "Editor"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := svc.SetRolePermissions(ctx, "EDITOR", []string{models.MenuDashboard}); err != nil {
+	if err := svc.SetRolePermissions(ctx, "EDITOR", []string{models.MenuUsers}); err != nil {
 		t.Fatalf("set perms: %v", err)
 	}
 	if err := svc.UpdateUserRole(ctx, "USR-00001", "EDITOR"); err != nil {
@@ -168,5 +267,70 @@ func TestListRoles(t *testing.T) {
 	}
 	if len(roles) != 2 {
 		t.Fatalf("expected 2 roles, got %d", len(roles))
+	}
+}
+
+func TestMenuLifecycle(t *testing.T) {
+	svc, _, _ := newTestService()
+	ctx := context.Background()
+	in := models.MenuInput{Code: "menu_laporan", Name: "Akses menu Laporan", Module: "report", Label: "Laporan", SortOrder: 8}
+	menu, err := svc.CreateMenu(ctx, in)
+	if err != nil {
+		t.Fatalf("create menu: %v", err)
+	}
+	if menu.Code != "MENU_LAPORAN" || menu.MControl != "REPORT" {
+		t.Fatalf("unexpected normalization: %+v", menu)
+	}
+	// Tanpa auto-grant: USER tetap nol menu.
+	mine, err := svc.MyMenus(ctx, "USR-00001")
+	if err != nil {
+		t.Fatalf("my menus: %v", err)
+	}
+	if len(mine) != 0 {
+		t.Fatalf("expected no auto-grant, got %d", len(mine))
+	}
+	// Duplikat → 409 typed.
+	if _, err := svc.CreateMenu(ctx, in); !errors.Is(err, services.ErrPermissionExists) {
+		t.Fatalf("expected ErrPermissionExists, got %v", err)
+	}
+	// Kode tanpa prefix → 400 typed.
+	bad := in
+	bad.Code = "LAPORAN"
+	if _, err := svc.CreateMenu(ctx, bad); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("expected ErrInvalidMenu, got %v", err)
+	}
+	// Dipakai role → hapus ditolak.
+	if err := svc.SetRolePermissions(ctx, models.RoleAdmin, append(
+		[]string{models.MenuUsers}, "MENU_LAPORAN")); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	if err := svc.DeleteMenu(ctx, "MENU_LAPORAN"); !errors.Is(err, services.ErrMenuInUse) {
+		t.Fatalf("expected ErrMenuInUse, got %v", err)
+	}
+	// Lepas lalu hapus sukses.
+	if err := svc.SetRolePermissions(ctx, models.RoleAdmin, []string{models.MenuUsers}); err != nil {
+		t.Fatalf("unassign: %v", err)
+	}
+	if err := svc.DeleteMenu(ctx, "MENU_LAPORAN"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := svc.GetMenu(ctx, "MENU_LAPORAN"); !errors.Is(err, services.ErrMenuNotFound) {
+		t.Fatalf("expected ErrMenuNotFound, got %v", err)
+	}
+}
+
+func TestMatrix(t *testing.T) {
+	svc, _, _ := newTestService()
+	rows, err := svc.GetMatrix(context.Background(), "")
+	if err != nil {
+		t.Fatalf("matrix: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("expected matrix rows")
+	}
+	for _, r := range rows {
+		if r.Module == "" || r.MenuCode == "" || r.RoleCode == "" {
+			t.Fatalf("incomplete matrix row: %+v", r)
+		}
 	}
 }

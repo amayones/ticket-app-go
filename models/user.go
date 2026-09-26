@@ -30,15 +30,18 @@ func (u User) ToResponse() UserResponse {
 	}
 }
 
-// MeResponse adalah response GET /api/users/me: user + permission codes miliknya.
+// MeResponse adalah response GET /api/users/me: user + permission codes
+// + entri menu miliknya (dari CPMATRIX). Frontend memakai Menus untuk
+// sidebar (termasuk placeholder 404 bila folder belum dibuat).
 type MeResponse struct {
-	Code        string   `json:"code"`
-	Username    string   `json:"username"`
-	Email       string   `json:"email"`
-	Role        string   `json:"role"`
-	RoleCode    string   `json:"role_code"`
-	RoleName    string   `json:"role_name,omitempty"`
-	Permissions []string `json:"permissions"`
+	Code        string      `json:"code"`
+	Username    string      `json:"username"`
+	Email       string      `json:"email"`
+	Role        string      `json:"role"`
+	RoleCode    string      `json:"role_code"`
+	RoleName    string      `json:"role_name,omitempty"`
+	Permissions []string    `json:"permissions"`
+	Menus       []MenuEntry `json:"menus"`
 }
 
 // UserResponse is the API DTO. Keep separate from User so DB schema

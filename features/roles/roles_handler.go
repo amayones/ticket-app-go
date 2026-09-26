@@ -37,6 +37,9 @@ func (h *Handler) ListRoles(w http.ResponseWriter, r *http.Request) {
 		web.ServiceError(w, err)
 		return
 	}
+	if roles == nil {
+		roles = []models.Role{}
+	}
 	web.WriteJSON(w, http.StatusOK, roles)
 }
 
@@ -91,6 +94,9 @@ func (h *Handler) ListPermissions(w http.ResponseWriter, r *http.Request) {
 		web.ServiceError(w, err)
 		return
 	}
+	if perms == nil {
+		perms = []models.Permission{}
+	}
 	web.WriteJSON(w, http.StatusOK, perms)
 }
 
@@ -108,6 +114,10 @@ func (h *Handler) SetRolePermissions(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Permissions == nil {
 		req.Permissions = []string{}
+	}
+	if len(req.Permissions) > 100 {
+		web.WriteError(w, http.StatusBadRequest, "Too many permissions (max 100)")
+		return
 	}
 	if err := h.Service.SetRolePermissions(r.Context(), code, req.Permissions); err != nil {
 		web.ServiceError(w, err)
@@ -135,4 +145,78 @@ func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit(r, models.AuditRoleAssign, models.EntityUser, code, "Role diubah ke "+req.RoleCode)
 	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "User role updated"})
+}
+
+// --- Registry menu (CPMENU + CPMATRIX) ----------------------------------------
+
+func (h *Handler) ListMenus(w http.ResponseWriter, r *http.Request) {
+	menus, err := h.Service.ListMenus(r.Context())
+	if err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	if menus == nil {
+		menus = []models.Menu{}
+	}
+	web.WriteJSON(w, http.StatusOK, menus)
+}
+
+func (h *Handler) GetMatrix(w http.ResponseWriter, r *http.Request) {
+	role := r.URL.Query().Get("role")
+	rows, err := h.Service.GetMatrix(r.Context(), role)
+	if err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	if rows == nil {
+		rows = []models.MatrixRow{}
+	}
+	web.WriteJSON(w, http.StatusOK, rows)
+}
+
+func (h *Handler) CreateMenu(w http.ResponseWriter, r *http.Request) {
+	var req models.MenuInput
+	if !web.DecodeJSON(w, r, &req) {
+		return
+	}
+	menu, err := h.Service.CreateMenu(r.Context(), req)
+	if err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	h.audit(r, models.AuditMenuCreate, models.EntitySystem, menu.Code,
+		"Menu "+menu.Code+" dibuat di modul "+menu.MControl+" (tanpa auto-grant role)")
+	web.WriteJSON(w, http.StatusCreated, menu)
+}
+
+func (h *Handler) DeleteMenu(w http.ResponseWriter, r *http.Request) {
+	code, ok := web.PathCode(r, "code")
+	if !ok {
+		web.WriteError(w, http.StatusBadRequest, "Invalid menu code")
+		return
+	}
+	if err := h.Service.DeleteMenu(r.Context(), code); err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	h.audit(r, models.AuditMenuDelete, models.EntitySystem, code, "Menu "+code+" dihapus")
+	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "Menu deleted successfully"})
+}
+
+// MyMenus mengembalikan menu milik user login (sidebar + placeholder 404).
+func (h *Handler) MyMenus(w http.ResponseWriter, r *http.Request) {
+	code, ok := middleware.GetUserCode(r)
+	if !ok {
+		web.WriteError(w, http.StatusUnauthorized, "Missing user code")
+		return
+	}
+	entries, err := h.Service.MyMenus(r.Context(), code)
+	if err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	if entries == nil {
+		entries = []models.MenuEntry{}
+	}
+	web.WriteJSON(w, http.StatusOK, entries)
 }

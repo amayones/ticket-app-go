@@ -3,7 +3,7 @@
 -- WAJIB diganti setelah login pertama (Dashboard > Keamanan akun), dan
 -- JANGAN dipakai di production tanpa diganti!
 --
--- SQL Server: sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/seed-admin.sql
+-- SQL Server: sqlcmd -S localhost,1433 -U <user> -P <pass> -d <NAMA_DB> -C -i scripts/seed-admin.sql
 -- (Jalankan SETELAH migrate.sql + migrate2_rbac.sql.)
 IF NOT EXISTS (SELECT 1 FROM dbo.CPUSER WHERE USERNAME = 'admin')
   INSERT INTO dbo.CPUSER (CODE, USERNAME, EMAIL, PASSWORD, ROLE_CODE)

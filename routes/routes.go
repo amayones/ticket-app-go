@@ -61,6 +61,7 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(cfg.RequestTimeout))
+	r.Use(middleware.StripSlashes)
 	r.Use(secureHeaders)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
@@ -88,6 +89,8 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 		r.With(refreshLimiter.Middleware).Post("/refresh", d.Users.RefreshToken)
 		r.With(refreshLimiter.Middleware).Post("/logout", d.Users.Logout)
 		r.With(auth).Get("/roles", d.Roles.ListRoles)
+		// Menu milik user login (sidebar + placeholder 404). Auth saja.
+		r.With(auth).Get("/menus/mine", d.Roles.MyMenus)
 		r.Route("/users", func(r chi.Router) {
 			r.With(auth).Get("/me", d.Users.GetMe)
 			r.With(auth, need(models.MenuUsers)).Post("/", d.Users.CreateUser)
@@ -106,10 +109,19 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 			r.With(auth, need(models.MenuRoles)).Delete("/roles/{code}", d.Roles.DeleteRole)
 			r.With(auth, need(models.MenuRoles)).Get("/permissions", d.Roles.ListPermissions)
 			r.With(auth, need(models.MenuRoles)).Put("/roles/{code}/permissions", d.Roles.SetRolePermissions)
-			// Menu: sessions.
-			r.With(auth, need(models.MenuSessions)).Get("/sessions", d.Sessions.ListMySessions)
-			r.With(auth, need(models.MenuSessions)).Get("/sessions/all", d.Sessions.ListAllSessions)
-			r.With(auth, need(models.MenuSessions)).Delete("/sessions/{id}", d.Sessions.RevokeSession)
+			// Registry menu (CPMENU + CPMATRIX). Buat/hapus tanpa auto-grant role.
+			r.With(auth, need(models.MenuRoles)).Get("/menus", d.Roles.ListMenus)
+			r.With(auth, need(models.MenuRoles)).Post("/menus", d.Roles.CreateMenu)
+			r.With(auth, need(models.MenuRoles)).Delete("/menus/{code}", d.Roles.DeleteMenu)
+			r.With(auth, need(models.MenuRoles)).Get("/matrix", d.Roles.GetMatrix)
+		// Menu: sessions.
+		// Self-service: user login boleh lihat/cabut sesinya sendiri (auth saja).
+		// Admin view tetap butuh MENU_SESSIONS.
+		r.With(auth).Get("/sessions/mine", d.Sessions.ListMySessions)
+		r.With(auth).Delete("/sessions/{id}", d.Sessions.RevokeSession)
+		r.With(auth, need(models.MenuSessions)).Get("/sessions", d.Sessions.ListMySessions)
+		r.With(auth, need(models.MenuSessions)).Get("/sessions/all", d.Sessions.ListAllSessions)
+		r.With(auth, need(models.MenuSessions)).Delete("/sessions/{id}", d.Sessions.RevokeSession)
 			// Menu: audit.
 			r.With(auth, need(models.MenuAudit)).Get("/audit", d.Audit.ListAudit)
 			// Menu: security.

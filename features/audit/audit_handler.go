@@ -30,5 +30,8 @@ func (h *Handler) ListAudit(w http.ResponseWriter, r *http.Request) {
 		web.ServiceError(w, err)
 		return
 	}
+	if logs == nil {
+		logs = []models.AuditLog{}
+	}
 	web.WriteJSON(w, http.StatusOK, logs)
 }

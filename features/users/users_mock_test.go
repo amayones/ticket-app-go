@@ -234,10 +234,22 @@ func (m *MockRefreshTokenRepository) ListByUserCode(ctx context.Context, userCod
 	out := make([]models.Session, 0)
 	for _, v := range m.Tokens {
 		if v.UserCode == userCode {
-			out = append(out, models.Session{UserCode: v.UserCode, ExpiresAt: v.ExpiresAt, CreatedAt: v.CreatedAt})
+			out = append(out, models.Session{ID: v.ID, UserCode: v.UserCode, ExpiresAt: v.ExpiresAt, CreatedAt: v.CreatedAt})
 		}
 	}
 	return out, nil
+}
+
+func (m *MockRefreshTokenRepository) GetByID(ctx context.Context, id int) (*models.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, v := range m.Tokens {
+		if v.ID == id {
+			cp := models.Session{ID: v.ID, UserCode: v.UserCode, ExpiresAt: v.ExpiresAt, CreatedAt: v.CreatedAt}
+			return &cp, nil
+		}
+	}
+	return nil, sql.ErrNoRows
 }
 
 func (m *MockRefreshTokenRepository) ListAll(ctx context.Context, limit, offset int) ([]models.Session, error) {
@@ -245,7 +257,7 @@ func (m *MockRefreshTokenRepository) ListAll(ctx context.Context, limit, offset 
 	defer m.mu.Unlock()
 	out := make([]models.Session, 0)
 	for _, v := range m.Tokens {
-		out = append(out, models.Session{UserCode: v.UserCode, ExpiresAt: v.ExpiresAt, CreatedAt: v.CreatedAt})
+		out = append(out, models.Session{ID: v.ID, UserCode: v.UserCode, ExpiresAt: v.ExpiresAt, CreatedAt: v.CreatedAt})
 	}
 	return out, nil
 }
@@ -331,11 +343,14 @@ func (m *MockRoleRepository) Count(ctx context.Context) (int, error) {
 }
 
 func (m *MockRoleRepository) ListPermissions(ctx context.Context) ([]models.Permission, error) {
-	return []models.Permission{{Code: models.MenuDashboard, Name: "Lihat dashboard", Group: "MENU"}}, nil
+	return []models.Permission{{Code: models.MenuUsers, Name: "Akses menu User Account", Group: "SYSTEM"}}, nil
 }
 
 func (m *MockRoleRepository) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
-	return []string{models.MenuDashboard}, nil
+	if roleCode == models.RoleAdmin {
+		return []string{models.MenuUsers}, nil
+	}
+	return []string{}, nil
 }
 
 func (m *MockRoleRepository) SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error {
@@ -346,5 +361,37 @@ func (m *MockRoleRepository) HasPermission(ctx context.Context, roleCode, permCo
 	if roleCode == models.RoleAdmin {
 		return true, nil
 	}
-	return permCode == models.MenuDashboard, nil
+	return false, nil
+}
+
+func (m *MockRoleRepository) ListMenus(ctx context.Context) ([]models.Menu, error) {
+	return []models.Menu{}, nil
+}
+
+func (m *MockRoleRepository) GetMenu(ctx context.Context, code string) (*models.Menu, error) {
+	return nil, sql.ErrNoRows
+}
+
+func (m *MockRoleRepository) CreateMenuFull(ctx context.Context, permCode, permName, permGroup, permDesc string, menu *models.Menu) error {
+	return nil
+}
+
+func (m *MockRoleRepository) DeleteMenu(ctx context.Context, code string) error {
+	return sql.ErrNoRows
+}
+
+func (m *MockRoleRepository) CountMenuUsage(ctx context.Context, code string) (int, error) {
+	return 0, nil
+}
+
+func (m *MockRoleRepository) ListChildren(ctx context.Context, code string) ([]models.Menu, error) {
+	return []models.Menu{}, nil
+}
+
+func (m *MockRoleRepository) QueryMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error) {
+	return []models.MatrixRow{}, nil
+}
+
+func (m *MockRoleRepository) MyMenusByRole(ctx context.Context, roleCode string) ([]models.MenuEntry, error) {
+	return []models.MenuEntry{}, nil
 }

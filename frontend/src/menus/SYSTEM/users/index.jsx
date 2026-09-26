@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../api/client.js'
 import { createUser, deleteUser, listUsers, logoutAll } from './api.js'
 import { listRoles } from '../roles/api.js'
-
-export const meta = { label: 'User Account', icon: 'users', order: 1 }
 import {
   Alert,
   Avatar,
@@ -24,6 +22,8 @@ import {
   useToast,
 } from '../../../components'
 import EditUserModal from './components/EditUserModal.jsx'
+
+export const meta = { label: 'User Account', icon: 'users', order: 1 }
 
 const PAGE_SIZE = 10
 
@@ -93,7 +93,7 @@ export default function UsersList({ onAccountDeleted }) {
       toast.success(`Akun @${cUsername.trim()} dibuat (${res.code}).`, { title: 'User dibuat' })
       setShowCreate(false)
       setOffset(0)
-      load(0)
+      // useEffect(offset) akan memicu load(0); jangan panggil load ganda.
     } catch (err) {
       setCError(err.message)
     } finally {
@@ -109,7 +109,7 @@ export default function UsersList({ onAccountDeleted }) {
         await deleteUser(confirm.user.code)
         toast.success(`Akun @${confirm.user.username} dihapus.`)
         if (me?.code === confirm.user.code) {
-          onAccountDeleted()
+          onAccountDeleted?.()
           return
         }
       } else {

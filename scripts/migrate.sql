@@ -7,7 +7,7 @@
 -- Aman diulang (idempotent): migrasi data hanya jalan bila target masih kosong,
 -- tabel lama hanya dihapus bila jumlah baris terbukti sama.
 --
--- Jalankan: sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate.sql
+-- Jalankan: sqlcmd -S localhost,1433 -U <user> -P <pass> -d <NAMA_DB> -C -i scripts/migrate.sql
 -- Atau:     task migrate
 SET XACT_ABORT ON;
 BEGIN TRAN;

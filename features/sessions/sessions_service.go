@@ -2,10 +2,11 @@ package sessions
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"golang-backend/models"
-	"golang-backend/repositories"
 	"golang-backend/services"
 )
 
@@ -46,33 +47,18 @@ func (s *Service) ListAllSessions(ctx context.Context, limit, offset int) ([]mod
 }
 
 // RevokeSession mencabut satu sesi milik user (pemilik atau MENU_SESSIONS).
+// Lookup via GetByID (O(1), tidak pecah saat total sesi > MaxListLimit).
 func (s *Service) RevokeSession(ctx context.Context, callerCode string, sessionID int, manageAll bool) error {
-	sessions, err := s.refresh.ListAll(ctx, repositories.MaxListLimit, 0)
+	sess, err := s.refresh.GetByID(ctx, sessionID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return services.ErrSessionNotFound
+		}
 		return fmt.Errorf("lookup session: %w", err)
 	}
-	var owner string
-	for _, sess := range sessions {
-		if sess.ID == sessionID {
-			owner = sess.UserCode
-			break
-		}
-	}
-	// Fallback: cari di sesi milik sendiri (di luar halaman ListAll).
+	owner := sess.UserCode
 	if owner == "" {
-		mine, err := s.refresh.ListByUserCode(ctx, callerCode)
-		if err != nil {
-			return fmt.Errorf("lookup session: %w", err)
-		}
-		for _, sess := range mine {
-			if sess.ID == sessionID {
-				owner = sess.UserCode
-				break
-			}
-		}
-	}
-	if owner == "" {
-		return services.ErrInvalidRefresh
+		return services.ErrSessionNotFound
 	}
 	if owner != callerCode && !manageAll {
 		return services.ErrForbidden
@@ -82,7 +68,7 @@ func (s *Service) RevokeSession(ctx context.Context, callerCode string, sessionI
 		return fmt.Errorf("revoke session: %w", err)
 	}
 	if !deleted {
-		return services.ErrInvalidRefresh
+		return services.ErrSessionNotFound
 	}
 	return nil
 }

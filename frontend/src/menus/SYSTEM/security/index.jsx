@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { securitySummary } from './api.js'
 import { listAudit } from '../audit/api.js'
+import { Alert, Badge, Button, Card, CardTitle, Icon, Skeleton, useSmoothLoading, useToast } from '../../../components'
 
 export const meta = { label: 'Security Center', icon: 'shield', order: 5 }
-import { Alert, Badge, Button, Card, CardTitle, Icon, Skeleton, useSmoothLoading, useToast } from '../../../components'
 
 function StatCard({ icon, label, value, tone }) {
   const tones = {
@@ -13,7 +13,7 @@ function StatCard({ icon, label, value, tone }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tones[tone] || tones.neutral}`}>
-        <Icon name={icon} className="h-5.5 w-5.5" />
+        <Icon name={icon} className="h-5 w-5" />
       </span>
       <div className="min-w-0">
         <p className="truncate text-2xl font-bold text-zinc-900 dark:text-zinc-50">{value}</p>

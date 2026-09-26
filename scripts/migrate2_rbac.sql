@@ -8,7 +8,7 @@
 -- Sesi memakai CPREFRESHTOKEN yang sudah ada (read/revoke via API).
 --
 -- Aman diulang (idempotent). Jalankan:
---   sqlcmd -S localhost,1433 -U <user> -P <pass> -d Go -C -i scripts/migrate2_rbac.sql
+--   sqlcmd -S localhost,1433 -U <user> -P <pass> -d <NAMA_DB> -C -i scripts/migrate2_rbac.sql
 -- Atau: task migrate (menjalankan migrate.sql lalu file ini berurutan)
 SET XACT_ABORT ON;
 BEGIN TRAN;
@@ -84,12 +84,63 @@ WHERE NOT EXISTS (
   SELECT 1 FROM dbo.CPROLEPERMISSION x WHERE x.ROLE_CODE = N'ADMIN' AND x.PERMISSION_CODE = CPPERMISSION.CODE
 );
 
--- USER mendapat Dashboard secara default; menu lain diberikan lewat matriks.
-INSERT INTO dbo.CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
-SELECT N'USER', CODE FROM (VALUES (N'MENU_DASHBOARD')) v(CODE)
-WHERE NOT EXISTS (
-  SELECT 1 FROM dbo.CPROLEPERMISSION x WHERE x.ROLE_CODE = N'USER' AND x.PERMISSION_CODE = v.CODE
+-- USER tidak diberi menu apa pun (nol mapping). Akses diberikan manual
+-- oleh admin lewat matriks Role & Permission.
+-- (Sengaja tidak ada INSERT untuk USER di sini.)
+
+-- MENU_DASHBOARD dihapus: modul account dihapus, tidak ada landing dashboard.
+-- Cascade FK_CRP_PERM membersihkan mapping role yang masih menunjuk ke sana.
+DELETE FROM dbo.CPPERMISSION WHERE CODE = N'MENU_DASHBOARD';
+
+-- 2b. CPMENU (registry menu) ---------------------------------------------------
+-- Satu baris = satu menu. MCONTROL = nama folder modul (UPPERCASE),
+-- wajib sama persis dengan folder frontend menus/<MCONTROL>/... .
+-- PARENT_CODE = menu induk (grup visual bersarang), wajib se-modul.
+IF OBJECT_ID(N'dbo.CPMENU', N'U') IS NULL
+CREATE TABLE dbo.CPMENU (
+  ID INT IDENTITY(1,1) NOT NULL,
+  CODE NVARCHAR(40) NOT NULL,
+  MCONTROL NVARCHAR(40) NOT NULL,
+  LABEL NVARCHAR(100) NOT NULL,
+  SORT_ORDER INT NOT NULL CONSTRAINT DF_CPMENU_SORT DEFAULT 99,
+  PARENT_CODE NVARCHAR(40) NULL,
+  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMENU_CREATED DEFAULT GETDATE(),
+  UPDATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMENU_UPDATED DEFAULT GETDATE(),
+  CONSTRAINT PK_CPMENU PRIMARY KEY CLUSTERED (ID),
+  CONSTRAINT UQ_CPMENU_CODE UNIQUE NONCLUSTERED (CODE),
+  CONSTRAINT UQ_CPMENU_MODULE_CODE UNIQUE NONCLUSTERED (MCONTROL, CODE),
+  CONSTRAINT FK_CPMENU_PERM FOREIGN KEY (CODE) REFERENCES dbo.CPPERMISSION (CODE) ON DELETE CASCADE,
+  CONSTRAINT FK_CPMENU_PARENT FOREIGN KEY (PARENT_CODE) REFERENCES dbo.CPMENU (CODE)
 );
+
+-- Seed registry 7 menu bawaan (urut sesuai sidebar).
+DECLARE @menus TABLE (CODE NVARCHAR(40), MCONTROL NVARCHAR(40), LABEL NVARCHAR(100), SORT_ORDER INT);
+INSERT INTO @menus VALUES
+  (N'MENU_USERS',         N'SYSTEM', N'User Account',       1),
+  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission',  2),
+  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',        3),
+  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',          4),
+  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',    5),
+  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',         6),
+  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',         7);
+
+INSERT INTO dbo.CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER)
+SELECT CODE, MCONTROL, LABEL, SORT_ORDER FROM @menus m
+WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMENU x WHERE x.CODE = m.CODE);
+
+-- 2c. CPMATRIX (view matriks role x modul x menu) ------------------------------
+-- Satu-satunya bacaan matriks: 1 baris = 1 role x 1 menu + flag akses.
+-- Tulis tetap lewat CPROLEPERMISSION (tidak ada sinkron ganda).
+IF OBJECT_ID(N'dbo.CPMATRIX', N'V') IS NOT NULL DROP VIEW dbo.CPMATRIX;
+EXEC(N'CREATE VIEW dbo.CPMATRIX AS
+SELECT r.CODE AS ROLE_CODE, r.NAME AS ROLE_NAME,
+       m.MCONTROL AS MODULE, m.CODE AS MENU_CODE, m.LABEL AS MENU_LABEL,
+       m.SORT_ORDER, m.PARENT_CODE,
+       CASE WHEN pm.ROLE_CODE IS NULL THEN 0 ELSE 1 END AS HAS_ACCESS
+FROM dbo.CPROLE r
+CROSS JOIN dbo.CPMENU m
+LEFT JOIN dbo.CPROLEPERMISSION pm
+  ON pm.ROLE_CODE = r.CODE AND pm.PERMISSION_CODE = m.CODE');
 
 -- 3. CPAUDITLOG ------------------------------------------------------------------
 IF OBJECT_ID(N'dbo.CPAUDITLOG', N'U') IS NULL

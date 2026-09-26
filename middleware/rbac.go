@@ -6,8 +6,8 @@ import (
 	"net/http"
 )
 
-// PermissionChecker diimplementasikan *services.UserService
-// (didefinisikan ulang di sini agar middleware tidak mengimpor services).
+// PermissionChecker diimplementasikan *roles.Service
+// (didefinisikan ulang di sini agar middleware tidak mengimpor features/roles).
 type PermissionChecker interface {
 	CheckPermission(ctx context.Context, userCode, permCode string) error
 }

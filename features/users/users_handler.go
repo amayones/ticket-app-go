@@ -257,6 +257,22 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		h.handleServiceError(w, err)
 		return
 	}
+	if perms == nil {
+		perms = []string{}
+	}
 	resp.Permissions = perms
+	// Entri menu milik user (sidebar + placeholder 404). Best-effort:
+	// kegagalan di sini tidak boleh menggagalkan /me.
+	if h.Perms != nil {
+		if entries, merr := h.Perms.MyMenus(r.Context(), code); merr == nil {
+			if entries == nil {
+				entries = []models.MenuEntry{}
+			}
+			resp.Menus = entries
+		}
+	}
+	if resp.Menus == nil {
+		resp.Menus = []models.MenuEntry{}
+	}
 	web.WriteJSON(w, http.StatusOK, resp)
 }

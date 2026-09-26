@@ -13,6 +13,7 @@ import {
   Pagination,
   SkeletonRows,
   useSmoothLoading,
+  formatTime,
 } from '../../../components'
 
 const PAGE_SIZE = 20
@@ -40,17 +41,9 @@ const ENTITIES = ['', 'AUTH', 'USER', 'ROLE', 'SESSION', 'NOTIFICATION', 'TEMPLA
 
 function toneFor(action) {
   if (action.includes('DELETE') || action.includes('FAILED') || action.includes('REVOKE')) return 'danger'
-  if (action.includes('CREATE') || action.includes('LOGIN') && !action.includes('FAILED')) return 'success'
+  if (action.includes('CREATE') || (action.includes('LOGIN') && !action.includes('FAILED'))) return 'success'
   if (action.includes('UPDATE') || action.includes('ASSIGN') || action.includes('SEND')) return 'info'
   return 'neutral'
-}
-
-function formatTime(iso) {
-  try {
-    return new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
-  } catch {
-    return iso
-  }
 }
 
 const selectClass =

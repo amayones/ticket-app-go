@@ -79,10 +79,10 @@ func (s *stubRoles) GetRoleDetail(ctx context.Context, code string) (*models.Rol
 	return &models.RoleDetail{Role: models.Role{Code: code, Name: "Test"}, Permissions: []string{}}, nil
 }
 func (s *stubRoles) ListPermissions(ctx context.Context) ([]models.Permission, error) {
-	return []models.Permission{{Code: models.MenuDashboard, Name: "Lihat dashboard", Group: "MENU"}}, nil
+	return []models.Permission{{Code: models.MenuUsers, Name: "Akses menu User Account", Group: "SYSTEM"}}, nil
 }
 func (s *stubRoles) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
-	return []string{models.MenuDashboard}, nil
+	return []string{models.MenuUsers}, nil
 }
 func (s *stubRoles) SetRolePermissions(ctx context.Context, role string, perms []string) error {
 	return nil
@@ -91,6 +91,22 @@ func (s *stubRoles) UpdateUserRole(ctx context.Context, userCode, roleCode strin
 	return nil
 }
 func (s *stubRoles) CountRoles(ctx context.Context) (int, error) { return 2, nil }
+func (s *stubRoles) ListMenus(ctx context.Context) ([]models.Menu, error) {
+	return []models.Menu{{Code: models.MenuUsers, MControl: "SYSTEM", Label: "User Account", SortOrder: 1}}, nil
+}
+func (s *stubRoles) GetMenu(ctx context.Context, code string) (*models.Menu, error) {
+	return &models.Menu{Code: code, MControl: "SYSTEM", Label: "Test"}, nil
+}
+func (s *stubRoles) CreateMenu(ctx context.Context, in models.MenuInput) (*models.Menu, error) {
+	return &models.Menu{Code: "MENU_TEST", MControl: "SYSTEM", Label: "Test"}, nil
+}
+func (s *stubRoles) DeleteMenu(ctx context.Context, code string) error { return nil }
+func (s *stubRoles) GetMatrix(ctx context.Context, role string) ([]models.MatrixRow, error) {
+	return []models.MatrixRow{}, nil
+}
+func (s *stubRoles) MyMenus(ctx context.Context, userCode string) ([]models.MenuEntry, error) {
+	return []models.MenuEntry{}, nil
+}
 
 // --- Menu: sessions ---
 
@@ -151,6 +167,9 @@ type stubNotif struct{}
 
 func (s *stubNotif) ListTemplates(ctx context.Context, active bool) ([]models.NotifTemplate, error) {
 	return []models.NotifTemplate{}, nil
+}
+func (s *stubNotif) GetTemplate(ctx context.Context, code string) (*models.NotifTemplate, error) {
+	return &models.NotifTemplate{Code: code, Name: "Test"}, nil
 }
 func (s *stubNotif) CreateTemplate(ctx context.Context, name, channel, subject, body string, active bool) (*models.NotifTemplate, error) {
 	return &models.NotifTemplate{Code: "NTM-TEST", Name: name}, nil
@@ -282,7 +301,11 @@ func TestAdminRBAC(t *testing.T) {
 		{"GET", "/api/admin/notifications/logs", ""},
 		{"POST", "/api/users", `{"username":"budi","email":"b@x.com","password":"password123"}`},
 		{"POST", "/api/admin/roles", `{"code":"EDITOR","name":"Editor"}`},
-		{"PUT", "/api/admin/roles/EDITOR/permissions", `{"permissions":["MENU_DASHBOARD"]}`},
+		{"PUT", "/api/admin/roles/EDITOR/permissions", `{"permissions":["MENU_USERS"]}`},
+		{"GET", "/api/admin/menus", ""},
+		{"GET", "/api/admin/matrix", ""},
+		{"POST", "/api/admin/menus", `{"code":"MENU_TEST","name":"Test","module":"SYSTEM","label":"Test"}`},
+		{"DELETE", "/api/admin/menus/MENU_TEST", ""},
 		{"POST", "/api/admin/notifications/send", `{"template_code":"NTM-1","recipient":"a@b.c"}`},
 	}
 	for _, p := range adminPaths {
@@ -292,6 +315,13 @@ func TestAdminRBAC(t *testing.T) {
 		if rec := doReq(t, r, p.method, p.path, p.body, userTok); rec.Code != 403 {
 			t.Fatalf("user %s %s must be 403, got %d", p.method, p.path, rec.Code)
 		}
+	}
+	// Self-service menus: auth saja, tanpa permission menu.
+	if rec := doReq(t, r, "GET", "/api/menus/mine", "", userTok); rec.Code != 200 {
+		t.Fatalf("menus/mine for user must be 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if rec := doReq(t, r, "GET", "/api/menus/mine", "", ""); rec.Code != 401 {
+		t.Fatalf("menus/mine without token must be 401, got %d", rec.Code)
 	}
 	if rec := doReq(t, r, "PUT", "/api/users/USR-000001/role", `{"role_code":"ADMIN"}`, userTok); rec.Code != 403 {
 		t.Fatalf("role assign by non-admin must be 403, got %d", rec.Code)

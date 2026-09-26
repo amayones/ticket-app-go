@@ -94,23 +94,34 @@ func (s *Service) mapDBError(err error) error {
 		return nil
 	}
 	msg := err.Error()
+	lower := strings.ToLower(msg)
 	// MSSQL unique violations: 2627 / 2601 (robust against constraint renames),
 	// plus legacy constraint-name fallback used by existing tests/mocks.
+	// Postgres: "duplicate key value violates unique constraint ...",
+	// SQLite (modernc): "UNIQUE constraint failed: CPUSER.EMAIL".
 	isUsernameViolation := strings.Contains(msg, "UQ_CPUSER_USERNAME") ||
 		strings.Contains(msg, "UQ_users_username")
 	isEmailViolation := strings.Contains(msg, "UQ_CPUSER_EMAIL") ||
 		strings.Contains(msg, "UQ_users_email")
-	isUniqueViolation := strings.Contains(msg, "2627") || strings.Contains(msg, "2601")
+	isUniqueViolation := strings.Contains(msg, "2627") || strings.Contains(msg, "2601") ||
+		strings.Contains(lower, "unique constraint failed") ||
+		strings.Contains(lower, "duplicate key")
 	switch {
 	case isEmailViolation:
 		return services.ErrEmailTaken
 	case isUsernameViolation:
 		return services.ErrUsernameTaken
 	case isUniqueViolation:
-		// Generic unique violation without identifiable constraint:
-		// attribute to username (most common) — DB pre-checks above
-		// already disambiguate the usual cases.
-		return services.ErrUsernameTaken
+		// Postgres/SQLite sering tidak menyebut nama constraint secara jelas
+		// di pesan; bedakan via nama kolom bila ada, jika ambigu kembalikan
+		// error mentah agar tidak salah menuduh username.
+		if strings.Contains(lower, "email") {
+			return services.ErrEmailTaken
+		}
+		if strings.Contains(lower, "username") {
+			return services.ErrUsernameTaken
+		}
+		return err
 	default:
 		return err
 	}
@@ -168,7 +179,7 @@ func (s *Service) CreateUser(ctx context.Context, username, email, password, rol
 	} else if ok, err := s.roles.RoleExists(ctx, roleCode); err != nil {
 		return "", fmt.Errorf("check role: %w", err)
 	} else if !ok {
-		return "", errors.New("role not found")
+		return "", services.ErrRoleNotFound
 	}
 	// Pre-check for friendlier errors (DB constraint remains source of truth).
 	if _, err := s.users.GetByUsername(ctx, username); err == nil {
@@ -242,7 +253,24 @@ func (s *Service) UpdateUser(ctx context.Context, code string, input models.Upda
 	if !utils.IsValidEmail(email) {
 		return services.ErrInvalidEmail
 	}
-	updated := &models.User{Code: code, Username: username, Email: email, Password: passwordHash}
+	// Pre-check duplikat (abaikan milik sendiri). Constraint DB tetap
+	// menjadi sumber kebenaran untuk race condition.
+	// NOTE: RoleCode sengaja tidak diubah di sini; gunakan UpdateUserRole.
+	if !strings.EqualFold(username, existing.Username) {
+		if _, err := s.users.GetByUsername(ctx, username); err == nil {
+			return services.ErrUsernameTaken
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("check username: %w", err)
+		}
+	}
+	if !strings.EqualFold(email, existing.Email) {
+		if _, err := s.users.GetByEmail(ctx, email); err == nil {
+			return services.ErrEmailTaken
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("check email: %w", err)
+		}
+	}
+	updated := &models.User{Code: code, Username: username, Email: email, Password: passwordHash, RoleCode: existing.RoleCode}
 	if err := s.users.Update(ctx, updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return services.ErrUserNotFound
@@ -385,7 +413,7 @@ func (s *Service) CountUsers(ctx context.Context) (int, error) {
 	return s.users.Count(ctx)
 }
 
-// GenerateAccessTokenFor mengemas ulang pembuatan token (dipakai refresh flow).
+// accessTokenFor mengemas pembuatan token akses (dipakai login & refresh flow).
 func (s *Service) accessTokenFor(user *models.User) (string, error) {
 	return utils.GenerateAccessToken(s.jwtSecret, user.Code, user.Username, user.RoleCode)
 }

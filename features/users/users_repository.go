@@ -32,10 +32,10 @@ func NewRepository(db *sql.DB, dialect repositories.Dialect) RepositoryInterface
 	return &Repository{db: db, dialect: dialect}
 }
 
-const userColumns = `u.CODE, u.USERNAME, u.EMAIL, u.PASSWORD, u.ROLE_CODE, r.NAME, u.CREATED_AT, u.UPDATED_AT`
+const userColumns = `u.CODE, u.USERNAME, u.EMAIL, u.PASSWORD, u.ROLE_CODE, COALESCE(r.NAME, ''), u.CREATED_AT, u.UPDATED_AT`
 
 func (r *Repository) userFrom() string {
-	return `FROM ` + r.dialect.Table("CPUSER") + ` u JOIN ` +
+	return `FROM ` + r.dialect.Table("CPUSER") + ` u LEFT JOIN ` +
 		r.dialect.Table("CPROLE") + ` r ON r.CODE = u.ROLE_CODE`
 }
 

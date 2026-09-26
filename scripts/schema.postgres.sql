@@ -45,7 +45,6 @@ CREATE TABLE IF NOT EXISTS CPPERMISSION (
 );
 
 INSERT INTO CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION) VALUES
-  ('MENU_DASHBOARD', 'Akses menu Dashboard', 'ACCOUNT', 'Seluruh fungsi dashboard untuk role ini'),
   ('MENU_USERS', 'Akses menu User Account', 'SYSTEM', 'Seluruh fungsi pengelolaan pengguna'),
   ('MENU_ROLES', 'Akses menu Role & Permission', 'SYSTEM', 'Seluruh fungsi pengelolaan role'),
   ('MENU_SESSIONS', 'Akses menu Sesi', 'SYSTEM', 'Seluruh fungsi pengelolaan sesi'),
@@ -54,6 +53,7 @@ INSERT INTO CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION) VALUES
   ('MENU_SYSLOG', 'Akses menu System Log', 'SYSTEM', 'Seluruh fungsi system log'),
   ('MENU_NOTIFICATIONS', 'Akses menu Notifikasi', 'SYSTEM', 'Seluruh fungsi notifikasi')
 ON CONFLICT (CODE) DO UPDATE SET NAME=excluded.NAME, PERMGROUP=excluded.PERMGROUP, DESCRIPTION=excluded.DESCRIPTION;
+-- MENU_DASHBOARD sengaja tidak ada: modul account dihapus, USER nol menu.
 
 CREATE TABLE IF NOT EXISTS CPROLEPERMISSION (
   ROLE_CODE TEXT NOT NULL REFERENCES CPROLE (CODE) ON DELETE CASCADE,
@@ -66,9 +66,43 @@ INSERT INTO CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
 SELECT 'ADMIN', CODE FROM CPPERMISSION
 ON CONFLICT DO NOTHING;
 
-INSERT INTO CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
-VALUES ('USER', 'MENU_DASHBOARD')
-ON CONFLICT DO NOTHING;
+-- USER tidak diberi menu apa pun (nol mapping); akses diberikan manual oleh admin.
+
+-- CPMENU: registry menu. MCONTROL = nama folder modul (UPPERCASE),
+-- wajib sama persis dengan folder frontend menus/<MCONTROL>/... .
+CREATE TABLE IF NOT EXISTS CPMENU (
+  ID SERIAL PRIMARY KEY,
+  CODE VARCHAR(40) NOT NULL UNIQUE,
+  MCONTROL VARCHAR(40) NOT NULL,
+  LABEL VARCHAR(100) NOT NULL,
+  SORT_ORDER INT NOT NULL DEFAULT 99,
+  PARENT_CODE VARCHAR(40) NULL REFERENCES CPMENU (CODE),
+  CREATED_AT TIMESTAMP NOT NULL DEFAULT NOW(),
+  UPDATED_AT TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE (MCONTROL, CODE)
+);
+
+INSERT INTO CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER) VALUES
+  ('MENU_USERS',         'SYSTEM', 'User Account',       1),
+  ('MENU_ROLES',         'SYSTEM', 'Role & Permission',  2),
+  ('MENU_SESSIONS',      'SYSTEM', 'Sesi & Auth',        3),
+  ('MENU_AUDIT',         'SYSTEM', 'Audit Log',          4),
+  ('MENU_SECURITY',      'SYSTEM', 'Security Center',    5),
+  ('MENU_SYSLOG',        'SYSTEM', 'System Log',         6),
+  ('MENU_NOTIFICATIONS', 'SYSTEM', 'Notifikasi',         7)
+ON CONFLICT (CODE) DO NOTHING;
+
+-- CPMATRIX: view matriks role x modul x menu (satu-satunya bacaan matriks).
+-- Tulis tetap lewat CPROLEPERMISSION (tidak ada sinkron ganda).
+CREATE OR REPLACE VIEW CPMATRIX AS
+SELECT r.CODE AS ROLE_CODE, r.NAME AS ROLE_NAME,
+       m.MCONTROL AS MODULE, m.CODE AS MENU_CODE, m.LABEL AS MENU_LABEL,
+       m.SORT_ORDER, m.PARENT_CODE,
+       CASE WHEN pm.ROLE_CODE IS NULL THEN 0 ELSE 1 END AS HAS_ACCESS
+FROM CPROLE r
+CROSS JOIN CPMENU m
+LEFT JOIN CPROLEPERMISSION pm
+  ON pm.ROLE_CODE = r.CODE AND pm.PERMISSION_CODE = m.CODE;
 
 CREATE TABLE IF NOT EXISTS CPAUDITLOG (
   ID SERIAL PRIMARY KEY,

@@ -26,6 +26,13 @@ type ServiceInterface interface {
 	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
 	UpdateUserRole(ctx context.Context, userCode, roleCode string) error
 	CountRoles(ctx context.Context) (int, error)
+	// Registry menu (CPMENU + CPMATRIX view).
+	ListMenus(ctx context.Context) ([]models.Menu, error)
+	GetMenu(ctx context.Context, code string) (*models.Menu, error)
+	CreateMenu(ctx context.Context, input models.MenuInput) (*models.Menu, error)
+	DeleteMenu(ctx context.Context, code string) error
+	GetMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error)
+	MyMenus(ctx context.Context, userCode string) ([]models.MenuEntry, error)
 }
 
 // userStore dipenuhi users.Repository (tanpa import antar-fitur).
@@ -92,7 +99,7 @@ func (s *Service) GetRoleDetail(ctx context.Context, code string) (*models.RoleD
 	role, err := s.roles.GetByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, services.ErrUserNotFound
+			return nil, services.ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("get role: %w", err)
 	}
@@ -106,11 +113,11 @@ func (s *Service) GetRoleDetail(ctx context.Context, code string) (*models.RoleD
 func validRoleCode(code string) error {
 	code = strings.TrimSpace(strings.ToUpper(code))
 	if code == "" || len(code) > 20 {
-		return errors.New("role code must be 1-20 characters")
+		return fmt.Errorf("%w: role code must be 1-20 characters", services.ErrInvalidRole)
 	}
 	for _, r := range code {
 		if !(r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_') {
-			return errors.New("role code must be uppercase letters, digits, or underscore")
+			return fmt.Errorf("%w: role code must be uppercase letters, digits, or underscore", services.ErrInvalidRole)
 		}
 	}
 	return nil
@@ -123,13 +130,15 @@ func (s *Service) CreateRole(ctx context.Context, code, name string) (*models.Ro
 		return nil, err
 	}
 	if name == "" {
-		return nil, errors.New("role name is required")
+		return nil, fmt.Errorf("%w: role name is required", services.ErrInvalidRole)
 	}
 	role := &models.Role{Code: code, Name: name}
 	if err := s.roles.Create(ctx, role); err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "2627") || strings.Contains(msg, "2601") {
-			return nil, errors.New("role code already exists")
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "2627") || strings.Contains(msg, "2601") ||
+			strings.Contains(msg, "unique constraint failed") ||
+			strings.Contains(msg, "duplicate key") {
+			return nil, services.ErrRoleExists
 		}
 		return nil, fmt.Errorf("create role: %w", err)
 	}
@@ -139,11 +148,11 @@ func (s *Service) CreateRole(ctx context.Context, code, name string) (*models.Ro
 func (s *Service) DeleteRole(ctx context.Context, code string) error {
 	code = strings.TrimSpace(strings.ToUpper(code))
 	if code == models.RoleAdmin || code == models.RoleUser {
-		return errors.New("system roles cannot be deleted")
+		return services.ErrRoleProtected
 	}
 	if _, err := s.roles.GetByCode(ctx, code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return services.ErrUserNotFound
+			return services.ErrRoleNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
 	}
@@ -154,14 +163,14 @@ func (s *Service) DeleteRole(ctx context.Context, code string) error {
 		return fmt.Errorf("check role usage: %w", err)
 	}
 	if used > 0 {
-		return errors.New("role is still assigned to users")
+		return services.ErrRoleInUse
 	}
 	if err := s.roles.Delete(ctx, code); err != nil {
 		// FK dari CPUSER sebagai backstop (mssql 547, pg foreign key, sqlite FK).
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "fk_") || strings.Contains(msg, "547") ||
 			strings.Contains(msg, "foreign key") {
-			return errors.New("role is still assigned to users")
+			return services.ErrRoleInUse
 		}
 		return fmt.Errorf("delete role: %w", err)
 	}
@@ -172,7 +181,7 @@ func (s *Service) SetRolePermissions(ctx context.Context, roleCode string, permC
 	roleCode = strings.TrimSpace(strings.ToUpper(roleCode))
 	if _, err := s.roles.GetByCode(ctx, roleCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return services.ErrUserNotFound
+			return services.ErrRoleNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
 	}
@@ -191,7 +200,7 @@ func (s *Service) SetRolePermissions(ctx context.Context, roleCode string, permC
 	for _, pc := range permCodes {
 		pc = strings.TrimSpace(strings.ToUpper(pc))
 		if !strings.HasPrefix(pc, "MENU_") || !known[pc] {
-			return fmt.Errorf("unknown menu permission: %s", pc)
+			return fmt.Errorf("%w: unknown menu permission: %s", services.ErrInvalidRole, pc)
 		}
 		if seen[pc] {
 			continue
@@ -210,7 +219,7 @@ func (s *Service) UpdateUserRole(ctx context.Context, userCode, roleCode string)
 	roleCode = strings.TrimSpace(strings.ToUpper(roleCode))
 	if _, err := s.roles.GetByCode(ctx, roleCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return errors.New("role not found")
+			return services.ErrRoleNotFound
 		}
 		return fmt.Errorf("get role: %w", err)
 	}
@@ -221,4 +230,178 @@ func (s *Service) UpdateUserRole(ctx context.Context, userCode, roleCode string)
 		return fmt.Errorf("update user role: %w", err)
 	}
 	return nil
+}
+
+// --- Registry menu (CPMENU) ---------------------------------------------------
+
+// validMenuCode memastikan kode permission menu: MENU_ + huruf/digit/underscore.
+func validMenuCode(code string) error {
+	code = strings.TrimSpace(strings.ToUpper(code))
+	if !strings.HasPrefix(code, "MENU_") || len(code) > 40 || len(code) <= 5 {
+		return fmt.Errorf("%w: menu code must look like MENU_<NAME> (max 40 chars)", services.ErrInvalidMenu)
+	}
+	for _, r := range code[5:] {
+		if !(r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_') {
+			return fmt.Errorf("%w: menu code must be uppercase letters, digits, or underscore", services.ErrInvalidMenu)
+		}
+	}
+	return nil
+}
+
+// validModule memastikan MCONTROL = nama folder modul (UPPERCASE persis).
+func validModule(m string) error {
+	m = strings.TrimSpace(strings.ToUpper(m))
+	if m == "" || len(m) > 40 {
+		return fmt.Errorf("%w: module must be 1-40 characters", services.ErrInvalidMenu)
+	}
+	for _, r := range m {
+		if !(r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_') {
+			return fmt.Errorf("%w: module must be uppercase letters, digits, or underscore", services.ErrInvalidMenu)
+		}
+	}
+	return nil
+}
+
+func isDuplicateErr(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "2627") || strings.Contains(msg, "2601") ||
+		strings.Contains(msg, "unique constraint failed") ||
+		strings.Contains(msg, "duplicate key")
+}
+
+func (s *Service) ListMenus(ctx context.Context) ([]models.Menu, error) {
+	menus, err := s.roles.ListMenus(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list menus: %w", err)
+	}
+	return menus, nil
+}
+
+func (s *Service) GetMenu(ctx context.Context, code string) (*models.Menu, error) {
+	code = strings.TrimSpace(strings.ToUpper(code))
+	m, err := s.roles.GetMenu(ctx, code)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, services.ErrMenuNotFound
+		}
+		return nil, fmt.Errorf("get menu: %w", err)
+	}
+	return m, nil
+}
+
+// CreateMenu menulis permission + registry dalam 1 transaksi.
+// Tanpa auto-grant ke role mana pun (admin mencentang manual via matriks).
+func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*models.Menu, error) {
+	code := strings.TrimSpace(strings.ToUpper(input.Code))
+	name := strings.TrimSpace(input.Name)
+	module := strings.TrimSpace(strings.ToUpper(input.Module))
+	label := strings.TrimSpace(input.Label)
+	if err := validMenuCode(code); err != nil {
+		return nil, err
+	}
+	if err := validModule(module); err != nil {
+		return nil, err
+	}
+	if name == "" || label == "" {
+		return nil, fmt.Errorf("%w: menu name and label are required", services.ErrInvalidMenu)
+	}
+	if len(name) > 100 || len(label) > 100 {
+		return nil, fmt.Errorf("%w: name/label must be at most 100 characters", services.ErrInvalidMenu)
+	}
+	sortOrder := input.SortOrder
+	if sortOrder < 0 || sortOrder > 9999 {
+		return nil, fmt.Errorf("%w: sort order must be 0-9999", services.ErrInvalidMenu)
+	}
+	parent := strings.TrimSpace(strings.ToUpper(input.Parent))
+	if parent != "" {
+		pm, err := s.roles.GetMenu(ctx, parent)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("%w: parent menu not found: %s", services.ErrInvalidMenu, parent)
+			}
+			return nil, fmt.Errorf("get parent menu: %w", err)
+		}
+		if pm.MControl != module {
+			return nil, fmt.Errorf("%w: parent must be in the same module", services.ErrInvalidMenu)
+		}
+	}
+	menu := &models.Menu{Code: code, MControl: module, Label: label, SortOrder: sortOrder, Parent: parent}
+	desc := "Seluruh fungsi " + label
+	if err := s.roles.CreateMenuFull(ctx, code, name, module, desc, menu); err != nil {
+		if isDuplicateErr(err) {
+			return nil, services.ErrPermissionExists
+		}
+		return nil, fmt.Errorf("create menu: %w", err)
+	}
+	return menu, nil
+}
+
+// DeleteMenu menghapus menu + permission (mapping role ikut CASCADE).
+// Ditolak bila masih dipakai role atau masih punya anak.
+func (s *Service) DeleteMenu(ctx context.Context, code string) error {
+	code = strings.TrimSpace(strings.ToUpper(code))
+	if _, err := s.GetMenu(ctx, code); err != nil {
+		return err
+	}
+	children, err := s.roles.ListChildren(ctx, code)
+	if err != nil {
+		return fmt.Errorf("list child menus: %w", err)
+	}
+	if len(children) > 0 {
+		return services.ErrMenuHasChildren
+	}
+	used, err := s.roles.CountMenuUsage(ctx, code)
+	if err != nil {
+		return fmt.Errorf("check menu usage: %w", err)
+	}
+	if used > 0 {
+		return services.ErrMenuInUse
+	}
+	if err := s.roles.DeleteMenu(ctx, code); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return services.ErrMenuNotFound
+		}
+		// FK anak sebagai backstop lintas engine.
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "fk_") || strings.Contains(msg, "547") ||
+			strings.Contains(msg, "foreign key") {
+			return services.ErrMenuHasChildren
+		}
+		return fmt.Errorf("delete menu: %w", err)
+	}
+	return nil
+}
+
+// GetMatrix membaca view CPMATRIX (roleFilter kosong = semua role).
+func (s *Service) GetMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error) {
+	roleFilter = strings.TrimSpace(strings.ToUpper(roleFilter))
+	if roleFilter != "" {
+		if _, err := s.roles.GetByCode(ctx, roleFilter); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, services.ErrRoleNotFound
+			}
+			return nil, fmt.Errorf("get role: %w", err)
+		}
+	}
+	rows, err := s.roles.QueryMatrix(ctx, roleFilter)
+	if err != nil {
+		return nil, fmt.Errorf("query matrix: %w", err)
+	}
+	return rows, nil
+}
+
+// MyMenus mengembalikan menu milik user (untuk sidebar + halaman kosong).
+func (s *Service) MyMenus(ctx context.Context, userCode string) ([]models.MenuEntry, error) {
+	user, err := s.users.GetByCode(ctx, userCode)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, services.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("menu user lookup: %w", err)
+	}
+	entries, err := s.roles.MyMenusByRole(ctx, user.RoleCode)
+	if err != nil {
+		return nil, fmt.Errorf("list my menus: %w", err)
+	}
+	return entries, nil
 }

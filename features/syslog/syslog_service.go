@@ -29,14 +29,23 @@ func (s *Service) write(ctx context.Context, level, source, message string) erro
 	if err != nil {
 		return err
 	}
-	if len(message) > 1000 {
-		message = message[:1000]
+	// Truncate aman rune (jangan belah UTF-8 di tengah).
+	if runes := []rune(message); len(runes) > 1000 {
+		message = string(runes[:1000])
 	}
 	return s.repo.Create(ctx, &models.SysLog{Code: code, Level: level, Source: source, Message: message})
 }
 
 func (s *Service) Error(ctx context.Context, source, message string) error {
 	return s.write(ctx, models.SyslogError, source, message)
+}
+
+func (s *Service) Warn(ctx context.Context, source, message string) error {
+	return s.write(ctx, models.SyslogWarn, source, message)
+}
+
+func (s *Service) Info(ctx context.Context, source, message string) error {
+	return s.write(ctx, models.SyslogInfo, source, message)
 }
 
 func (s *Service) List(ctx context.Context, f models.SyslogFilter) ([]models.SysLog, error) {

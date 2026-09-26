@@ -17,6 +17,7 @@ import (
 // bisa disuntik di sini tanpa mengubah handler).
 type ServiceInterface interface {
 	ListTemplates(ctx context.Context, activeOnly bool) ([]models.NotifTemplate, error)
+	GetTemplate(ctx context.Context, code string) (*models.NotifTemplate, error)
 	CreateTemplate(ctx context.Context, name, channel, subject, body string, active bool) (*models.NotifTemplate, error)
 	UpdateTemplate(ctx context.Context, code, name, channel, subject, body string, active bool) error
 	DeleteTemplate(ctx context.Context, code string) error
@@ -38,7 +39,7 @@ func validChannel(c string) error {
 	case models.ChannelEmail, models.ChannelPush, models.ChannelInApp:
 		return nil
 	default:
-		return errors.New("channel must be EMAIL, PUSH, or INAPP")
+		return services.ErrInvalidChannel
 	}
 }
 
@@ -54,7 +55,7 @@ func (s *Service) CreateTemplate(ctx context.Context, name, channel, subject, bo
 	name = strings.TrimSpace(name)
 	body = strings.TrimSpace(body)
 	if name == "" || body == "" {
-		return nil, errors.New("template name and body are required")
+		return nil, fmt.Errorf("%w: template name and body are required", services.ErrInvalidTemplate)
 	}
 	channel = strings.ToUpper(strings.TrimSpace(channel))
 	if err := validChannel(channel); err != nil {
@@ -78,7 +79,7 @@ func (s *Service) UpdateTemplate(ctx context.Context, code, name, channel, subje
 	name = strings.TrimSpace(name)
 	body = strings.TrimSpace(body)
 	if name == "" || body == "" {
-		return errors.New("template name and body are required")
+		return fmt.Errorf("%w: template name and body are required", services.ErrInvalidTemplate)
 	}
 	channel = strings.ToUpper(strings.TrimSpace(channel))
 	if err := validChannel(channel); err != nil {
@@ -90,7 +91,7 @@ func (s *Service) UpdateTemplate(ctx context.Context, code, name, channel, subje
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return services.ErrUserNotFound
+			return services.ErrTemplateNotFound
 		}
 		return fmt.Errorf("update template: %w", err)
 	}
@@ -100,11 +101,22 @@ func (s *Service) UpdateTemplate(ctx context.Context, code, name, channel, subje
 func (s *Service) DeleteTemplate(ctx context.Context, code string) error {
 	if err := s.repo.DeleteTemplate(ctx, code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return services.ErrUserNotFound
+			return services.ErrTemplateNotFound
 		}
 		return fmt.Errorf("delete template: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) GetTemplate(ctx context.Context, code string) (*models.NotifTemplate, error) {
+	tmpl, err := s.repo.GetTemplate(ctx, strings.TrimSpace(code))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, services.ErrTemplateNotFound
+		}
+		return nil, fmt.Errorf("get template: %w", err)
+	}
+	return tmpl, nil
 }
 
 // render mengganti {{var}} dengan nilai variables.
@@ -120,17 +132,17 @@ func render(input string, vars map[string]string) string {
 func (s *Service) Send(ctx context.Context, req models.NotifSendRequest) (*models.NotifLog, error) {
 	recipient := strings.TrimSpace(req.Recipient)
 	if recipient == "" {
-		return nil, errors.New("recipient is required")
+		return nil, fmt.Errorf("%w: recipient is required", services.ErrInvalidTemplate)
 	}
 	tmpl, err := s.repo.GetTemplate(ctx, strings.TrimSpace(req.TemplateCode))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.New("template not found")
+			return nil, services.ErrTemplateNotFound
 		}
 		return nil, fmt.Errorf("get template: %w", err)
 	}
 	if !tmpl.IsActive {
-		return nil, errors.New("template is inactive")
+		return nil, fmt.Errorf("%w: template is inactive", services.ErrInvalidTemplate)
 	}
 	vars := req.Variables
 	if vars == nil {

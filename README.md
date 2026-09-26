@@ -9,9 +9,13 @@ Aplikasi web **Go + React** untuk login, manajemen user, role, permission menu, 
 - Production: frontend dan API disajikan oleh satu `app.exe`
 
 ```text
-Browser :5173 ── Vite proxy ──► app.exe :1067 ──► SQL Server database Go
-Browser :1067 ─────────────────► app.exe :1067 ──► SQL Server database Go
+Browser :5173 ── Vite proxy ──► app.exe :1067 ──► SQL Server database <NAMA_DB>
+Browser :1067 ─────────────────► app.exe :1067 ──► SQL Server database <NAMA_DB>
 ```
+
+> Nama database **bebas** (mis. `GoCore`, `AppDb`, `PerusahaanDb`) — yang
+> penting sama persis di `DB_DATABASE` (.env) dan database yang Anda buat
+> di SQL Server. Tidak harus bernama `Go`.
 
 ## Fitur Utama
 
@@ -22,9 +26,14 @@ Browser :1067 ─────────────────► app.exe :10
 - Maksimal 5 sesi per user
 - RBAC sederhana: **satu permission untuk satu menu**
 - Semua role dapat memakai menu bila role tersebut diberi akses `MENU_*`
-- Module `ACCOUNT` untuk dashboard, module `SYSTEM` untuk menu operasional
+- Registry menu di tabel **`CPMENU`** (`MCONTROL` = folder modul UPPERCASE);
+  matriks role × modul × menu dibaca dari **view `CPMATRIX`**
+- Sidebar dikelompokkan per modul (tombol +/−), mendukung parent bersarang
+- Menu terdaftar tapi folder belum dibuat tampil sebagai **halaman 404
+  pemandu** (menunjukkan path persis), bukan hilang diam-diam
+- Menu baru dibuat via UI Role & Permission → Registry Menu (tanpa auto-grant)
+- Role tanpa akses apa pun (mis. `USER` baru) mendapat halaman kosong
 - Tidak ada pembatasan berdasarkan nama role atau folder admin/user
-- Role & Permission: daftar role di kiri, matriks akses menu di kanan
 - Role & Permission: daftar role di kiri, matriks akses menu di kanan
 - Audit log, system log, dan notifikasi
 - Popup login ulang ketika sesi habis tanpa pindah halaman
@@ -92,7 +101,7 @@ APP_PORT=1067
 DB_CONNECTION=sqlserver
 DB_HOST=localhost
 DB_PORT=1433
-DB_DATABASE=Go
+DB_DATABASE=<NAMA_DB-bebas-mis-GoCore>
 DB_USERNAME=may
 DB_PASSWORD=password-database-anda
 JWT_SECRET=ganti-dengan-string-acak-minimal-32-karakter
@@ -108,14 +117,16 @@ Jangan commit `.env`. File ini hanya untuk konfigurasi lokal.
 
 ## 1.4. Membuat Database SQL Server
 
-Buka SQL Server Management Studio atau gunakan `sqlcmd`.
+Buka SQL Server Management Studio atau gunakan `sqlcmd`. Ganti
+`<NAMA_DB>` dengan nama pilihan Anda (bebas, mis. `GoCore`) dan pakai nama
+yang **sama** di `.env` (`DB_DATABASE`) dan semua perintah `-d` di bawah.
 
 ### Membuat database kosong
 
 ```sql
-IF DB_ID(N'Go') IS NULL
+IF DB_ID(N'<NAMA_DB>') IS NULL
 BEGIN
-  CREATE DATABASE [Go];
+  CREATE DATABASE [<NAMA_DB>];
 END
 GO
 ```
@@ -128,16 +139,17 @@ Dari folder root repository:
 task migrate
 ```
 
-Task ini menjalankan:
+`task migrate` membaca `.env`, jadi pastikan `DB_DATABASE` sudah diisi nama
+yang sama. Task ini menjalankan:
 
 1. `scripts/migrate.sql`
 2. `scripts/migrate2_rbac.sql`
 
-Tanpa Task CLI:
+Tanpa Task CLI (ganti `<USER>`, `<PASSWORD>`, `<NAMA_DB>`):
 
 ```bash
-sqlcmd -S localhost,1433 -U may -P "password-database-anda" -d Go -C -i scripts/migrate.sql
-sqlcmd -S localhost,1433 -U may -P "password-database-anda" -d Go -C -i scripts/migrate2_rbac.sql
+sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/migrate.sql
+sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/migrate2_rbac.sql
 ```
 
 Migrasi aman diulang. `migrate2_rbac.sql` juga membersihkan permission lama per-fitur dan membuat permission menu baru.
@@ -145,7 +157,7 @@ Migrasi aman diulang. `migrate2_rbac.sql` juga membersihkan permission lama per-
 ### Membuat akun awal
 
 ```bash
-sqlcmd -S localhost,1433 -U may -P "password-database-anda" -d Go -C -i scripts/seed-admin.sql
+sqlcmd -S localhost,1433 -U <USER> -P "<PASSWORD>" -d <NAMA_DB> -C -i scripts/seed-admin.sql
 ```
 
 Akun development yang dibuat:
@@ -170,10 +182,11 @@ WHERE TABLE_TYPE = 'BASE TABLE'
 ORDER BY TABLE_NAME;
 ```
 
-Harus ada 9 tabel:
+Harus ada 10 tabel:
 
 ```text
 CPAUDITLOG
+CPMENU
 CPNOTIFLOG
 CPNOTIFTEMPLATE
 CPPERMISSION
@@ -182,6 +195,14 @@ CPROLE
 CPROLEPERMISSION
 CPSYSLOG
 CPUSER
+```
+
+Plus 1 view matriks:
+
+```sql
+SELECT TABLE_NAME
+FROM INFORMATION_SCHEMA.VIEWS
+WHERE TABLE_NAME = 'CPMATRIX';
 ```
 
 ### Verifikasi role
@@ -199,6 +220,26 @@ ADMIN  Administrator
 USER   Pengguna
 ```
 
+### Verifikasi registry menu (CPMENU)
+
+```sql
+SELECT CODE, MCONTROL, LABEL, SORT_ORDER
+FROM dbo.CPMENU
+ORDER BY SORT_ORDER;
+```
+
+Hasil yang benar (7 menu bawaan, modul `SYSTEM`):
+
+```text
+MENU_USERS          SYSTEM  User Account       1
+MENU_ROLES          SYSTEM  Role & Permission  2
+MENU_SESSIONS       SYSTEM  Sesi & Auth        3
+MENU_AUDIT          SYSTEM  Audit Log          4
+MENU_SECURITY       SYSTEM  Security Center    5
+MENU_SYSLOG         SYSTEM  System Log         6
+MENU_NOTIFICATIONS  SYSTEM  Notifikasi         7
+```
+
 ### Verifikasi permission menu
 
 ```sql
@@ -207,17 +248,16 @@ FROM dbo.CPPERMISSION
 ORDER BY CODE;
 ```
 
-Hasil yang benar:
+Hasil yang benar (7 baris, tanpa `MENU_DASHBOARD`):
 
 ```text
-MENU_DASHBOARD  ACCOUNT
-MENU_AUDIT      SYSTEM
+MENU_AUDIT        SYSTEM
 MENU_NOTIFICATIONS SYSTEM
-MENU_ROLES      SYSTEM
-MENU_SECURITY   SYSTEM
-MENU_SESSIONS   SYSTEM
-MENU_SYSLOG     SYSTEM
-MENU_USERS      SYSTEM
+MENU_ROLES        SYSTEM
+MENU_SECURITY     SYSTEM
+MENU_SESSIONS     SYSTEM
+MENU_SYSLOG       SYSTEM
+MENU_USERS        SYSTEM
 ```
 
 ### Verifikasi akses admin dan user
@@ -233,12 +273,18 @@ ORDER BY ROLE_CODE;
 Pada fresh install, hasil default:
 
 ```text
-ADMIN  8
-USER   1
+ADMIN  7
 ```
 
-`USER` hanya mendapat `MENU_DASHBOARD`. Setelah admin mencentang menu lain
-untuk role USER, query yang sama dapat menunjukkan `USER 8`.
+`USER` tidak memiliki baris (nol menu) — akses diberikan manual oleh admin
+via matriks. Setelah admin mencentang menu untuk suatu role, view `CPMATRIX`
+menampilkannya:
+
+```sql
+SELECT ROLE_CODE, MODULE, MENU_CODE, HAS_ACCESS
+FROM dbo.CPMATRIX
+ORDER BY ROLE_CODE, SORT_ORDER;
+```
 
 ### Verifikasi user
 
@@ -248,12 +294,22 @@ FROM dbo.CPUSER
 ORDER BY USERNAME;
 ```
 
+Fresh install berisi 2 akun (`admin`/`ADMIN`, `user`/`USER`).
+
 ### Verifikasi template notifikasi
 
 ```sql
 SELECT CODE, NAME, CHANNEL
 FROM dbo.CPNOTIFTEMPLATE
 ORDER BY CODE;
+```
+
+Hasil yang benar (3 template bawaan):
+
+```text
+NTPL-ALERT   Peringatan keamanan  INAPP
+NTPL-RESET   Reset password       EMAIL
+NTPL-WELCOME Selamat datang       EMAIL
 ```
 
 ## 1.6. Menjalankan Development
@@ -282,15 +338,17 @@ Login:
 admin / admin
 ```
 
-Setelah login:
+Setelah login (admin masih memegang 7 menu):
 
-1. Dashboard harus tampil.
+1. Menu pertama otomatis terbuka, sidebar dikelompokkan per modul (SYSTEM).
 2. Buka **Role & Permission**.
 3. Role `ADMIN` dan `USER` harus terlihat.
-4. Matriks harus menampilkan 8 menu, bukan permission per fungsi.
-5. Centang menu untuk role yang membutuhkan.
-6. Klik **Simpan permission**.
-7. User dengan role tersebut harus logout/login ulang agar permission terbaru dimuat.
+4. Matriks harus menampilkan 7 menu, bukan permission per fungsi.
+5. Kartu **Registry Menu** menampilkan 7 baris `CPMENU`.
+6. Centang menu untuk role yang membutuhkan (tanpa auto-grant).
+7. Klik **Simpan permission**.
+8. User dengan role tersebut harus logout/login ulang agar permission terbaru dimuat.
+9. Login sebagai `user`/`user` (nol menu) → halaman kosong "hubungi admin".
 
 ## 1.7. Menjalankan Production
 
@@ -362,37 +420,41 @@ NOTIF_SEND
 
 ## 2.1. Struktur Module Menu
 
-Folder pertama adalah module/kategori, bukan batas role:
+Folder pertama adalah module/kategori (UPPERCASE, bebas tambah modul baru),
+bukan batas role:
 
 ```text
-frontend/src/menus/account/<menu>/  -> MODULE ACCOUNT
-frontend/src/menus/system/<menu>/   -> MODULE SYSTEM
+frontend/src/menus/SYSTEM/<menu>/            -> MODULE SYSTEM
+frontend/src/menus/REPORT/keu/<menu>/        -> MODULE REPORT, parent grup visual "keu"
 ```
 
-Frontend otomatis memindai kedua module melalui `menus/registry.js`.
-Module hanya mengelompokkan menu di matriks. Akses tetap ditentukan oleh
-permission menu.
+Frontend otomatis memindai semua module melalui `menus/registry.js`
+(glob `./*/**/index.jsx`). Module hanya mengelompokkan menu di sidebar dan
+matriks. Akses tetap ditentukan oleh permission menu + baris `CPMENU`.
 
 ```text
-menus/account/dashboard -> MENU_DASHBOARD
-menus/system/users      -> MENU_USERS
-menus/system/roles      -> MENU_ROLES
+menus/SYSTEM/users   -> MENU_USERS  (MCONTROL SYSTEM)
+menus/SYSTEM/roles   -> MENU_ROLES  (MCONTROL SYSTEM)
+menus/REPORT/laporan -> MENU_LAPORAN (MCONTROL REPORT)
 ```
 
-Tidak ada lagi folder `menus/admin` atau `menus/user` sebagai pembatas akses.
-Semua role—ADMIN, USER, dan role custom—boleh memakai menu yang sama bila
-role tersebut memiliki `MENU_*` yang sesuai.
+Tidak ada lagi folder `menus/account` atau menu dashboard. Semua
+role—ADMIN, USER, dan role custom—boleh memakai menu yang sama bila role
+tersebut memiliki `MENU_*` yang sesuai; role tanpa akses mendapat halaman
+kosong.
 
 ## 2.2. Alur Memberi Akses Menu
 
-1. Admin membuat atau memilih role.
-2. Matriks menampilkan module `ACCOUNT` dan `SYSTEM`.
-3. Admin centang menu yang boleh diakses role tersebut.
-4. Admin klik **Simpan permission**.
-5. Permission tersimpan di `CPROLEPERMISSION`.
-6. Saat login, frontend mengambil permission user dari `GET /api/users/me`.
-7. Sidebar hanya menampilkan menu yang permission-nya dimiliki user.
-8. Backend juga memeriksa permission yang sama pada endpoint menu.
+1. Admin membuat menu via **Registry Menu** (atau memilih menu bawaan).
+2. Admin membuat atau memilih role.
+3. Matriks menampilkan menu per module (`SYSTEM`, `REPORT`, ...).
+4. Admin centang menu yang boleh diakses role tersebut.
+5. Admin klik **Simpan permission**.
+6. Permission tersimpan di `CPROLEPERMISSION` (terbaca via view `CPMATRIX`).
+7. Saat login, frontend mengambil permission + entri menu user dari `GET /api/users/me`.
+8. Sidebar hanya menampilkan menu yang permission-nya dimiliki user; menu
+   terdaftar tapi folder belum dibuat tampil sebagai halaman 404 pemandu.
+9. Backend juga memeriksa permission yang sama pada endpoint menu.
 
 Contoh:
 
@@ -417,18 +479,17 @@ go-core/
 ├── main.go
 ├── routes/                 # registrasi endpoint
 ├── middleware/             # JWT + permission menu
-├── models/                 # konstanta permission MENU_* dan DTO
+├── models/                 # konstanta permission MENU_*, menu, dan DTO
 ├── features/               # service, repository, handler backend
 ├── frontend/
 │   ├── src/api/client.js   # request, login, session, getMe
 │   ├── src/menus/
-│   │   ├── registry.js     # auto-scan menu per module
-│   │   ├── account/        # MODULE ACCOUNT
-│   │   └── system/         # MODULE SYSTEM
-│   ├── src/components/     # UI kit
+│   │   ├── registry.js     # auto-scan menu nested per module + 404 pemandu
+│   │   └── SYSTEM/         # MODULE SYSTEM (7 menu bawaan)
+│   ├── src/components/     # UI kit (termasuk MissingMenu)
 │   └── src/pages/          # LoginForm
-├── scripts/                # migrate*.sql dan build script
-├── tutorial/               # tutorial menu baru
+├── scripts/                # migrate*.sql (SQL Server) dan build script
+├── tutorial/               # tutorial menu baru (SQL Server)
 ├── Taskfile.yml
 └── README.md
 ```
@@ -485,14 +546,15 @@ task build
 |---|---|
 | `Matriks akses menu kosong` | Database belum menjalankan `migrate2_rbac.sql` → jalankan `task migrate`, restart backend, lalu refresh browser. |
 | `Tercatat 0 dari 0 permission` | `CPPERMISSION` masih kosong/permission lama belum dimigrasi → jalankan `task migrate`. |
-| Dashboard `user not found` | Restart backend dengan binary terbaru, logout/login ulang, dan pastikan database `Go` berisi user. |
-| Login berhasil tetapi sidebar kosong | Permission role belum diberikan atau user belum login ulang → buka Role & Permission, centang menu, simpan, lalu login ulang. |
-| Menu baru tidak muncul | Folder bukan `menus/<module>/<menu>/`, `index.jsx` tidak punya `export default`, `meta` belum diisi, atau `MENU_<MENU>` belum di-seed. |
+| Login berhasil tetapi sidebar kosong | Wajar bila role memang nol menu (mis. `USER` baru) → buka Role & Permission, centang menu, simpan, lalu login ulang. |
+| Menu terdaftar tapi tampil 404 | Folder `frontend/src/menus/<MCONTROL>/[<parent>/]<key>/` belum dibuat → ikuti petunjuk di halaman 404 (copy template, `npm run build`, restart). |
+| Menu baru tidak muncul sama sekali | Permission belum dicentang ke role tersebut, atau user belum login ulang. |
 | Menu baru muncul untuk semua role | Permission menu belum diberikan/di-filter dengan benar; cek `CPROLEPERMISSION` role tersebut. |
 | Permission endpoint 403 | User belum memiliki `MENU_<MENU>` atau request dikirim ke role/menu yang salah. |
 | `WARN frontend/dist missing` | Normal saat development; build frontend dengan `task build-frontend` jika ingin menghapus warning. |
 | `localhost:1067` tidak bisa dibuka | Backend belum jalan → `task start` atau `go run .`. |
 | `go:embed no matching files` | Jalankan `task build-frontend`, pastikan `frontend/dist/.gitignore` ada. |
+| Koneksi DB gagal saat start | `DB_DATABASE` di `.env` tidak sama dengan nama database di SQL Server, atau kredensial salah → samakan ketiganya (`DB_HOST/DB_PORT/DB_DATABASE` + perintah `-d`). |
 
 ---
 
@@ -506,10 +568,10 @@ tutorial/README.md
 
 Tutorial terbaru menjelaskan:
 
-1. Menambah module `ACCOUNT` atau `SYSTEM`.
-2. Menambah menu di `menus/<module>/<menu>/`.
-3. Membuat permission `MENU_<MENU>`.
-4. Seed permission ke database.
+1. Mendaftarkan menu di `CPMENU` via UI Registry Menu (tanpa auto-grant).
+2. Menambah folder `menus/<MCONTROL>/[<parent>/]<menu>/` (modul UPPERCASE).
+3. Memahami halaman 404 pemandu sebagai kompas lokasi folder.
+4. Membuat permission `MENU_<MENU>` (satu permission per menu).
 5. Mendaftarkan route backend dengan permission menu yang sama.
-6. Mengatur akses dari halaman Role & Permission.
-7. Login ulang dan memastikan menu otomatis muncul di sidebar.
+6. Mengatur akses dari halaman Role & Permission (matriks per modul).
+7. Login ulang dan memastikan menu otomatis muncul di grup modulnya.

@@ -32,7 +32,8 @@ export default function EditUserModal({ user, onClose, onSaved }) {
     if (nextUsername && nextUsername !== user.username) patch.username = nextUsername
     if (nextEmail && nextEmail !== user.email) patch.email = nextEmail
     if (password) patch.password = password
-    if (Object.keys(patch).length === 0) {
+    const roleChanged = canAssignRole && role !== user.role_code
+    if (Object.keys(patch).length === 0 && !roleChanged) {
       setError('Tidak ada perubahan. Ubah salah satu field terlebih dulu.')
       return
     }
@@ -41,14 +42,11 @@ export default function EditUserModal({ user, onClose, onSaved }) {
       if (Object.keys(patch).length > 0) {
         await updateUser(user.code, patch)
       }
-      if (canAssignRole && role !== user.role_code) {
+      if (roleChanged) {
         await updateUserRole(user.code, role)
         toast.success(`Role @${user.username} diubah ke ${role}.`)
-      } else if (Object.keys(patch).length > 0) {
-        toast.success('Profil berhasil diperbarui.')
       } else {
-        setError('Tidak ada perubahan. Ubah salah satu field terlebih dulu.')
-        return
+        toast.success('Profil berhasil diperbarui.')
       }
       onSaved()
       onClose()

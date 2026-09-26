@@ -13,12 +13,15 @@ import {
 } from '../../../components'
 
 // TEMPLATE mainpage menu baru. Cara pakai:
-// 1. Copy folder ini ke menus/<module>/<menu>/, misalnya
-//    menus/system/laporan/ atau menus/account/laporan/.
+// 1. Daftarkan dulu via UI Role & Permission → Registry Menu (atau SQL ke
+//    CPPERMISSION + CPMENU) agar permission MENU_<NAMA> + MCONTROL ada.
+// 2. Copy folder ini ke menus/<MCONTROL>/[<parent>/]<menu>/, misalnya
+//    menus/REPORT/laporan/ (modul UPPERCASE persis = MCONTROL).
 //    Nama folder menjadi kode permission otomatis, contoh laporan -> MENU_LAPORAN.
-// 2. Sesuaikan meta di bawah (label, icon, order).
-// 3. Ganti placeholder <menu> di api.js dan isi halaman dengan UI-mu.
-// 4. Jalankan migrate jika permission baru, lalu build dan restart backend.
+//    Folder perantara tanpa index.jsx = grup visual bersarang (boleh).
+// 3. Sesuaikan meta di bawah (label, icon, order).
+// 4. Ganti placeholder <menu> di api.js dan isi halaman dengan UI-mu.
+// 5. npm run build + restart backend; menu otomatis muncul di grup modulnya.
 export const meta = { label: 'Menu Baru', icon: 'list', order: 50 }
 
 export default function MenuBaru() {

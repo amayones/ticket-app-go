@@ -14,6 +14,7 @@ import {
   Pagination,
   SkeletonRows,
   useSmoothLoading,
+  formatTime,
   useToast,
 } from '../../../components'
 
@@ -24,14 +25,6 @@ function toneFor(level) {
   if (level === 'ERROR') return 'danger'
   if (level === 'WARN') return 'warning'
   return 'info'
-}
-
-function formatTime(iso) {
-  try {
-    return new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
-  } catch {
-    return iso
-  }
 }
 
 export default function Syslog() {

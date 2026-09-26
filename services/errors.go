@@ -17,4 +17,26 @@ var (
 	ErrUserNotFound     = errors.New("user not found")
 	ErrInvalidRefresh   = errors.New("invalid or expired refresh token")
 	ErrForbidden        = errors.New("forbidden")
+
+	// Role domain.
+	ErrRoleNotFound  = errors.New("role not found")
+	ErrRoleExists    = errors.New("role code already exists")
+	ErrRoleProtected = errors.New("system roles cannot be deleted")
+	ErrRoleInUse     = errors.New("role is still assigned to users")
+	ErrInvalidRole   = errors.New("invalid role")
+
+	// Notification template domain.
+	ErrTemplateNotFound = errors.New("template not found")
+	ErrInvalidTemplate  = errors.New("invalid template")
+	ErrInvalidChannel   = errors.New("channel must be EMAIL, PUSH, or INAPP")
+
+	// Session domain.
+	ErrSessionNotFound = errors.New("session not found")
+
+	// Menu registry domain (CPMENU + CPMATRIX).
+	ErrMenuNotFound      = errors.New("menu not found")
+	ErrMenuInUse         = errors.New("menu is still assigned to roles")
+	ErrInvalidMenu       = errors.New("invalid menu")
+	ErrPermissionExists  = errors.New("permission code already exists")
+	ErrMenuHasChildren   = errors.New("menu still has child menus")
 )

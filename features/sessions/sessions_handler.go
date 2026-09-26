@@ -9,7 +9,6 @@ import (
 	"golang-backend/internal/web"
 	"golang-backend/middleware"
 	"golang-backend/models"
-	"golang-backend/services"
 	"golang-backend/utils"
 )
 
@@ -42,6 +41,9 @@ func (h *Handler) ListMySessions(w http.ResponseWriter, r *http.Request) {
 		web.ServiceError(w, err)
 		return
 	}
+	if sessions == nil {
+		sessions = []models.Session{}
+	}
 	web.WriteJSON(w, http.StatusOK, sessions)
 }
 
@@ -52,27 +54,25 @@ func (h *Handler) ListAllSessions(w http.ResponseWriter, r *http.Request) {
 		web.ServiceError(w, err)
 		return
 	}
+	if sessions == nil {
+		sessions = []models.Session{}
+	}
 	web.WriteJSON(w, http.StatusOK, sessions)
 }
 
 func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
-	rawID, ok := web.PathCode(r, "id")
+	id, ok := web.PathInt(r, "id")
 	if !ok {
 		web.WriteError(w, http.StatusBadRequest, "Invalid session ID")
 		return
 	}
-	id, err := strconv.Atoi(rawID)
-	if err != nil || id <= 0 {
-		web.WriteError(w, http.StatusBadRequest, "Invalid session ID")
-		return
-	}
 	caller, _ := middleware.GetUserCode(r)
-	manageAll := h.Perms.CheckPermission(r.Context(), caller, models.MenuSessions) == nil
+	// Nil-safe: handler bisa dipakai tanpa Perms di test; default tanpa manageAll.
+	manageAll := false
+	if h.Perms != nil {
+		manageAll = h.Perms.CheckPermission(r.Context(), caller, models.MenuSessions) == nil
+	}
 	if err := h.Service.RevokeSession(r.Context(), caller, id, manageAll); err != nil {
-		if err == services.ErrForbidden {
-			web.WriteError(w, http.StatusForbidden, err.Error())
-			return
-		}
 		web.ServiceError(w, err)
 		return
 	}

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../api/client.js'
 import { listAllSessions, listMySessions, revokeSession } from './api.js'
-import { logoutAll } from '../users/api.js'
-
-export const meta = { label: 'Sesi & Auth', icon: 'key', order: 3 }
+import { logoutAll as logoutAllUser } from '../users/api.js'
 import {
   Alert,
   Badge,
@@ -16,18 +14,13 @@ import {
   Pagination,
   SkeletonRows,
   useSmoothLoading,
+  formatTime,
   useToast,
 } from '../../../components'
 
-const PAGE_SIZE = 15
+export const meta = { label: 'Sesi & Auth', icon: 'key', order: 3 }
 
-function formatTime(iso) {
-  try {
-    return new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
-  } catch {
-    return iso
-  }
-}
+const PAGE_SIZE = 15
 
 export default function Sessions() {
   const toast = useToast()
@@ -78,9 +71,13 @@ export default function Sessions() {
     }
   }
 
-  async function logoutAll() {
+  async function logoutAllMine() {
+    if (!me?.code) {
+      toast.error('Profil pengguna belum dimuat.')
+      return
+    }
     try {
-      await logoutAll(me.code)
+      await logoutAllUser(me.code)
       toast.warning('Semua sesi Anda dicabut. Silakan login ulang.', { title: 'Sesi berakhir' })
       load()
     } catch (err) {
@@ -157,7 +154,7 @@ export default function Sessions() {
                   onClick={() => setRevoking(s)}
                   className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-300"
                 >
-                  <Icon name="trash" className="h-4.5 w-4.5" />
+                  <Icon name="trash" className="h-4 w-4" />
                 </button>
               </li>
             ))}
@@ -179,7 +176,7 @@ export default function Sessions() {
 
         {tab === 'mine' && !showLoading && sessions.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-            <Button variant="danger" size="sm" onClick={logoutAll}>
+            <Button variant="danger" size="sm" onClick={logoutAllMine}>
               <Icon name="logout" className="h-4 w-4" />
               Cabut semua sesi saya
             </Button>

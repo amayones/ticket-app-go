@@ -14,6 +14,8 @@ import (
 type RepositoryInterface interface {
 	Create(ctx context.Context, token *models.RefreshToken) error
 	GetByTokenHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
+	// GetByID returns one session row by numeric ID (for revoke owner check).
+	GetByID(ctx context.Context, id int) (*models.Session, error)
 	// DeleteByTokenHash returns true when a row was actually removed.
 	DeleteByTokenHash(ctx context.Context, tokenHash string) (bool, error)
 	DeleteByUserCode(ctx context.Context, userCode string) error
@@ -196,6 +198,24 @@ func (r *Repository) querySessions(ctx context.Context, query string, args ...an
 		return nil, err
 	}
 	return out, nil
+}
+
+// GetByID returns one session (active or expired) by row ID for revoke lookup.
+// JOIN ke CPUSER dibuat LEFT agar sesi tetap ketemu walau user orphan.
+func (r *Repository) GetByID(ctx context.Context, id int) (*models.Session, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	query := `SELECT t.ID, t.USER_CODE, COALESCE(u.USERNAME, ''), t.EXPIRES_AT, t.CREATED_AT
+		FROM ` + r.table() + ` t LEFT JOIN ` + r.dialect.Table("CPUSER") + ` u ON u.CODE = t.USER_CODE
+		WHERE t.ID = ?`
+	var s models.Session
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(query), id).Scan(
+		&s.ID, &s.UserCode, &s.Username, &s.ExpiresAt, &s.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 // DeleteByID revokes one session by row ID (owner or admin enforced by caller).

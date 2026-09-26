@@ -38,6 +38,9 @@ func (h *Handler) ListTemplates(w http.ResponseWriter, r *http.Request) {
 		web.ServiceError(w, err)
 		return
 	}
+	if tmpls == nil {
+		tmpls = []models.NotifTemplate{}
+	}
 	web.WriteJSON(w, http.StatusOK, tmpls)
 }
 
@@ -81,9 +84,16 @@ func (h *Handler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
+	// Partial update: jika is_active tidak dikirim, pertahankan nilai existing
+	// (jangan paksa aktif seperti sebelumnya).
 	active := true
 	if req.Active != nil {
 		active = *req.Active
+	} else if existing, err := h.Service.GetTemplate(r.Context(), code); err == nil && existing != nil {
+		active = existing.IsActive
+	} else if err != nil {
+		web.ServiceError(w, err)
+		return
 	}
 	if err := h.Service.UpdateTemplate(r.Context(), code, req.Name, req.Channel, req.Subject, req.Body, active); err != nil {
 		web.ServiceError(w, err)
@@ -128,6 +138,9 @@ func (h *Handler) ListNotifLogs(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		web.ServiceError(w, err)
 		return
+	}
+	if logs == nil {
+		logs = []models.NotifLog{}
 	}
 	web.WriteJSON(w, http.StatusOK, logs)
 }
