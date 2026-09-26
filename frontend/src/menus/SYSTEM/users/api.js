@@ -6,10 +6,6 @@ export async function listUsers(limit = 50, offset = 0) {
   return Array.isArray(data) ? data : []
 }
 
-export async function getUser(code) {
-  return request(`/api/users/${code}`, { auth: true })
-}
-
 // Tambah user dari menu User Account. Akses menu diberikan oleh permission.
 export async function createUser(username, email, password, roleCode) {
   const body = { username, email, password }

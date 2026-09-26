@@ -26,7 +26,7 @@ const store = {
 // Event global saat sesi benar-benar habis (refresh gagal / tidak ada).
 // App.jsx mendengarkan ini untuk menampilkan popup login ulang di tempat,
 // tanpa pindah halaman. Guard agar parallel 401 tidak spam event.
-export const SESSION_EXPIRED_EVENT = 'go-core:session-expired'
+const SESSION_EXPIRED_EVENT = 'go-core:session-expired'
 let expiredNotified = false
 
 function notifySessionExpired() {

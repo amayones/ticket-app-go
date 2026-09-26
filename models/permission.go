@@ -3,10 +3,9 @@ package models
 import "time"
 
 // Permission codes (seed di scripts/migrate2_rbac.sql). Satu permission
-// per menu: jika role punya permission ini, role dapat memakai seluruh
-// fungsi menu tersebut. Tambah menu = tambah baris CPMENU + CPPERMISSION
-// (via POST /api/admin/menus). Modul account/dashboard sudah dihapus:
-// role tanpa akses apa pun mendapat halaman kosong.
+// per menu: jika role punya permission ini (baris CPPERMISSION), role dapat
+// memakai seluruh fungsi menu tersebut. Tambah menu = tambah baris CPMENU
+// (via POST /api/admin/menus). Role tanpa akses apa pun mendapat halaman kosong.
 const (
 	MenuUsers         = "MENU_USERS"
 	MenuRoles         = "MENU_ROLES"
@@ -15,9 +14,13 @@ const (
 	MenuSecurity      = "MENU_SECURITY"
 	MenuSyslog        = "MENU_SYSLOG"
 	MenuNotifications = "MENU_NOTIFICATIONS"
+	// MenuModul hanya mengatur tampilnya halaman Modul & Menu di sidebar;
+	// API manajemen menu tetap di bawah MENU_ROLES.
+	MenuModul = "MENU_MODUL"
 )
 
-// Permission adalah baris tabel CPPERMISSION.
+// Permission adalah permission tampil satu menu (kode MENU_* dari CPMENU);
+// grant per role tercatat di tabel CPPERMISSION.
 type Permission struct {
 	ID          int       `json:"-"`
 	Code        string    `json:"code"`

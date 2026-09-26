@@ -9,7 +9,6 @@ import {
   updateTemplate,
 } from './api.js'
 
-export const meta = { label: 'Notifikasi', icon: 'bell', order: 7 }
 import {
   Alert,
   Badge,
@@ -23,10 +22,12 @@ import {
   Pagination,
   SkeletonRows,
   TextField,
-  useSmoothLoading,
   formatTime,
+  useSmoothLoading,
   useToast,
 } from '../../../components'
+
+export const meta = { label: 'Notifikasi', icon: 'bell', order: 7 }
 
 const PAGE_SIZE = 15
 const CHANNELS = ['EMAIL', 'PUSH', 'INAPP']

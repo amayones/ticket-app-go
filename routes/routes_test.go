@@ -107,6 +107,13 @@ func (s *stubRoles) GetMatrix(ctx context.Context, role string) ([]models.Matrix
 func (s *stubRoles) MyMenus(ctx context.Context, userCode string) ([]models.MenuEntry, error) {
 	return []models.MenuEntry{}, nil
 }
+func (s *stubRoles) ListModules(ctx context.Context) ([]models.Module, error) {
+	return []models.Module{{Code: "SYSTEM", Label: "System", SortOrder: 1}}, nil
+}
+func (s *stubRoles) CreateModule(ctx context.Context, code, label string, sort int) (*models.Module, error) {
+	return &models.Module{Code: code, Label: label, SortOrder: sort}, nil
+}
+func (s *stubRoles) DeleteModule(ctx context.Context, code string) error { return nil }
 
 // --- Menu: sessions ---
 
@@ -283,12 +290,19 @@ func TestAdminRBAC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Sesi menu hanya bisa diakses role yang memiliki permission MENU_SESSIONS.
-	if rec := doReq(t, r, "GET", "/api/admin/sessions", "", adminTok); rec.Code != 200 {
-		t.Fatalf("admin sessions must be 200, got %d (%s)", rec.Code, rec.Body.String())
+	// Sesi self-service (/api/sessions/*) hanya butuh auth, tanpa permission.
+	if rec := doReq(t, r, "GET", "/api/sessions/mine", "", userTok); rec.Code != 200 {
+		t.Fatalf("user self sessions must be 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
-	if rec := doReq(t, r, "GET", "/api/admin/sessions", "", userTok); rec.Code != 403 {
-		t.Fatalf("user sessions must be 403, got %d", rec.Code)
+	if rec := doReq(t, r, "GET", "/api/sessions/mine", "", ""); rec.Code != 401 {
+		t.Fatalf("self sessions without token must be 401, got %d", rec.Code)
+	}
+	// Lihat semua sesi tetap butuh permission MENU_SESSIONS.
+	if rec := doReq(t, r, "GET", "/api/admin/sessions/all", "", adminTok); rec.Code != 200 {
+		t.Fatalf("admin all sessions must be 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if rec := doReq(t, r, "GET", "/api/admin/sessions/all", "", userTok); rec.Code != 403 {
+		t.Fatalf("user all sessions must be 403, got %d", rec.Code)
 	}
 	adminPaths := []struct{ method, path, body string }{
 		{"GET", "/api/admin/permissions", ""},
@@ -306,6 +320,9 @@ func TestAdminRBAC(t *testing.T) {
 		{"GET", "/api/admin/matrix", ""},
 		{"POST", "/api/admin/menus", `{"code":"MENU_TEST","name":"Test","module":"SYSTEM","label":"Test"}`},
 		{"DELETE", "/api/admin/menus/MENU_TEST", ""},
+		{"GET", "/api/admin/modules", ""},
+		{"POST", "/api/admin/modules", `{"code":"REPORT","label":"Report","sort_order":10}`},
+		{"DELETE", "/api/admin/modules/REPORT", ""},
 		{"POST", "/api/admin/notifications/send", `{"template_code":"NTM-1","recipient":"a@b.c"}`},
 	}
 	for _, p := range adminPaths {

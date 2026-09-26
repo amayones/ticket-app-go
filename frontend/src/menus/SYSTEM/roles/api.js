@@ -25,26 +25,6 @@ export async function setRolePermissions(code, permissions) {
   return request(`/api/admin/roles/${code}/permissions`, { method: 'PUT', body: { permissions }, auth: true })
 }
 
-// Registry menu (CPMENU + CPMATRIX). Buat/hapus tanpa auto-grant role.
-export async function listMenus() {
-  const data = await request('/api/admin/menus', { auth: true })
-  return Array.isArray(data) ? data : []
-}
-
-export async function createMenu(payload) {
-  return request('/api/admin/menus', { method: 'POST', body: payload, auth: true })
-}
-
-export async function deleteMenu(code) {
-  return request(`/api/admin/menus/${code}`, { method: 'DELETE', auth: true })
-}
-
-export async function getMatrix(role = '') {
-  const q = role ? `?role=${encodeURIComponent(role)}` : ''
-  const data = await request(`/api/admin/matrix${q}`, { auth: true })
-  return Array.isArray(data) ? data : []
-}
-
 export async function myMenus() {
   const data = await request('/api/menus/mine', { auth: true })
   return Array.isArray(data) ? data : []

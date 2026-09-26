@@ -26,13 +26,17 @@ type ServiceInterface interface {
 	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
 	UpdateUserRole(ctx context.Context, userCode, roleCode string) error
 	CountRoles(ctx context.Context) (int, error)
-	// Registry menu (CPMENU + CPMATRIX view).
+	// Registry menu (CPMENU + CPMATRIX tabel + grant CPPERMISSION).
 	ListMenus(ctx context.Context) ([]models.Menu, error)
 	GetMenu(ctx context.Context, code string) (*models.Menu, error)
 	CreateMenu(ctx context.Context, input models.MenuInput) (*models.Menu, error)
 	DeleteMenu(ctx context.Context, code string) error
 	GetMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error)
 	MyMenus(ctx context.Context, userCode string) ([]models.MenuEntry, error)
+	// Master modul (CPMATRIX tabel).
+	ListModules(ctx context.Context) ([]models.Module, error)
+	CreateModule(ctx context.Context, code, label string, sortOrder int) (*models.Module, error)
+	DeleteModule(ctx context.Context, code string) error
 }
 
 // userStore dipenuhi users.Repository (tanpa import antar-fitur).
@@ -252,11 +256,11 @@ func validMenuCode(code string) error {
 func validModule(m string) error {
 	m = strings.TrimSpace(strings.ToUpper(m))
 	if m == "" || len(m) > 40 {
-		return fmt.Errorf("%w: module must be 1-40 characters", services.ErrInvalidMenu)
+		return fmt.Errorf("%w: module must be 1-40 characters", services.ErrInvalidModule)
 	}
 	for _, r := range m {
 		if !(r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_') {
-			return fmt.Errorf("%w: module must be uppercase letters, digits, or underscore", services.ErrInvalidMenu)
+			return fmt.Errorf("%w: module must be uppercase letters, digits, or underscore", services.ErrInvalidModule)
 		}
 	}
 	return nil
@@ -302,6 +306,13 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 	if err := validModule(module); err != nil {
 		return nil, err
 	}
+	// Modul wajib sudah terdaftar di CPMATRIX (urut: modul -> menu).
+	if _, err := s.roles.GetModule(ctx, module); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: module not found in CPMATRIX: %s (buat modul dulu)", services.ErrInvalidMenu, module)
+		}
+		return nil, fmt.Errorf("get module: %w", err)
+	}
 	if name == "" || label == "" {
 		return nil, fmt.Errorf("%w: menu name and label are required", services.ErrInvalidMenu)
 	}
@@ -326,8 +337,7 @@ func (s *Service) CreateMenu(ctx context.Context, input models.MenuInput) (*mode
 		}
 	}
 	menu := &models.Menu{Code: code, MControl: module, Label: label, SortOrder: sortOrder, Parent: parent}
-	desc := "Seluruh fungsi " + label
-	if err := s.roles.CreateMenuFull(ctx, code, name, module, desc, menu); err != nil {
+	if err := s.roles.CreateMenu(ctx, menu); err != nil {
 		if isDuplicateErr(err) {
 			return nil, services.ErrPermissionExists
 		}
@@ -372,7 +382,7 @@ func (s *Service) DeleteMenu(ctx context.Context, code string) error {
 	return nil
 }
 
-// GetMatrix membaca view CPMATRIX (roleFilter kosong = semua role).
+// GetMatrix membaca matriks via JOIN (roleFilter kosong = semua role).
 func (s *Service) GetMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error) {
 	roleFilter = strings.TrimSpace(strings.ToUpper(roleFilter))
 	if roleFilter != "" {
@@ -404,4 +414,67 @@ func (s *Service) MyMenus(ctx context.Context, userCode string) ([]models.MenuEn
 		return nil, fmt.Errorf("list my menus: %w", err)
 	}
 	return entries, nil
+}
+
+// --- Master modul (CPMATRIX tabel) --------------------------------------------
+
+func (s *Service) ListModules(ctx context.Context) ([]models.Module, error) {
+	modules, err := s.roles.ListModules(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list modules: %w", err)
+	}
+	return modules, nil
+}
+
+// CreateModule mendaftarkan modul baru (tanpa menu di dalamnya).
+func (s *Service) CreateModule(ctx context.Context, code, label string, sortOrder int) (*models.Module, error) {
+	code = strings.TrimSpace(strings.ToUpper(code))
+	label = strings.TrimSpace(label)
+	if err := validModule(code); err != nil {
+		return nil, err
+	}
+	if label == "" || len(label) > 100 {
+		return nil, fmt.Errorf("%w: module label is required (max 100 chars)", services.ErrInvalidModule)
+	}
+	if sortOrder < 0 || sortOrder > 9999 {
+		return nil, fmt.Errorf("%w: sort order must be 0-9999", services.ErrInvalidModule)
+	}
+	m := &models.Module{Code: code, Label: label, SortOrder: sortOrder}
+	if err := s.roles.CreateModule(ctx, m); err != nil {
+		if isDuplicateErr(err) {
+			return nil, services.ErrModuleExists
+		}
+		return nil, fmt.Errorf("create module: %w", err)
+	}
+	return m, nil
+}
+
+// DeleteModule menghapus modul; ditolak bila masih ada menu di dalamnya.
+func (s *Service) DeleteModule(ctx context.Context, code string) error {
+	code = strings.TrimSpace(strings.ToUpper(code))
+	if _, err := s.roles.GetModule(ctx, code); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return services.ErrModuleNotFound
+		}
+		return fmt.Errorf("get module: %w", err)
+	}
+	n, err := s.roles.CountModuleMenus(ctx, code)
+	if err != nil {
+		return fmt.Errorf("check module menus: %w", err)
+	}
+	if n > 0 {
+		return services.ErrModuleInUse
+	}
+	if err := s.roles.DeleteModule(ctx, code); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return services.ErrModuleNotFound
+		}
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "fk_") || strings.Contains(msg, "547") ||
+			strings.Contains(msg, "foreign key") {
+			return services.ErrModuleInUse
+		}
+		return fmt.Errorf("delete module: %w", err)
+	}
+	return nil
 }

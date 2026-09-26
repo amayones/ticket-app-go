@@ -16,8 +16,9 @@ func Path() string {
 	return filepath.Join(os.TempDir(), filename)
 }
 
-// LegacyPath is the pre-rename name; stop helper checks it as fallback.
-func LegacyPath() string {
+// legacyPath is the pre-rename name; Read/Remove still handle it as
+// fallback so a leftover file from an older build never blocks start/stop.
+func legacyPath() string {
 	return filepath.Join(os.TempDir(), "golang-backend.pid")
 }
 
@@ -28,7 +29,7 @@ func Write() error {
 
 // Read returns the PID from Path(), falling back to the legacy name.
 func Read() (int, error) {
-	for _, p := range []string{Path(), LegacyPath()} {
+	for _, p := range []string{Path(), legacyPath()} {
 		b, err := os.ReadFile(p)
 		if err != nil {
 			continue
@@ -47,5 +48,5 @@ func Read() (int, error) {
 // Remove deletes both current and legacy PID files (best-effort).
 func Remove() {
 	_ = os.Remove(Path())
-	_ = os.Remove(LegacyPath())
+	_ = os.Remove(legacyPath())
 }

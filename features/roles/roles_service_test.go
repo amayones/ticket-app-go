@@ -13,9 +13,10 @@ import (
 var errFakeDuplicate = errors.New("duplicate key value violates unique constraint")
 
 type fakeRoleRepo struct {
-	roles map[string]*models.Role
-	perms map[string][]string
-	menus map[string]*models.Menu
+	roles   map[string]*models.Role
+	perms   map[string][]string
+	menus   map[string]*models.Menu
+	modules map[string]*models.Module
 }
 
 func newFakeRoleRepo() *fakeRoleRepo {
@@ -31,6 +32,9 @@ func newFakeRoleRepo() *fakeRoleRepo {
 		menus: map[string]*models.Menu{
 			models.MenuUsers: {Code: models.MenuUsers, MControl: "SYSTEM", Label: "User Account", SortOrder: 1},
 			models.MenuRoles: {Code: models.MenuRoles, MControl: "SYSTEM", Label: "Role & Permission", SortOrder: 2},
+		},
+		modules: map[string]*models.Module{
+			"SYSTEM": {Code: "SYSTEM", Label: "System", SortOrder: 1},
 		},
 	}
 }
@@ -110,7 +114,7 @@ func (f *fakeRoleRepo) GetMenu(ctx context.Context, code string) (*models.Menu, 
 	return nil, sql.ErrNoRows
 }
 
-func (f *fakeRoleRepo) CreateMenuFull(ctx context.Context, permCode, permName, permGroup, permDesc string, menu *models.Menu) error {
+func (f *fakeRoleRepo) CreateMenu(ctx context.Context, menu *models.Menu) error {
 	if _, ok := f.menus[menu.Code]; ok {
 		return errFakeDuplicate
 	}
@@ -177,6 +181,49 @@ func (f *fakeRoleRepo) MyMenusByRole(ctx context.Context, roleCode string) ([]mo
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeRoleRepo) ListModules(ctx context.Context) ([]models.Module, error) {
+	out := make([]models.Module, 0, len(f.modules))
+	for _, m := range f.modules {
+		out = append(out, *m)
+	}
+	return out, nil
+}
+
+func (f *fakeRoleRepo) GetModule(ctx context.Context, code string) (*models.Module, error) {
+	if m, ok := f.modules[code]; ok {
+		cp := *m
+		return &cp, nil
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (f *fakeRoleRepo) CreateModule(ctx context.Context, m *models.Module) error {
+	if _, ok := f.modules[m.Code]; ok {
+		return errFakeDuplicate
+	}
+	cp := *m
+	f.modules[m.Code] = &cp
+	return nil
+}
+
+func (f *fakeRoleRepo) DeleteModule(ctx context.Context, code string) error {
+	if _, ok := f.modules[code]; !ok {
+		return sql.ErrNoRows
+	}
+	delete(f.modules, code)
+	return nil
+}
+
+func (f *fakeRoleRepo) CountModuleMenus(ctx context.Context, code string) (int, error) {
+	n := 0
+	for _, m := range f.menus {
+		if m.MControl == code {
+			n++
+		}
+	}
+	return n, nil
 }
 
 type fakeUserStore struct {
@@ -273,6 +320,14 @@ func TestListRoles(t *testing.T) {
 func TestMenuLifecycle(t *testing.T) {
 	svc, _, _ := newTestService()
 	ctx := context.Background()
+	// Modul wajib ada dulu (urut: modul -> menu).
+	badMod := models.MenuInput{Code: "MENU_LAPORAN", Name: "Akses menu Laporan", Module: "report", Label: "Laporan"}
+	if _, err := svc.CreateMenu(ctx, badMod); !errors.Is(err, services.ErrInvalidMenu) {
+		t.Fatalf("expected ErrInvalidMenu for unknown module, got %v", err)
+	}
+	if _, err := svc.CreateModule(ctx, "report", "Report", 10); err != nil {
+		t.Fatalf("create module: %v", err)
+	}
 	in := models.MenuInput{Code: "menu_laporan", Name: "Akses menu Laporan", Module: "report", Label: "Laporan", SortOrder: 8}
 	menu, err := svc.CreateMenu(ctx, in)
 	if err != nil {
@@ -332,5 +387,39 @@ func TestMatrix(t *testing.T) {
 		if r.Module == "" || r.MenuCode == "" || r.RoleCode == "" {
 			t.Fatalf("incomplete matrix row: %+v", r)
 		}
+	}
+}
+
+func TestModuleLifecycle(t *testing.T) {
+	svc, _, _ := newTestService()
+	ctx := context.Background()
+	m, err := svc.CreateModule(ctx, "report", "Report", 10)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if m.Code != "REPORT" {
+		t.Fatalf("expected uppercase, got %q", m.Code)
+	}
+	if _, err := svc.CreateModule(ctx, "REPORT", "Duplikat", 11); !errors.Is(err, services.ErrModuleExists) {
+		t.Fatalf("expected ErrModuleExists, got %v", err)
+	}
+	if _, err := svc.CreateModule(ctx, "nope!", "Bad", 1); !errors.Is(err, services.ErrInvalidModule) {
+		t.Fatalf("expected ErrInvalidModule, got %v", err)
+	}
+	// Modul berisi menu tidak boleh dihapus.
+	if _, err := svc.CreateMenu(ctx, models.MenuInput{Code: "MENU_X", Name: "X", Module: "REPORT", Label: "X"}); err != nil {
+		t.Fatalf("create menu: %v", err)
+	}
+	if err := svc.DeleteModule(ctx, "REPORT"); !errors.Is(err, services.ErrModuleInUse) {
+		t.Fatalf("expected ErrModuleInUse, got %v", err)
+	}
+	if err := svc.DeleteMenu(ctx, "MENU_X"); err != nil {
+		t.Fatalf("delete menu: %v", err)
+	}
+	if err := svc.DeleteModule(ctx, "REPORT"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if err := svc.DeleteModule(ctx, "REPORT"); !errors.Is(err, services.ErrModuleNotFound) {
+		t.Fatalf("expected ErrModuleNotFound, got %v", err)
 	}
 }

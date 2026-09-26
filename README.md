@@ -31,7 +31,7 @@ Browser :1067 ─────────────────► app.exe :10
 - Sidebar dikelompokkan per modul (tombol +/−), mendukung parent bersarang
 - Menu terdaftar tapi folder belum dibuat tampil sebagai **halaman 404
   pemandu** (menunjukkan path persis), bukan hilang diam-diam
-- Menu baru dibuat via UI Role & Permission → Registry Menu (tanpa auto-grant)
+- Menu baru dibuat via UI Modul & Menu (tanpa auto-grant)
 - Role tanpa akses apa pun (mis. `USER` baru) mendapat halaman kosong
 - Tidak ada pembatasan berdasarkan nama role atau folder admin/user
 - Role & Permission: daftar role di kiri, matriks akses menu di kanan
@@ -192,23 +192,29 @@ Harus ada 10 tabel:
 
 ```text
 CPAUDITLOG
+CPMATRIX
 CPMENU
 CPNOTIFLOG
 CPNOTIFTEMPLATE
 CPPERMISSION
 CPREFRESHTOKEN
 CPROLE
-CPROLEPERMISSION
 CPSYSLOG
 CPUSER
 ```
 
-Plus 1 view matriks:
+### Verifikasi modul (CPMATRIX)
 
 ```sql
-SELECT TABLE_NAME
-FROM INFORMATION_SCHEMA.VIEWS
-WHERE TABLE_NAME = 'CPMATRIX';
+SELECT CODE, LABEL, SORT_ORDER
+FROM dbo.CPMATRIX
+ORDER BY SORT_ORDER;
+```
+
+Hasil yang benar (1 modul bawaan; tambah modul baru via UI Role):
+
+```text
+SYSTEM  System  1
 ```
 
 ### Verifikasi role
@@ -234,7 +240,7 @@ FROM dbo.CPMENU
 ORDER BY SORT_ORDER;
 ```
 
-Hasil yang benar (7 menu bawaan, modul `SYSTEM`):
+Hasil yang benar (10 baris: 8 menu `SYSTEM` + 2 contoh `REPORT`):
 
 ```text
 MENU_USERS          SYSTEM  User Account       1
@@ -244,34 +250,44 @@ MENU_AUDIT          SYSTEM  Audit Log          4
 MENU_SECURITY       SYSTEM  Security Center    5
 MENU_SYSLOG         SYSTEM  System Log         6
 MENU_NOTIFICATIONS  SYSTEM  Notifikasi         7
+MENU_MODUL          SYSTEM  Modul & Menu       8
+MENU_LAPORAN        REPORT  Laporan            1
+MENU_ARUS_KAS       REPORT  Arus Kas           2
 ```
 
-### Verifikasi permission menu
+Dua menu `REPORT` adalah contoh tes tampilan (menu biasa vs menu di dalam grup
+visual) yang sengaja tanpa akses role mana pun.
+
+### Verifikasi grant role -> menu (CPPERMISSION)
+
+Satu-satunya tabel relasi: role boleh tampil menu apa. Definisi menu
+tinggal di `CPMENU` (tidak ada tabel definisi terpisah).
 
 ```sql
-SELECT CODE, NAME, PERMGROUP
+SELECT ROLE_CODE, MENU_CODE
 FROM dbo.CPPERMISSION
-ORDER BY CODE;
+ORDER BY ROLE_CODE, MENU_CODE;
 ```
 
-Hasil yang benar (7 baris, tanpa `MENU_DASHBOARD`):
+Hasil yang benar (8 baris `ADMIN`; contoh `REPORT` tanpa akses):
 
 ```text
-MENU_AUDIT        SYSTEM
-MENU_NOTIFICATIONS SYSTEM
-MENU_ROLES        SYSTEM
-MENU_SECURITY     SYSTEM
-MENU_SESSIONS     SYSTEM
-MENU_SYSLOG       SYSTEM
-MENU_USERS        SYSTEM
+ADMIN  MENU_AUDIT
+ADMIN  MENU_MODUL
+ADMIN  MENU_NOTIFICATIONS
+ADMIN  MENU_ROLES
+ADMIN  MENU_SECURITY
+ADMIN  MENU_SESSIONS
+ADMIN  MENU_SYSLOG
+ADMIN  MENU_USERS
 ```
 
 ### Verifikasi akses admin dan user
 
 ```sql
 SELECT ROLE_CODE, COUNT(*) AS MENU_COUNT
-FROM dbo.CPROLEPERMISSION
-WHERE PERMISSION_CODE LIKE 'MENU[_]%'
+FROM dbo.CPPERMISSION
+WHERE MENU_CODE LIKE 'MENU[_]%'
 GROUP BY ROLE_CODE
 ORDER BY ROLE_CODE;
 ```
@@ -279,17 +295,18 @@ ORDER BY ROLE_CODE;
 Pada fresh install, hasil default:
 
 ```text
-ADMIN  7
+ADMIN  8
 ```
 
 `USER` tidak memiliki baris (nol menu) — akses diberikan manual oleh admin
-via matriks. Setelah admin mencentang menu untuk suatu role, view `CPMATRIX`
-menampilkannya:
+via matriks. Setelah admin mencentang menu untuk suatu role, query JOIN
+berikut menampilkannya (modul otomatis ketahuan dari `CPMENU`):
 
 ```sql
-SELECT ROLE_CODE, MODULE, MENU_CODE, HAS_ACCESS
-FROM dbo.CPMATRIX
-ORDER BY ROLE_CODE, SORT_ORDER;
+SELECT g.ROLE_CODE, m.MCONTROL AS MODULE, g.MENU_CODE
+FROM dbo.CPPERMISSION g
+JOIN dbo.CPMENU m ON m.CODE = g.MENU_CODE
+ORDER BY g.ROLE_CODE, m.SORT_ORDER;
 ```
 
 ### Verifikasi user
@@ -344,13 +361,15 @@ Login:
 admin / admin
 ```
 
-Setelah login (admin masih memegang 7 menu):
+Setelah login (admin bawaan memegang 8 menu `SYSTEM`; menu contoh `REPORT`
+sengaja belum di-grant — perhatikan bahwa mencentang di matriks lalu
+**Simpan permission** akan memberi akses ke role itu):
 
 1. Menu pertama otomatis terbuka, sidebar dikelompokkan per modul (SYSTEM).
 2. Buka **Role & Permission**.
 3. Role `ADMIN` dan `USER` harus terlihat.
-4. Matriks harus menampilkan 7 menu, bukan permission per fungsi.
-5. Kartu **Registry Menu** menampilkan 7 baris `CPMENU`.
+4. Matriks harus menampilkan 10 menu, bukan permission per fungsi.
+5. Menu **Modul & Menu** menampilkan 2 modul + 10 baris `CPMENU`.
 6. Centang menu untuk role yang membutuhkan (tanpa auto-grant).
 7. Klik **Simpan permission**.
 8. User dengan role tersebut harus logout/login ulang agar permission terbaru dimuat.
@@ -451,12 +470,12 @@ kosong.
 
 ## 2.2. Alur Memberi Akses Menu
 
-1. Admin membuat menu via **Registry Menu** (atau memilih menu bawaan).
+1. Admin membuat menu via **Modul & Menu** (atau memilih menu bawaan).
 2. Admin membuat atau memilih role.
 3. Matriks menampilkan menu per module (`SYSTEM`, `REPORT`, ...).
 4. Admin centang menu yang boleh diakses role tersebut.
 5. Admin klik **Simpan permission**.
-6. Permission tersimpan di `CPROLEPERMISSION` (terbaca via view `CPMATRIX`).
+6. Grant tersimpan di `CPPERMISSION` (ROLE_CODE -> MENU_CODE).
 7. Saat login, frontend mengambil permission + entri menu user dari `GET /api/users/me`.
 8. Sidebar hanya menampilkan menu yang permission-nya dimiliki user; menu
    terdaftar tapi folder belum dibuat tampil sebagai halaman 404 pemandu.
@@ -491,7 +510,8 @@ go-core/
 │   ├── src/api/client.js   # request, login, session, getMe
 │   ├── src/menus/
 │   │   ├── registry.js     # auto-scan menu nested per module + 404 pemandu
-│   │   └── SYSTEM/         # MODULE SYSTEM (7 menu bawaan)
+│   │   └── SYSTEM/         # MODULE SYSTEM (8 menu: operasional + Modul & Menu)
+│   │   └── REPORT/         # MODULE REPORT (2 contoh tes: biasa vs di dalam grup)
 │   ├── src/components/     # UI kit (termasuk MissingMenu)
 │   └── src/pages/          # LoginForm
 ├── scripts/                # migrate*.sql (SQL Server) dan build script
@@ -555,7 +575,7 @@ task build
 | Login berhasil tetapi sidebar kosong | Wajar bila role memang nol menu (mis. `USER` baru) → buka Role & Permission, centang menu, simpan, lalu login ulang. |
 | Menu terdaftar tapi tampil 404 | Folder `frontend/src/menus/<MCONTROL>/[<parent>/]<key>/` belum dibuat → ikuti petunjuk di halaman 404 (copy template, `npm run build`, restart). |
 | Menu baru tidak muncul sama sekali | Permission belum dicentang ke role tersebut, atau user belum login ulang. |
-| Menu baru muncul untuk semua role | Permission menu belum diberikan/di-filter dengan benar; cek `CPROLEPERMISSION` role tersebut. |
+| Menu baru muncul untuk semua role | Permission menu belum diberikan/di-filter dengan benar; cek `CPPERMISSION` role tersebut. |
 | Permission endpoint 403 | User belum memiliki `MENU_<MENU>` atau request dikirim ke role/menu yang salah. |
 | `WARN frontend/dist missing` | Normal saat development; build frontend dengan `task build-frontend` jika ingin menghapus warning. |
 | `localhost:1067` tidak bisa dibuka | Backend belum jalan → `task start` atau `go run .`. |
@@ -574,7 +594,7 @@ tutorial/README.md
 
 Tutorial terbaru menjelaskan:
 
-1. Mendaftarkan menu di `CPMENU` via UI Registry Menu (tanpa auto-grant).
+1. Mendaftarkan menu di `CPMENU` via UI Modul & Menu (tanpa auto-grant).
 2. Menambah folder `menus/<MCONTROL>/[<parent>/]<menu>/` (modul UPPERCASE).
 3. Memahami halaman 404 pemandu sebagai kompas lokasi folder.
 4. Membuat permission `MENU_<MENU>` (satu permission per menu).

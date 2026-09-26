@@ -24,6 +24,8 @@ const (
 	AuditSyslogPrune       = "SYSLOG_PRUNE"
 	AuditMenuCreate        = "MENU_CREATE"
 	AuditMenuDelete        = "MENU_DELETE"
+	AuditModuleCreate      = "MODULE_CREATE"
+	AuditModuleDelete      = "MODULE_DELETE"
 )
 
 // Entity yang dikenai aksi audit.

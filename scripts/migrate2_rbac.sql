@@ -1,6 +1,7 @@
 -- Migrasi 2: RBAC + Audit Log + System Log + Notifikasi + sesi admin.
---   CPPERMISSION      master permission (CODE, GROUP)
---   CPROLEPERMISSION  mapping ROLE_CODE -> PERMISSION_CODE
+--   CPMATRIX          master modul (CODE, LABEL, SORT_ORDER)
+--   CPMENU            registry menu (MCONTROL -> CPMATRIX, PARENT se-modul)
+--   CPPERMISSION      grant role -> menu (ROLE_CODE, MENU_CODE)
 --   CPAUDITLOG        jejak aksi user (siapa, apa, kapan, dari IP mana)
 --   CPSYSLOG          log error/sistem aplikasi (pengganti baca file log)
 --   CPNOTIFTEMPLATE   template notifikasi (email/push/in-app, dukung {{var}})
@@ -13,84 +14,40 @@
 SET XACT_ABORT ON;
 BEGIN TRAN;
 
--- 1. CPPERMISSION ------------------------------------------------------------
-IF OBJECT_ID(N'dbo.CPPERMISSION', N'U') IS NULL
-CREATE TABLE dbo.CPPERMISSION (
+-- 1. (Dihapus) Tabel definisi CPPERMISSION lama (CODE/NAME/PERMGROUP) tidak
+-- lagi dibuat; definisi menu tinggal di CPMENU. Database lama dibersihkan
+-- di blok 2d (data grant ikut pindah, tabel lama di-drop).
+
+-- 2. (Dihapus) Tabel grant CPERMISSION lama diganti CPPERMISSION (blok 2d).
+
+-- 2b. CPMATRIX (master modul) ----------------------------------------------------
+-- Satu baris = satu modul. CPMENU.MCONTROL ber-FK ke sini sehingga modul
+-- wajib dibuat dulu sebelum menunya (urut: modul -> menu -> permission).
+-- CATATAN: DROP VIEW dan CREATE TABLE dipisah batch GO agar SQL Server
+-- menerapkannya berurutan (satu batch = DDL lama masih terlihat).
+IF OBJECT_ID(N'dbo.CPMATRIX', N'V') IS NOT NULL DROP VIEW dbo.CPMATRIX;
+GO
+IF OBJECT_ID(N'dbo.CPMATRIX', N'U') IS NULL
+CREATE TABLE dbo.CPMATRIX (
   ID INT IDENTITY(1,1) NOT NULL,
   CODE NVARCHAR(40) NOT NULL,
-  NAME NVARCHAR(100) NOT NULL,
-  PERMGROUP NVARCHAR(40) NOT NULL,
-  DESCRIPTION NVARCHAR(255) NULL,
-  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPPERM_CREATED DEFAULT GETDATE(),
-  CONSTRAINT PK_CPPERMISSION PRIMARY KEY CLUSTERED (ID),
-  CONSTRAINT UQ_CPPERM_CODE UNIQUE NONCLUSTERED (CODE)
+  LABEL NVARCHAR(100) NOT NULL,
+  SORT_ORDER INT NOT NULL CONSTRAINT DF_CPMX_SORT DEFAULT 99,
+  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMX_CREATED DEFAULT GETDATE(),
+  UPDATED_AT DATETIME NOT NULL CONSTRAINT DF_CPMX_UPDATED DEFAULT GETDATE(),
+  CONSTRAINT PK_CPMATRIX PRIMARY KEY CLUSTERED (ID),
+  CONSTRAINT UQ_CPMATRIX_CODE UNIQUE NONCLUSTERED (CODE)
 );
+GO
 
--- 2. CPROLEPERMISSION ----------------------------------------------------------
-IF OBJECT_ID(N'dbo.CPROLEPERMISSION', N'U') IS NULL
-CREATE TABLE dbo.CPROLEPERMISSION (
-  ROLE_CODE NVARCHAR(20) NOT NULL,
-  PERMISSION_CODE NVARCHAR(40) NOT NULL,
-  CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CRP_CREATED DEFAULT GETDATE(),
-  CONSTRAINT PK_CPROLEPERMISSION PRIMARY KEY CLUSTERED (ROLE_CODE, PERMISSION_CODE),
-  CONSTRAINT FK_CRP_ROLE FOREIGN KEY (ROLE_CODE) REFERENCES dbo.CPROLE (CODE) ON DELETE CASCADE,
-  CONSTRAINT FK_CRP_PERM FOREIGN KEY (PERMISSION_CODE) REFERENCES dbo.CPPERMISSION (CODE) ON DELETE CASCADE
-);
-
--- Bersihkan permission lama per-fitur; RBAC sekarang satu permission per menu.
-DELETE FROM dbo.CPROLEPERMISSION
-WHERE PERMISSION_CODE IN (
-  N'USER_READ', N'USER_CREATE', N'USER_UPDATE', N'USER_DELETE', N'USER_ROLE_ASSIGN',
-  N'ROLE_READ', N'ROLE_MANAGE', N'PERMISSION_ASSIGN',
-  N'SESSION_READ', N'SESSION_REVOKE', N'SESSION_MANAGE',
-  N'AUDIT_READ', N'SECURITY_READ', N'SYSLOG_READ', N'SYSLOG_MANAGE',
-  N'NOTIF_READ', N'NOTIF_MANAGE', N'NOTIF_SEND'
-);
-DELETE FROM dbo.CPPERMISSION
-WHERE CODE IN (
-  N'USER_READ', N'USER_CREATE', N'USER_UPDATE', N'USER_DELETE', N'USER_ROLE_ASSIGN',
-  N'ROLE_READ', N'ROLE_MANAGE', N'PERMISSION_ASSIGN',
-  N'SESSION_READ', N'SESSION_REVOKE', N'SESSION_MANAGE',
-  N'AUDIT_READ', N'SECURITY_READ', N'SYSLOG_READ', N'SYSLOG_MANAGE',
-  N'NOTIF_READ', N'NOTIF_MANAGE', N'NOTIF_SEND'
-);
-
--- Seed permission (CODE, NAME, GROUP, DESCRIPTION) — satu permission per menu.
--- Jika role punya permission ini, menu-nya tampil di sidebar.
-DECLARE @perms TABLE (CODE NVARCHAR(40), NAME NVARCHAR(100), PERMGROUP NVARCHAR(40), DESCRIPTION NVARCHAR(255));
-INSERT INTO @perms VALUES
-  (N'MENU_DASHBOARD',    N'Akses menu Dashboard',       N'ACCOUNT', N'Seluruh fungsi dashboard untuk role ini'),
-  (N'MENU_USERS',        N'Akses menu User Account',   N'SYSTEM', N'Seluruh fungsi pengelolaan pengguna'),
-  (N'MENU_ROLES',        N'Akses menu Role & Permission', N'SYSTEM', N'Seluruh fungsi pengelolaan role'),
-  (N'MENU_SESSIONS',     N'Akses menu Sesi',           N'SYSTEM', N'Seluruh fungsi pengelolaan sesi'),
-  (N'MENU_AUDIT',        N'Akses menu Audit Log',      N'SYSTEM', N'Seluruh fungsi audit log'),
-  (N'MENU_SECURITY',     N'Akses menu Security Center', N'SYSTEM', N'Seluruh fungsi security center'),
-  (N'MENU_SYSLOG',       N'Akses menu System Log',     N'SYSTEM', N'Seluruh fungsi system log'),
-  (N'MENU_NOTIFICATIONS',N'Akses menu Notifikasi',     N'SYSTEM', N'Seluruh fungsi notifikasi');
-
-INSERT INTO dbo.CPPERMISSION (CODE, NAME, PERMGROUP, DESCRIPTION)
-SELECT CODE, NAME, PERMGROUP, DESCRIPTION FROM @perms p
-WHERE NOT EXISTS (SELECT 1 FROM dbo.CPPERMISSION x WHERE x.CODE = p.CODE);
-
-UPDATE p
-SET p.NAME = v.NAME, p.PERMGROUP = v.PERMGROUP, p.DESCRIPTION = v.DESCRIPTION
-FROM dbo.CPPERMISSION p
-INNER JOIN @perms v ON v.CODE = p.CODE;
-
--- ADMIN mendapat semua menu secara default.
-INSERT INTO dbo.CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
-SELECT N'ADMIN', CODE FROM dbo.CPPERMISSION
-WHERE NOT EXISTS (
-  SELECT 1 FROM dbo.CPROLEPERMISSION x WHERE x.ROLE_CODE = N'ADMIN' AND x.PERMISSION_CODE = CPPERMISSION.CODE
-);
-
--- USER tidak diberi menu apa pun (nol mapping). Akses diberikan manual
--- oleh admin lewat matriks Role & Permission.
--- (Sengaja tidak ada INSERT untuk USER di sini.)
-
--- MENU_DASHBOARD dihapus: modul account dihapus, tidak ada landing dashboard.
--- Cascade FK_CRP_PERM membersihkan mapping role yang masih menunjuk ke sana.
-DELETE FROM dbo.CPPERMISSION WHERE CODE = N'MENU_DASHBOARD';
+-- Seed modul bawaan (SYSTEM untuk operasional; REPORT untuk contoh tes tampilan).
+INSERT INTO dbo.CPMATRIX (CODE, LABEL, SORT_ORDER)
+SELECT N'SYSTEM', N'System', 1
+WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMATRIX WHERE CODE = N'SYSTEM');
+INSERT INTO dbo.CPMATRIX (CODE, LABEL, SORT_ORDER)
+SELECT N'REPORT', N'Report', 2
+WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMATRIX WHERE CODE = N'REPORT');
+GO
 
 -- 2b. CPMENU (registry menu) ---------------------------------------------------
 -- Satu baris = satu menu. MCONTROL = nama folder modul (UPPERCASE),
@@ -109,38 +66,143 @@ CREATE TABLE dbo.CPMENU (
   CONSTRAINT PK_CPMENU PRIMARY KEY CLUSTERED (ID),
   CONSTRAINT UQ_CPMENU_CODE UNIQUE NONCLUSTERED (CODE),
   CONSTRAINT UQ_CPMENU_MODULE_CODE UNIQUE NONCLUSTERED (MCONTROL, CODE),
-  CONSTRAINT FK_CPMENU_PERM FOREIGN KEY (CODE) REFERENCES dbo.CPPERMISSION (CODE) ON DELETE CASCADE,
+  CONSTRAINT FK_CPMENU_MODULE FOREIGN KEY (MCONTROL) REFERENCES dbo.CPMATRIX (CODE),
   CONSTRAINT FK_CPMENU_PARENT FOREIGN KEY (PARENT_CODE) REFERENCES dbo.CPMENU (CODE)
 );
+-- FK lama ke tabel definisi (sudah tidak ada) dicabut bila masih menempel.
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CPMENU_PERM')
+  ALTER TABLE dbo.CPMENU DROP CONSTRAINT FK_CPMENU_PERM;
+-- Tabel lama (sebelum FK modul ada) dilengkapi secara kondisional.
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CPMENU_MODULE')
+  ALTER TABLE dbo.CPMENU ADD CONSTRAINT FK_CPMENU_MODULE
+    FOREIGN KEY (MCONTROL) REFERENCES dbo.CPMATRIX (CODE);
 
--- Seed registry 7 menu bawaan (urut sesuai sidebar).
-DECLARE @menus TABLE (CODE NVARCHAR(40), MCONTROL NVARCHAR(40), LABEL NVARCHAR(100), SORT_ORDER INT);
+-- Seed registry menu bawaan (urut sesuai sidebar) + contoh tes tampilan.
+-- MENU_MODUL = halaman manajemen modul & menu. Dua menu REPORT adalah contoh
+-- (menu biasa vs menu bersarang di grup visual) yang sengaja TANPA akses
+-- role mana pun. Grup visual (mis. folder keuangan/) tidak punya baris menu.
+DECLARE @menus TABLE (CODE NVARCHAR(40), MCONTROL NVARCHAR(40), LABEL NVARCHAR(100), SORT_ORDER INT, PARENT_CODE NVARCHAR(40));
 INSERT INTO @menus VALUES
-  (N'MENU_USERS',         N'SYSTEM', N'User Account',       1),
-  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission',  2),
-  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',        3),
-  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',          4),
-  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',    5),
-  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',         6),
-  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',         7);
+  (N'MENU_USERS',         N'SYSTEM', N'User Account',       1, NULL),
+  (N'MENU_ROLES',         N'SYSTEM', N'Role & Permission',  2, NULL),
+  (N'MENU_SESSIONS',      N'SYSTEM', N'Sesi & Auth',        3, NULL),
+  (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',          4, NULL),
+  (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',    5, NULL),
+  (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',         6, NULL),
+  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',         7, NULL),
+  (N'MENU_MODUL',         N'SYSTEM', N'Modul & Menu',       8, NULL),
+  (N'MENU_LAPORAN',       N'REPORT', N'Laporan',            1, NULL),
+  (N'MENU_ARUS_KAS',      N'REPORT', N'Arus Kas',           2, NULL);
 
-INSERT INTO dbo.CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER)
-SELECT CODE, MCONTROL, LABEL, SORT_ORDER FROM @menus m
+INSERT INTO dbo.CPMENU (CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE)
+SELECT CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE FROM @menus m
 WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMENU x WHERE x.CODE = m.CODE);
+GO
 
--- 2c. CPMATRIX (view matriks role x modul x menu) ------------------------------
--- Satu-satunya bacaan matriks: 1 baris = 1 role x 1 menu + flag akses.
--- Tulis tetap lewat CPROLEPERMISSION (tidak ada sinkron ganda).
-IF OBJECT_ID(N'dbo.CPMATRIX', N'V') IS NOT NULL DROP VIEW dbo.CPMATRIX;
-EXEC(N'CREATE VIEW dbo.CPMATRIX AS
-SELECT r.CODE AS ROLE_CODE, r.NAME AS ROLE_NAME,
-       m.MCONTROL AS MODULE, m.CODE AS MENU_CODE, m.LABEL AS MENU_LABEL,
-       m.SORT_ORDER, m.PARENT_CODE,
-       CASE WHEN pm.ROLE_CODE IS NULL THEN 0 ELSE 1 END AS HAS_ACCESS
-FROM dbo.CPROLE r
-CROSS JOIN dbo.CPMENU m
-LEFT JOIN dbo.CPROLEPERMISSION pm
-  ON pm.ROLE_CODE = r.CODE AND pm.PERMISSION_CODE = m.CODE');
+-- 2d. CPPERMISSION (grant role -> menu) --------------------------------------------
+-- Satu-satunya tabel relasi: ROLE_CODE -> MENU_CODE (role boleh tampil menu
+-- apa). Definisi menu tinggal di CPMENU; tidak ada tabel definisi terpisah.
+-- Migrasi dari format lama dipecah batch GO kecil (tiap langkah idempoten;
+-- dengan -b, batch yang gagal berhenti dengan pesan jelas).
+-- Langkah 1: tabel penampung.
+IF OBJECT_ID(N'dbo.CPPERMISSION', N'U') IS NULL
+   OR COL_LENGTH(N'dbo.CPPERMISSION', N'MENU_CODE') IS NULL
+BEGIN
+  IF OBJECT_ID(N'dbo.CPPERMISSION_NEW', N'U') IS NULL
+  CREATE TABLE dbo.CPPERMISSION_NEW (
+    ROLE_CODE NVARCHAR(20) NOT NULL,
+    MENU_CODE NVARCHAR(40) NOT NULL,
+    CREATED_AT DATETIME NOT NULL CONSTRAINT DF_CPP_NEW_CREATED DEFAULT GETDATE(),
+    CONSTRAINT PK_CPP_NEW PRIMARY KEY CLUSTERED (ROLE_CODE, MENU_CODE),
+    CONSTRAINT FK_CPP_NEW_ROLE FOREIGN KEY (ROLE_CODE) REFERENCES dbo.CPROLE (CODE) ON DELETE CASCADE,
+    CONSTRAINT FK_CPP_NEW_MENU FOREIGN KEY (MENU_CODE) REFERENCES dbo.CPMENU (CODE) ON DELETE CASCADE
+  );
+END
+GO
+-- Langkah 2: salin grant lama (hanya yang menunjuk ke menu yang ada).
+-- CATATAN: query ke tabel legacy dibungkus EXEC agar SQL Server hanya
+-- mengikat namanya saat benar-benar dijalankan (guard IF di atas).
+IF OBJECT_ID(N'dbo.CPPERMISSION_NEW', N'U') IS NOT NULL
+  AND OBJECT_ID(N'dbo.CPERMISSION', N'U') IS NOT NULL
+  EXEC(N'INSERT INTO dbo.CPPERMISSION_NEW (ROLE_CODE, MENU_CODE, CREATED_AT)
+  SELECT g.ROLE_CODE, g.PERMISSION_CODE, g.CREATED_AT FROM dbo.CPERMISSION g
+  JOIN dbo.CPMENU m ON m.CODE = g.PERMISSION_CODE
+  WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.CPPERMISSION_NEW x
+    WHERE x.ROLE_CODE = g.ROLE_CODE AND x.MENU_CODE = g.PERMISSION_CODE
+  )');
+GO
+IF OBJECT_ID(N'dbo.CPPERMISSION_NEW', N'U') IS NOT NULL
+  AND OBJECT_ID(N'dbo.CPROLEPERMISSION', N'U') IS NOT NULL
+  EXEC(N'INSERT INTO dbo.CPPERMISSION_NEW (ROLE_CODE, MENU_CODE)
+  SELECT g.ROLE_CODE, g.PERMISSION_CODE FROM dbo.CPROLEPERMISSION g
+  JOIN dbo.CPMENU m ON m.CODE = g.PERMISSION_CODE
+  WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.CPPERMISSION_NEW x
+    WHERE x.ROLE_CODE = g.ROLE_CODE AND x.MENU_CODE = g.PERMISSION_CODE
+  )');
+GO
+-- Langkah 3: buang tabel format lama (hanya bila isi sudah pindah).
+IF OBJECT_ID(N'dbo.CPPERMISSION_NEW', N'U') IS NOT NULL
+BEGIN
+  IF OBJECT_ID(N'dbo.CPERMISSION', N'U') IS NOT NULL
+    EXEC(N'IF NOT EXISTS (
+      SELECT 1 FROM dbo.CPERMISSION g JOIN dbo.CPMENU m ON m.CODE = g.PERMISSION_CODE
+      WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.CPPERMISSION_NEW x
+        WHERE x.ROLE_CODE = g.ROLE_CODE AND x.MENU_CODE = g.PERMISSION_CODE
+      )
+    )
+    DROP TABLE dbo.CPERMISSION;');
+  IF OBJECT_ID(N'dbo.CPROLEPERMISSION', N'U') IS NOT NULL
+    EXEC(N'IF NOT EXISTS (
+      SELECT 1 FROM dbo.CPROLEPERMISSION g JOIN dbo.CPMENU m ON m.CODE = g.PERMISSION_CODE
+      WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.CPPERMISSION_NEW x
+        WHERE x.ROLE_CODE = g.ROLE_CODE AND x.MENU_CODE = g.PERMISSION_CODE
+      )
+    )
+    DROP TABLE dbo.CPROLEPERMISSION;');
+  IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CPMENU_PERM')
+    ALTER TABLE dbo.CPMENU DROP CONSTRAINT FK_CPMENU_PERM;
+  IF OBJECT_ID(N'dbo.CPPERMISSION', N'U') IS NOT NULL
+    AND COL_LENGTH(N'dbo.CPPERMISSION', N'MENU_CODE') IS NULL
+    DROP TABLE dbo.CPPERMISSION;
+END
+GO
+-- Langkah 4: tukar nama (batch sendiri agar SQL Server mengikat nama baru).
+IF OBJECT_ID(N'dbo.CPPERMISSION_NEW', N'U') IS NOT NULL
+  AND OBJECT_ID(N'dbo.CPPERMISSION', N'U') IS NULL
+BEGIN
+  EXEC sp_rename N'dbo.CPPERMISSION_NEW', N'CPPERMISSION';
+  EXEC sp_rename N'PK_CPP_NEW', N'PK_CPPERMISSION';
+  EXEC sp_rename N'FK_CPP_NEW_ROLE', N'FK_CPP_ROLE';
+  EXEC sp_rename N'FK_CPP_NEW_MENU', N'FK_CPP_MENU';
+  EXEC sp_rename N'DF_CPP_NEW_CREATED', N'DF_CPP_CREATED';
+END
+GO
+-- Langkah 5: bersih + seed (jalan di format final).
+-- Bersihkan kode non-menu sisa era permission per-fitur.
+DELETE FROM dbo.CPPERMISSION
+WHERE MENU_CODE IN (
+  N'USER_READ', N'USER_CREATE', N'USER_UPDATE', N'USER_DELETE', N'USER_ROLE_ASSIGN',
+  N'ROLE_READ', N'ROLE_MANAGE', N'PERMISSION_ASSIGN',
+  N'SESSION_READ', N'SESSION_REVOKE', N'SESSION_MANAGE',
+  N'AUDIT_READ', N'SECURITY_READ', N'SYSLOG_READ', N'SYSLOG_MANAGE',
+  N'NOTIF_READ', N'NOTIF_MANAGE', N'NOTIF_SEND'
+);
+-- ADMIN mendapat semua menu secara default (dari CPMENU), KECUALI menu contoh
+-- tes tampilan (REPORT) yang sengaja tanpa akses role mana pun.
+INSERT INTO dbo.CPPERMISSION (ROLE_CODE, MENU_CODE)
+SELECT N'ADMIN', CODE FROM dbo.CPMENU
+WHERE CODE NOT IN (N'MENU_LAPORAN', N'MENU_ARUS_KAS')
+AND NOT EXISTS (
+  SELECT 1 FROM dbo.CPPERMISSION x WHERE x.ROLE_CODE = N'ADMIN' AND x.MENU_CODE = CPMENU.CODE
+);
+-- USER tidak diberi menu apa pun (nol mapping). Akses diberikan manual
+-- oleh admin lewat matriks Role & Permission.
+-- (Sengaja tidak ada INSERT untuk USER di sini.)
+GO
 
 -- 3. CPAUDITLOG ------------------------------------------------------------------
 IF OBJECT_ID(N'dbo.CPAUDITLOG', N'U') IS NULL

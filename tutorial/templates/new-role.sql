@@ -12,14 +12,14 @@ WHERE NOT EXISTS (SELECT 1 FROM CPROLE WHERE CODE = 'EDITOR');
 
 -- 2. Beri permission menu (contoh: users dan sesi).
 --    Role baru tanpa centang apa pun = halaman kosong (hubungi admin).
-INSERT INTO CPROLEPERMISSION (ROLE_CODE, PERMISSION_CODE)
+INSERT INTO CPPERMISSION (ROLE_CODE, MENU_CODE)
 SELECT 'EDITOR', v.CODE FROM (VALUES
   ('MENU_USERS'),
   ('MENU_SESSIONS')
 ) v(CODE)
 WHERE NOT EXISTS (
-  SELECT 1 FROM CPROLEPERMISSION x
-  WHERE x.ROLE_CODE = 'EDITOR' AND x.PERMISSION_CODE = v.CODE
+  SELECT 1 FROM CPPERMISSION x
+  WHERE x.ROLE_CODE = 'EDITOR' AND x.MENU_CODE = v.CODE
 );
 
 -- 3. Pindahkan user ke role baru (ganti USR-XXXXXX dengan kode user):

@@ -21,15 +21,21 @@ type RepositoryInterface interface {
 	GetRolePermissions(ctx context.Context, roleCode string) ([]string, error)
 	SetRolePermissions(ctx context.Context, roleCode string, permCodes []string) error
 	HasPermission(ctx context.Context, roleCode, permCode string) (bool, error)
-	// Registry menu (CPMENU + CPMATRIX view).
+	// Registry menu (CPMENU + CPMATRIX tabel + grant CPPERMISSION).
 	ListMenus(ctx context.Context) ([]models.Menu, error)
 	GetMenu(ctx context.Context, code string) (*models.Menu, error)
-	CreateMenuFull(ctx context.Context, permCode, permName, permGroup, permDesc string, menu *models.Menu) error
+	CreateMenu(ctx context.Context, menu *models.Menu) error
 	DeleteMenu(ctx context.Context, code string) error
 	CountMenuUsage(ctx context.Context, code string) (int, error)
 	ListChildren(ctx context.Context, code string) ([]models.Menu, error)
 	QueryMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error)
 	MyMenusByRole(ctx context.Context, roleCode string) ([]models.MenuEntry, error)
+	// Master modul (CPMATRIX tabel).
+	ListModules(ctx context.Context) ([]models.Module, error)
+	GetModule(ctx context.Context, code string) (*models.Module, error)
+	CreateModule(ctx context.Context, m *models.Module) error
+	DeleteModule(ctx context.Context, code string) error
+	CountModuleMenus(ctx context.Context, code string) (int, error)
 }
 
 type Repository struct {
@@ -42,10 +48,14 @@ func NewRepository(db *sql.DB, dialect repositories.Dialect) RepositoryInterface
 }
 
 func (r *Repository) roleTable() string { return r.dialect.Table("CPROLE") }
-func (r *Repository) permTable() string { return r.dialect.Table("CPPERMISSION") }
-func (r *Repository) mapTable() string  { return r.dialect.Table("CPROLEPERMISSION") }
+
+// grantTable adalah satu-satunya tabel relasi grant: CPPERMISSION
+// (ROLE_CODE -> MENU_CODE). Definisi menu tinggal di CPMENU.
+func (r *Repository) grantTable() string { return r.dialect.Table("CPPERMISSION") }
+
 func (r *Repository) menuTable() string { return r.dialect.Table("CPMENU") }
-func (r *Repository) matrixView() string { return r.dialect.Table("CPMATRIX") }
+
+func (r *Repository) moduleTable() string { return r.dialect.Table("CPMATRIX") }
 
 func (r *Repository) List(ctx context.Context) ([]models.Role, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
@@ -133,8 +143,9 @@ func (r *Repository) Count(ctx context.Context) (int, error) {
 func (r *Repository) ListPermissions(ctx context.Context) ([]models.Permission, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
+	// Definisi permission = registry menu (1:1): CODE/Nama/Grup dari CPMENU.
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT ID, CODE, NAME, PERMGROUP, DESCRIPTION, CREATED_AT FROM `+r.permTable()+` ORDER BY PERMGROUP ASC, CODE ASC`)
+		`SELECT CODE, LABEL, MCONTROL, CREATED_AT FROM `+r.menuTable()+` ORDER BY MCONTROL ASC, CODE ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -142,14 +153,12 @@ func (r *Repository) ListPermissions(ctx context.Context) ([]models.Permission, 
 	perms := make([]models.Permission, 0)
 	for rows.Next() {
 		var p models.Permission
-		var desc sql.NullString
-		if err := rows.Scan(&p.ID, &p.Code, &p.Name, &p.Group, &desc, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.Code, &p.Name, &p.Group, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		if !strings.HasPrefix(p.Code, "MENU_") {
 			continue
 		}
-		p.Description = desc.String
 		perms = append(perms, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -162,7 +171,7 @@ func (r *Repository) GetRolePermissions(ctx context.Context, roleCode string) ([
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(
-		`SELECT PERMISSION_CODE FROM `+r.mapTable()+` WHERE ROLE_CODE = ? ORDER BY PERMISSION_CODE ASC`), roleCode)
+		`SELECT MENU_CODE FROM `+r.grantTable()+` WHERE ROLE_CODE = ? ORDER BY MENU_CODE ASC`), roleCode)
 	if err != nil {
 		return nil, err
 	}
@@ -193,12 +202,12 @@ func (r *Repository) SetRolePermissions(ctx context.Context, roleCode string, pe
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, r.dialect.Bind(
-		`DELETE FROM `+r.mapTable()+` WHERE ROLE_CODE = ?`), roleCode); err != nil {
+		`DELETE FROM `+r.grantTable()+` WHERE ROLE_CODE = ?`), roleCode); err != nil {
 		return err
 	}
 	for _, pc := range permCodes {
 		if _, err := tx.ExecContext(ctx, r.dialect.Bind(
-			`INSERT INTO `+r.mapTable()+` (ROLE_CODE, PERMISSION_CODE) VALUES (?, ?)`),
+			`INSERT INTO `+r.grantTable()+` (ROLE_CODE, MENU_CODE) VALUES (?, ?)`),
 			roleCode, pc); err != nil {
 			return err
 		}
@@ -211,7 +220,7 @@ func (r *Repository) HasPermission(ctx context.Context, roleCode, permCode strin
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
-		`SELECT COUNT(*) FROM `+r.mapTable()+` WHERE ROLE_CODE = ? AND PERMISSION_CODE = ?`),
+		`SELECT COUNT(*) FROM `+r.grantTable()+` WHERE ROLE_CODE = ? AND MENU_CODE = ?`),
 		roleCode, permCode).Scan(&n)
 	if err != nil {
 		return false, err
@@ -219,7 +228,7 @@ func (r *Repository) HasPermission(ctx context.Context, roleCode, permCode strin
 	return n > 0, nil
 }
 
-// --- Registry menu (CPMENU) + matriks (CPMATRIX view) ------------------------
+// --- Registry menu (CPMENU) + matriks (JOIN CPMATRIX) ------------------------
 
 const menuColumns = `CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE, CREATED_AT, UPDATED_AT`
 
@@ -269,49 +278,28 @@ func (r *Repository) GetMenu(ctx context.Context, code string) (*models.Menu, er
 	return &m, nil
 }
 
-// CreateMenuFull menulis permission + registry menu dalam 1 transaksi
-// (PERMGROUP permission diisi = MCONTROL agar konsisten).
-func (r *Repository) CreateMenuFull(ctx context.Context, permCode, permName, permGroup, permDesc string, menu *models.Menu) error {
+// CreateMenu menulis satu baris registry CPMENU. Permission = menu itu
+// sendiri (1:1); grant role diatur terpisah via SetRolePermissions.
+func (r *Repository) CreateMenu(ctx context.Context, menu *models.Menu) error {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	query := `INSERT INTO ` + r.permTable() + ` (CODE, NAME, PERMGROUP, DESCRIPTION) VALUES (?, ?, ?, ?)`
-	if _, err := tx.ExecContext(ctx, r.dialect.Bind(query),
-		permCode, permName, permGroup, repositories.NullStr(permDesc)); err != nil {
-		return err
-	}
-	query = `INSERT INTO ` + r.menuTable() + ` (CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE) VALUES (?, ?, ?, ?, ?)`
+	query := `INSERT INTO ` + r.menuTable() + ` (CODE, MCONTROL, LABEL, SORT_ORDER, PARENT_CODE) VALUES (?, ?, ?, ?, ?)`
 	var parent any
 	if menu.Parent != "" {
 		parent = menu.Parent
 	}
-	if _, err := tx.ExecContext(ctx, r.dialect.Bind(query),
-		menu.Code, menu.MControl, menu.Label, menu.SortOrder, parent); err != nil {
-		return err
-	}
-	return tx.Commit()
+	_, err := r.db.ExecContext(ctx, r.dialect.Bind(query),
+		menu.Code, menu.MControl, menu.Label, menu.SortOrder, parent)
+	return err
 }
 
-// DeleteMenu menghapus registry + permission (mapping role ikut CASCADE).
+// DeleteMenu menghapus registry menu (grant role ikut CASCADE).
 // Anak (PARENT_CODE) menahan hapus via FK; service memvalidasi lebih dulu.
 func (r *Repository) DeleteMenu(ctx context.Context, code string) error {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, r.dialect.Bind(
-		`DELETE FROM `+r.menuTable()+` WHERE CODE = ?`), code); err != nil {
-		return err
-	}
-	res, err := tx.ExecContext(ctx, r.dialect.Bind(
-		`DELETE FROM `+r.permTable()+` WHERE CODE = ?`), code)
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(
+		`DELETE FROM `+r.menuTable()+` WHERE CODE = ?`), code)
 	if err != nil {
 		return err
 	}
@@ -322,7 +310,7 @@ func (r *Repository) DeleteMenu(ctx context.Context, code string) error {
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *Repository) CountMenuUsage(ctx context.Context, code string) (int, error) {
@@ -330,7 +318,7 @@ func (r *Repository) CountMenuUsage(ctx context.Context, code string) (int, erro
 	defer cancel()
 	var n int
 	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
-		`SELECT COUNT(*) FROM `+r.mapTable()+` WHERE PERMISSION_CODE = ?`), code).Scan(&n)
+		`SELECT COUNT(*) FROM `+r.grantTable()+` WHERE MENU_CODE = ?`), code).Scan(&n)
 	if err != nil {
 		return 0, err
 	}
@@ -360,16 +348,20 @@ func (r *Repository) ListChildren(ctx context.Context, code string) ([]models.Me
 	return out, nil
 }
 
-// QueryMatrix membaca view CPMATRIX (satu-satunya bacaan matriks).
-// roleFilter kosong = semua role.
+// QueryMatrix membaca matriks via JOIN eksplisit (CPMATRIX tabel modul,
+// CPROLE x CPMENU LEFT JOIN CPPERMISSION grant). roleFilter kosong = semua role.
 func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]models.MatrixRow, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
-	query := `SELECT ROLE_CODE, ROLE_NAME, MODULE, MENU_CODE, MENU_LABEL, SORT_ORDER, PARENT_CODE, HAS_ACCESS FROM ` +
-		r.matrixView()
+	query := `SELECT r.CODE AS ROLE_CODE, r.NAME AS ROLE_NAME, m.MCONTROL AS MODULE,
+		m.CODE AS MENU_CODE, m.LABEL AS MENU_LABEL, m.SORT_ORDER, m.PARENT_CODE,
+		CASE WHEN pm.ROLE_CODE IS NULL THEN 0 ELSE 1 END AS HAS_ACCESS
+		FROM ` + r.roleTable() + ` r CROSS JOIN ` + r.menuTable() + ` m
+		LEFT JOIN ` + r.grantTable() + ` pm
+		  ON pm.ROLE_CODE = r.CODE AND pm.MENU_CODE = m.CODE`
 	var args []any
 	if strings.TrimSpace(roleFilter) != "" {
-		query += ` WHERE ROLE_CODE = ?`
+		query += ` WHERE r.CODE = ?`
 		args = append(args, strings.ToUpper(strings.TrimSpace(roleFilter)))
 	}
 	query += ` ORDER BY ROLE_CODE ASC, MODULE ASC, SORT_ORDER ASC, MENU_CODE ASC`
@@ -397,12 +389,12 @@ func (r *Repository) QueryMatrix(ctx context.Context, roleFilter string) ([]mode
 	return out, nil
 }
 
-// MyMenusByRole mengembalikan menu yang boleh diakses satu role (HAS_ACCESS = 1).
+// MyMenusByRole mengembalikan menu yang boleh diakses satu role (ada grant di CPPERMISSION).
 func (r *Repository) MyMenusByRole(ctx context.Context, roleCode string) ([]models.MenuEntry, error) {
 	ctx, cancel := repositories.WithTimeout(ctx)
 	defer cancel()
 	query := `SELECT m.CODE, m.MCONTROL, m.LABEL, m.SORT_ORDER, m.PARENT_CODE
-		FROM ` + r.menuTable() + ` m JOIN ` + r.mapTable() + ` pm ON pm.PERMISSION_CODE = m.CODE
+		FROM ` + r.menuTable() + ` m JOIN ` + r.grantTable() + ` pm ON pm.MENU_CODE = m.CODE
 		WHERE pm.ROLE_CODE = ? ORDER BY m.MCONTROL ASC, m.SORT_ORDER ASC, m.CODE ASC`
 	rows, err := r.db.QueryContext(ctx, r.dialect.Bind(query), roleCode)
 	if err != nil {
@@ -423,4 +415,87 @@ func (r *Repository) MyMenusByRole(ctx context.Context, roleCode string) ([]mode
 		return nil, err
 	}
 	return out, nil
+}
+
+// --- Master modul (CPMATRIX tabel) --------------------------------------------
+
+func scanModule(row interface {
+	Scan(dest ...any) error
+}, m *models.Module) error {
+	return row.Scan(&m.Code, &m.Label, &m.SortOrder, &m.CreatedAt, &m.UpdatedAt)
+}
+
+func (r *Repository) ListModules(ctx context.Context) ([]models.Module, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	query := `SELECT CODE, LABEL, SORT_ORDER, CREATED_AT, UPDATED_AT FROM ` +
+		r.moduleTable() + ` ORDER BY SORT_ORDER ASC, CODE ASC`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.Module, 0)
+	for rows.Next() {
+		var m models.Module
+		if err := scanModule(rows, &m); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *Repository) GetModule(ctx context.Context, code string) (*models.Module, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	query := `SELECT CODE, LABEL, SORT_ORDER, CREATED_AT, UPDATED_AT FROM ` +
+		r.moduleTable() + ` WHERE CODE = ?`
+	var m models.Module
+	if err := scanModule(r.db.QueryRowContext(ctx, r.dialect.Bind(query), code), &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+func (r *Repository) CreateModule(ctx context.Context, m *models.Module) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	query := `INSERT INTO ` + r.moduleTable() + ` (CODE, LABEL, SORT_ORDER) VALUES (?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, r.dialect.Bind(query), m.Code, m.Label, m.SortOrder)
+	return err
+}
+
+func (r *Repository) DeleteModule(ctx context.Context, code string) error {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	res, err := r.db.ExecContext(ctx, r.dialect.Bind(
+		`DELETE FROM `+r.moduleTable()+` WHERE CODE = ?`), code)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// CountModuleMenus menghitung menu yang menunjuk ke modul (FK menahan hapus).
+func (r *Repository) CountModuleMenus(ctx context.Context, code string) (int, error) {
+	ctx, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	var n int
+	err := r.db.QueryRowContext(ctx, r.dialect.Bind(
+		`SELECT COUNT(*) FROM `+r.menuTable()+` WHERE MCONTROL = ?`), code).Scan(&n)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }

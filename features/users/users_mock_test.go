@@ -372,7 +372,7 @@ func (m *MockRoleRepository) GetMenu(ctx context.Context, code string) (*models.
 	return nil, sql.ErrNoRows
 }
 
-func (m *MockRoleRepository) CreateMenuFull(ctx context.Context, permCode, permName, permGroup, permDesc string, menu *models.Menu) error {
+func (m *MockRoleRepository) CreateMenu(ctx context.Context, menu *models.Menu) error {
 	return nil
 }
 
@@ -394,4 +394,24 @@ func (m *MockRoleRepository) QueryMatrix(ctx context.Context, roleFilter string)
 
 func (m *MockRoleRepository) MyMenusByRole(ctx context.Context, roleCode string) ([]models.MenuEntry, error) {
 	return []models.MenuEntry{}, nil
+}
+
+func (m *MockRoleRepository) ListModules(ctx context.Context) ([]models.Module, error) {
+	return []models.Module{}, nil
+}
+
+func (m *MockRoleRepository) GetModule(ctx context.Context, code string) (*models.Module, error) {
+	return nil, sql.ErrNoRows
+}
+
+func (m *MockRoleRepository) CreateModule(ctx context.Context, mod *models.Module) error {
+	return nil
+}
+
+func (m *MockRoleRepository) DeleteModule(ctx context.Context, code string) error {
+	return sql.ErrNoRows
+}
+
+func (m *MockRoleRepository) CountModuleMenus(ctx context.Context, code string) (int, error) {
+	return 0, nil
 }

@@ -2,6 +2,18 @@ package models
 
 import "time"
 
+// Module adalah baris tabel CPMATRIX (master modul).
+// Satu baris = satu section sidebar. CPMENU.MCONTROL ber-FK ke CODE,
+// sehingga modul wajib dibuat dulu sebelum menunya.
+type Module struct {
+	ID        int       `json:"-"`
+	Code      string    `json:"code"`
+	Label     string    `json:"label"`
+	SortOrder int       `json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // Menu adalah baris tabel CPMENU (registry menu).
 // Satu baris = satu menu; MCONTROL = nama folder modul (UPPERCASE),
 // wajib sama persis dengan folder frontend menus/<MCONTROL>/... .
@@ -18,6 +30,7 @@ type Menu struct {
 }
 
 // MenuInput adalah payload POST /api/admin/menus (buat menu + permission).
+// Name diterima untuk kompatibilitas API; label tampil diambil dari Label.
 type MenuInput struct {
 	Code      string `json:"code"`
 	Name      string `json:"name"`
@@ -27,7 +40,7 @@ type MenuInput struct {
 	Parent    string `json:"parent_code,omitempty"`
 }
 
-// MenuEntry adalah menu milik user (dari CPMATRIX, HAS_ACCESS = 1).
+// MenuEntry adalah menu milik user (ada grant di CPPERMISSION).
 // Frontend membandingkan dengan folder registry: yang tidak punya folder
 // dirender sebagai halaman 404 pemandu (tahu harus bikin di mana).
 type MenuEntry struct {
@@ -38,8 +51,9 @@ type MenuEntry struct {
 	Parent    string `json:"parent_code,omitempty"`
 }
 
-// MatrixRow adalah 1 baris view CPMATRIX: 1 role x 1 menu + flag akses.
-// Satu-satunya bacaan matriks (tulis tetap lewat CPROLEPERMISSION).
+// MatrixRow adalah 1 baris matriks: 1 role x 1 menu + flag akses.
+// Dibaca via JOIN (CPROLE x CPMENU LEFT JOIN CPPERMISSION); tulis grant
+// tetap ke CPPERMISSION (tidak ada sinkron ganda).
 type MatrixRow struct {
 	RoleCode  string `json:"role_code"`
 	RoleName  string `json:"role_name"`

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listSyslogs, pruneSyslogs } from './api.js'
 
-export const meta = { label: 'System Log', icon: 'terminal', order: 6 }
 import {
   Alert,
   Badge,
@@ -17,6 +16,8 @@ import {
   formatTime,
   useToast,
 } from '../../../components'
+
+export const meta = { label: 'System Log', icon: 'terminal', order: 6 }
 
 const PAGE_SIZE = 20
 const LEVELS = ['', 'ERROR', 'WARN', 'INFO']

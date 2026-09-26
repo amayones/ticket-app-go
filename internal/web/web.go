@@ -96,7 +96,8 @@ func ServiceError(w http.ResponseWriter, err error) int {
 		errors.Is(err, services.ErrInvalidRole),
 		errors.Is(err, services.ErrInvalidTemplate),
 		errors.Is(err, services.ErrInvalidChannel),
-		errors.Is(err, services.ErrInvalidMenu):
+		errors.Is(err, services.ErrInvalidMenu),
+		errors.Is(err, services.ErrInvalidModule):
 		WriteError(w, http.StatusBadRequest, err.Error())
 		return http.StatusBadRequest
 	case errors.Is(err, services.ErrUsernameTaken),
@@ -105,7 +106,9 @@ func ServiceError(w http.ResponseWriter, err error) int {
 		errors.Is(err, services.ErrRoleInUse),
 		errors.Is(err, services.ErrPermissionExists),
 		errors.Is(err, services.ErrMenuInUse),
-		errors.Is(err, services.ErrMenuHasChildren):
+		errors.Is(err, services.ErrMenuHasChildren),
+		errors.Is(err, services.ErrModuleExists),
+		errors.Is(err, services.ErrModuleInUse):
 		WriteError(w, http.StatusConflict, err.Error())
 		return http.StatusConflict
 	case errors.Is(err, services.ErrInvalidLogin),
@@ -120,7 +123,8 @@ func ServiceError(w http.ResponseWriter, err error) int {
 		errors.Is(err, services.ErrRoleNotFound),
 		errors.Is(err, services.ErrTemplateNotFound),
 		errors.Is(err, services.ErrSessionNotFound),
-		errors.Is(err, services.ErrMenuNotFound):
+		errors.Is(err, services.ErrMenuNotFound),
+		errors.Is(err, services.ErrModuleNotFound):
 		WriteError(w, http.StatusNotFound, err.Error())
 		return http.StatusNotFound
 	default:
@@ -128,15 +132,4 @@ func ServiceError(w http.ResponseWriter, err error) int {
 		WriteError(w, http.StatusInternalServerError, "Something went wrong")
 		return http.StatusInternalServerError
 	}
-}
-
-// ServiceErrorWithSyslog maps the error like ServiceError and forwards
-// unexpected 500s to syslog (best-effort). Pakai helper ini di semua handler
-// agar perilaku log 500 konsisten antar menu.
-func ServiceErrorWithSyslog(w http.ResponseWriter, err error, log func(msg string)) int {
-	status := ServiceError(w, err)
-	if status == http.StatusInternalServerError && log != nil {
-		log(err.Error())
-	}
-	return status
 }

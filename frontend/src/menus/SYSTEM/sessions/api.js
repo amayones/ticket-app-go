@@ -1,27 +1,20 @@
 // Fungsi menu Authentication & Session Management.
 import { apiRequest as request } from '../../../api/client.js'
 
+// Self-service: auth saja (tanpa permission menu), tersedia untuk semua role.
 export async function listMySessions() {
-  // Self-service (auth saja); fallback ke endpoint admin untuk backend lama.
-  try {
-    const data = await request('/api/sessions/mine', { auth: true })
-    return Array.isArray(data) ? data : []
-  } catch {
-    const data = await request('/api/admin/sessions', { auth: true })
-    return Array.isArray(data) ? data : []
-  }
+  const data = await request('/api/sessions/mine', { auth: true })
+  return Array.isArray(data) ? data : []
 }
 
+// Admin view: butuh permission MENU_SESSIONS.
 export async function listAllSessions(limit = 20, offset = 0) {
   const data = await request(`/api/admin/sessions/all?limit=${limit}&offset=${offset}`, { auth: true })
   return Array.isArray(data) ? data : []
 }
 
+// Revoke sesi milik sendiri; sesi milik orang lain hanya bisa oleh role
+// yang punya MENU_SESSIONS (divalidasi service dari permission caller).
 export async function revokeSession(id) {
-  // Self-service dulu (milik sendiri), fallback ke admin untuk backend lama.
-  try {
-    return await request(`/api/sessions/${id}`, { method: 'DELETE', auth: true })
-  } catch {
-    return request(`/api/admin/sessions/${id}`, { method: 'DELETE', auth: true })
-  }
+  return request(`/api/sessions/${id}`, { method: 'DELETE', auth: true })
 }

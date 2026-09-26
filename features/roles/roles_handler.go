@@ -220,3 +220,49 @@ func (h *Handler) MyMenus(w http.ResponseWriter, r *http.Request) {
 	}
 	web.WriteJSON(w, http.StatusOK, entries)
 }
+
+// --- Master modul (CPMATRIX tabel) ---------------------------------------------
+
+func (h *Handler) ListModules(w http.ResponseWriter, r *http.Request) {
+	modules, err := h.Service.ListModules(r.Context())
+	if err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	if modules == nil {
+		modules = []models.Module{}
+	}
+	web.WriteJSON(w, http.StatusOK, modules)
+}
+
+func (h *Handler) CreateModule(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code      string `json:"code"`
+		Label     string `json:"label"`
+		SortOrder int    `json:"sort_order"`
+	}
+	if !web.DecodeJSON(w, r, &req) {
+		return
+	}
+	m, err := h.Service.CreateModule(r.Context(), req.Code, req.Label, req.SortOrder)
+	if err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	h.audit(r, models.AuditModuleCreate, models.EntitySystem, m.Code, "Modul "+m.Code+" dibuat")
+	web.WriteJSON(w, http.StatusCreated, m)
+}
+
+func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
+	code, ok := web.PathCode(r, "code")
+	if !ok {
+		web.WriteError(w, http.StatusBadRequest, "Invalid module code")
+		return
+	}
+	if err := h.Service.DeleteModule(r.Context(), code); err != nil {
+		web.ServiceError(w, err)
+		return
+	}
+	h.audit(r, models.AuditModuleDelete, models.EntitySystem, code, "Modul "+code+" dihapus")
+	web.WriteJSON(w, http.StatusOK, map[string]string{"message": "Module deleted successfully"})
+}

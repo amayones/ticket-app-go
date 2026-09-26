@@ -18,7 +18,7 @@ function permissionFor(key) {
   return `MENU_${key.replaceAll('-', '_').toUpperCase()}`
 }
 
-export function keyFromCode(code) {
+function keyFromCode(code) {
   return String(code || '')
     .replace(/^MENU_/, '')
     .toLowerCase()
@@ -57,10 +57,6 @@ function loadMenus() {
 }
 
 const ALL_MENUS = loadMenus()
-
-export function allMenus() {
-  return ALL_MENUS
-}
 
 export function menusForPermissions(permissions = []) {
   const permSet = new Set(permissions)

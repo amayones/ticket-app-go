@@ -39,4 +39,10 @@ var (
 	ErrInvalidMenu       = errors.New("invalid menu")
 	ErrPermissionExists  = errors.New("permission code already exists")
 	ErrMenuHasChildren   = errors.New("menu still has child menus")
+
+	// Module domain (CPMATRIX tabel).
+	ErrModuleNotFound = errors.New("module not found")
+	ErrModuleExists   = errors.New("module already exists")
+	ErrModuleInUse    = errors.New("module still has menus")
+	ErrInvalidModule  = errors.New("invalid module")
 )

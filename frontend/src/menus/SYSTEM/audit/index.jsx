@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listAudit } from './api.js'
 
-export const meta = { label: 'Audit Log', icon: 'list', order: 4 }
 import {
   Alert,
   Badge,
@@ -15,6 +14,8 @@ import {
   useSmoothLoading,
   formatTime,
 } from '../../../components'
+
+export const meta = { label: 'Audit Log', icon: 'list', order: 4 }
 
 const PAGE_SIZE = 20
 const ACTIONS = [

@@ -1,0 +1,15 @@
+# Normalisasi line ending.
+#  - Repo selalu menyimpan LF; checkout di Windows boleh CRLF (autocrlf).
+#  - File yang dieksekusi shell / Docker WAJIB LF agar jalan di Linux & CI.
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.sql text eol=lf
+
+# Binaire: jangan pernah disentuh diff/line-ending.
+*.exe binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

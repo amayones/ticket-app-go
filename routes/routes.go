@@ -114,14 +114,13 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 			r.With(auth, need(models.MenuRoles)).Post("/menus", d.Roles.CreateMenu)
 			r.With(auth, need(models.MenuRoles)).Delete("/menus/{code}", d.Roles.DeleteMenu)
 			r.With(auth, need(models.MenuRoles)).Get("/matrix", d.Roles.GetMatrix)
-		// Menu: sessions.
-		// Self-service: user login boleh lihat/cabut sesinya sendiri (auth saja).
-		// Admin view tetap butuh MENU_SESSIONS.
-		r.With(auth).Get("/sessions/mine", d.Sessions.ListMySessions)
-		r.With(auth).Delete("/sessions/{id}", d.Sessions.RevokeSession)
-		r.With(auth, need(models.MenuSessions)).Get("/sessions", d.Sessions.ListMySessions)
-		r.With(auth, need(models.MenuSessions)).Get("/sessions/all", d.Sessions.ListAllSessions)
-		r.With(auth, need(models.MenuSessions)).Delete("/sessions/{id}", d.Sessions.RevokeSession)
+			// Master modul (CPMATRIX tabel). Urut: modul -> menu -> permission.
+			r.With(auth, need(models.MenuRoles)).Get("/modules", d.Roles.ListModules)
+			r.With(auth, need(models.MenuRoles)).Post("/modules", d.Roles.CreateModule)
+			r.With(auth, need(models.MenuRoles)).Delete("/modules/{code}", d.Roles.DeleteModule)
+			// Menu: sessions. Lihat semua sesi butuh permission; revoke sesi
+			// lain ditangani RevokeSession (manageAll dari permission caller).
+			r.With(auth, need(models.MenuSessions)).Get("/sessions/all", d.Sessions.ListAllSessions)
 			// Menu: audit.
 			r.With(auth, need(models.MenuAudit)).Get("/audit", d.Audit.ListAudit)
 			// Menu: security.
@@ -137,6 +136,10 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 			r.With(auth, need(models.MenuNotifications)).Post("/notifications/send", d.Notifications.SendNotification)
 			r.With(auth, need(models.MenuNotifications)).Get("/notifications/logs", d.Notifications.ListNotifLogs)
 		})
+		// Menu: sessions (self-service). Auth saja, tanpa permission menu,
+		// supaya user biasa bisa lihat & cabut sesinya sendiri.
+		r.With(auth).Get("/sessions/mine", d.Sessions.ListMySessions)
+		r.With(auth).Delete("/sessions/{id}", d.Sessions.RevokeSession)
 	})
 	return r
 }

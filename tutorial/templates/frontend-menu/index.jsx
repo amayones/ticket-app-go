@@ -13,8 +13,8 @@ import {
 } from '../../../components'
 
 // TEMPLATE mainpage menu baru. Cara pakai:
-// 1. Daftarkan dulu via UI Role & Permission → Registry Menu (atau SQL ke
-//    CPPERMISSION + CPMENU) agar permission MENU_<NAMA> + MCONTROL ada.
+// 1. Daftarkan dulu lewat UI Modul & Menu (atau SQL ke CPMENU) agar
+//    MCONTROL + kode MENU_<NAMA> ada.
 // 2. Copy folder ini ke menus/<MCONTROL>/[<parent>/]<menu>/, misalnya
 //    menus/REPORT/laporan/ (modul UPPERCASE persis = MCONTROL).
 //    Nama folder menjadi kode permission otomatis, contoh laporan -> MENU_LAPORAN.
