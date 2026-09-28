@@ -25,8 +25,8 @@ Contoh: modul `TOKO`, menu `Stok`, role `EDITOR`, user `editor`.
 |---|---|---|---|
 | 1 | Buat modul `TOKO` | UI **Modul & Menu** → **Modul baru** | Baris `TOKO` di `CPMODULE` |
 | 2 | Buat menu `MENU_STOK` (modul `TOKO`, jenis `CHILD`) | UI **Modul & Menu** → **Menu baru** | Baris `MENU_STOK` di `CPMENU`, belum ada grant |
-| 3 | Siapkan halaman | `cp -r tutorial/templates/frontend-menu frontend/src/app/stok` | Folder menu + `index.jsx` + `api.js` |
-| 4 | Isi halaman | `index.jsx` + `api.js` | Tabel stok (list, tambah, ubah, hapus) |
+| 3 | Siapkan halaman | `cp -r tutorial/templates/frontend-menu frontend/src/app/stok` | Folder menu 5 file (`index.jsx`, `controller.js`, `GRID.jsx`, `FRM.jsx`, `api.js`) |
+| 4 | Isi halaman | `GRID.jsx` (`COLUMNS_ITEMS`) + `FRM.jsx` (`validate_field`) + `api.js` (`read_data`/`process_*`) | Tabel stok (list, tambah, ubah, hapus) |
 | 5 | (opsional) Endpoint backend | `features/stok/` + `routes/routes.go` | `GET/POST/PUT/DELETE /api/stok` |
 | 6 | Build | `npm run build` + restart backend | Sidebar punya grup `TOKO` |
 | 7 | Buat role `EDITOR` | UI **Role & Permission** → **Role baru** | Baris `EDITOR` di `CPROLE` |
@@ -542,210 +542,101 @@ cp -r tutorial/templates/frontend-menu frontend/src/app/stok
 ls frontend/src/app/stok
 ```
 
-Harus ada:
+Harus ada (5 file mirror langit_v2):
 
 ```text
 api.js
+controller.js
+FRM.jsx
+GRID.jsx
 index.jsx
 ```
 
-## 2.2. Isi `index.jsx`
+| File | Padanan langit_v2 | Yang diganti |
+|---|---|---|
+| `index.jsx` | `<mod>.js` (shell) | `MCONTROL`, `meta`, judul |
+| `controller.js` | `C<mod>.js` (6 fungsi) | `mcontrol` (1 baris) |
+| `GRID.jsx` | `GRID<mod>.js` | `COLUMNS_ITEMS`, `ID_FIELD`, details |
+| `FRM.jsx` | `FRM<mod>.js` | `FORM_FIELDS`, `validate_field` |
+| `api.js` | store proxy | path endpoint `<menu>` |
 
-Buka `frontend/src/app/stok/index.jsx`.
+## 2.2. Isi 5 file mirror (cukup 4 titik)
 
-Template sudah punya `export const meta` di atas komponen. Sesuaikan label,
-ikon, dan urutan:
+Template sudah jadi shell + controller + GRID + FRM + api yang saling
+tersambung. Anda hanya mengisi 4 titik (mirip clone modul di langit_v2):
+
+| # | File | Titik yang diisi | Contoh stok |
+|---|---|---|---|
+| 1 | `index.jsx` | `MCONTROL` + `meta` + judul | `stok`, `Stok` |
+| 2 | `controller.js` | `mcontrol` (1 baris) | `stok` |
+| 3 | `GRID.jsx` | `COLUMNS_ITEMS` + `ID_FIELD` | kolom kode/nama/qty |
+| 4 | `FRM.jsx` | `FORM_FIELDS` + `validate_field` | field kode/nama/qty |
+| 5 | `api.js` | path endpoint | `/api/stok` |
+
+**Titik 1 — `index.jsx`**: sesuaikan `MCONTROL` dan `meta`:
 
 ```jsx
+const MCONTROL = 'stok'
+
 export const meta = { label: 'Stok', icon: 'list', order: 1 }
 ```
 
 `icon` memakai nama ikon dari `components/icons.jsx` (`list`, `users`,
-`shield`, `bell`, `key`, `terminal`, ...). `order` menentukan urutan dalam
-sidebar modul (makin kecil makin atas).
+`shield`, `bell`, `key`, `terminal`, `download`, ...). `order` menentukan
+urutan dalam sidebar modul (makin kecil makin atas). Judul yang tampil
+di halaman diambil dari `nvdata.label` (kolom `CPMENU.LABEL`) — `meta`
+hanya fallback.
 
-Isi halaman mengikuti pola menu tabel yang sudah ada
-(`app/system_log/index.jsx` adalah contoh paling ringkas):
+**Titik 2 — `controller.js`**: satu baris (6 fungsi lainnya jangan diubah):
 
-```jsx
-import { useCallback, useEffect, useState } from 'react'
-import { deleteStok, listStok, saveStok } from './api.js'
-import {
-  Alert,
-  Button,
-  Card,
-  CardTitle,
-  ConfirmDialog,
-  EmptyState,
-  Icon,
-  Pagination,
-  SkeletonRows,
-  TextField,
-  useSmoothLoading,
-  useToast,
-} from '../../../components'
-
-const PAGE_SIZE = 20
-
-export const meta = { label: 'Stok', icon: 'list', order: 1 }
-
-export default function Stok() {
-  const toast = useToast()
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const showLoading = useSmoothLoading(loading)
-  const [error, setError] = useState('')
-  const [offset, setOffset] = useState(0)
-  const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(null)
-  const [form, setForm] = useState({ code: '', name: '', qty: '' })
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      setRows(await listStok(PAGE_SIZE, offset))
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [offset])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  async function save() {
-    setSaving(true)
-    try {
-      await saveStok(form)
-      toast.success('Stok disimpan.')
-      setForm({ code: '', name: '', qty: '' })
-      load()
-    } catch (err) {
-      toast.error(err.message, { title: 'Gagal menyimpan' })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function remove() {
-    if (!deleting) return
-    try {
-      await deleteStok(deleting.code)
-      toast.success(`Stok ${deleting.code} dihapus.`)
-      setDeleting(null)
-      load()
-    } catch (err) {
-      toast.error(err.message, { title: 'Gagal menghapus' })
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <CardTitle description="Contoh menu CRUD di modul TOKO.">Stok</CardTitle>
-          <Button size="sm" onClick={save} loading={saving}>Simpan stok</Button>
-        </div>
-
-        {error && (
-          <Alert tone="error" title="Gagal memuat" closable onClose={() => setError('')} className="mb-4">
-            {error}
-          </Alert>
-        )}
-
-        {showLoading ? (
-          <SkeletonRows rows={4} />
-        ) : rows.length === 0 ? (
-          <EmptyState title="Belum ada data" description="Tambahkan stok pertama lewat form di atas." />
-        ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-3 py-2">Kode</th>
-                <th className="px-3 py-2">Nama</th>
-                <th className="px-3 py-2">Qty</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.code} className="border-t border-zinc-100 dark:border-zinc-800">
-                  <td className="px-3 py-2.5 font-mono">{r.code}</td>
-                  <td className="px-3 py-2.5">{r.name}</td>
-                  <td className="px-3 py-2.5">{r.qty}</td>
-                  <td className="px-3 py-2.5 text-right">
-                    <Button variant="danger" size="sm" onClick={() => setDeleting(r)}>
-                      <Icon name="trash" className="h-4 w-4" />
-                      Hapus
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-          <TextField
-            label="Kode"
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-            placeholder="mis. STK-001"
-          />
-          <TextField
-            label="Nama"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="mis. Kaos polos"
-          />
-          <TextField
-            label="Qty"
-            value={form.qty}
-            onChange={(e) => setForm({ ...form, qty: e.target.value })}
-            placeholder="0"
-          />
-        </div>
-      </Card>
-
-      <Pagination
-        offset={offset}
-        limit={PAGE_SIZE}
-        count={rows.length}
-        hasMore={rows.length === PAGE_SIZE}
-        loading={showLoading}
-        onPage={setOffset}
-      />
-
-      <ConfirmDialog
-        open={!!deleting}
-        title={`Hapus stok ${deleting?.code}?`}
-        message="Data stok akan dihapus permanen."
-        confirmLabel="Ya, hapus"
-        danger
-        onConfirm={remove}
-        onCancel={() => setDeleting(null)}
-      />
-    </div>
-  )
-}
+```js
+export const controller = createController({ mcontrol: 'stok' })
 ```
 
-Pola yang dijaga di semua menu:
+**Titik 3 — `GRID.jsx`**: isi kolom tabel (satu-satunya sumber nama field —
+inilah yang mencegah bug kelas PPH di langit_v2, di mana handler masih
+menyebut field modul lama):
 
-| Urutan | Isi |
+```jsx
+const COLUMNS_ITEMS = [
+  { header: 'Kode', dataIndex: 'code', width: 110, editor: { xtype: 'textfield', allowBlank: false, maxLength: 40 } },
+  { header: 'Nama', dataIndex: 'name', width: 200, editor: { xtype: 'textfield', allowBlank: false, maxLength: 100 } },
+  { header: 'Qty', dataIndex: 'qty', width: 80, editor: { xtype: 'numberfield', allowBlank: false } },
+]
+
+const ID_FIELD = 'code'
+```
+
+`editor.allowBlank: false` otomatis menjadi aturan wajib-isi di
+`handler_validasi_inline` — jangan tulis ulang nama field di validasi.
+
+**Titik 4 — `FRM.jsx`**: isi field form + aturan validasi:
+
+```jsx
+const FORM_FIELDS = [
+  { name: 'code', label: 'Kode', type: 'text', placeholder: 'mis. STK-001' },
+  { name: 'name', label: 'Nama', type: 'text', placeholder: 'mis. Kaos polos' },
+  { name: 'qty', label: 'Qty', type: 'number', placeholder: '0' },
+]
+
+const validate_field = [
+  { field: 'code', type: 'text', msg: 'Kode tidak boleh kosong' },
+  { field: 'name', type: 'text', msg: 'Nama tidak boleh kosong' },
+  { field: 'qty', type: 'number', msg: 'Qty harus angka lebih dari 0' },
+]
+```
+
+Pola yang dijaga di semua menu (mirror langit_v2):
+
+| File | Isi |
 |---|---|
-| 1 | `import` (react, `./api.js`, lalu komponen dari barrel `../../../components`) |
-| 2 | `export const meta` (wajib: label, icon, order) |
-| 3 | `export default function <Nama>()` |
-| 4 | State: `loading` + `useSmoothLoading`, `error`, lalu state domain |
-| 5 | `load` dengan `useCallback` + `useEffect(() => load(), [load])` |
-| 6 | Tampilan: `Card` + `CardTitle`, `Alert` error, `SkeletonRows`, tabel, `EmptyState`, `Pagination` |
-| 7 | `ConfirmDialog` untuk aksi hapus |
+| `index.jsx` | shell: toolbar (`btrefresh`/`New Input`/`Download`) + `items:[<GRID/>]` + `meta` |
+| `controller.js` | 6 fungsi: `init`, `renderpage`, `formatAmount`, `formatDate`, `btrefresh_click`, `btnew_click` |
+| `GRID.jsx` | `COLUMNS_ITEMS` + 7 handler `handler_rowbtn_*` / `handler_validasi_*` |
+| `FRM.jsx` | `FORM_FIELDS` + `validate_field` + `handler_btsave/btdelete/validasi_input` |
+| `api.js` | `read_data` / `process_create` / `process_update` / `process_delete` |
 
-Semua komponen UI diambil dari barrel `components/index.js` — jangan
+Semua komponen UI diambil dari barrel `app/shared/all.js` — jangan
 meng-`import` file komponen satu per satu.
 
 ✅ **Checkpoint 2.2**
@@ -761,30 +652,35 @@ export const meta = ...
 export default function ...
 ```
 
-## 2.3. Isi `api.js`
+## 2.3. Isi `api.js` (4 method proxy)
 
 Buka `frontend/src/app/stok/api.js`.
 
-Ganti placeholder `<menu>` dengan endpoint yang benar. Pola file ini: satu
-fungsi per aksi, `auth: true` untuk endpoint privat, dan list dinormalisasi
-ke array.
+Satu file ini milik satu menu — padanan store proxy langit_v2 (satu URL +
+method `read_data`/`process_*`). Ganti `<menu>` dengan path endpoint:
 
 ```js
 // Fungsi menu Stok (modul TOKO, permission MENU_STOK).
-import { apiRequest as request } from '../../../api/client.js'
+import { apiRequest as request } from '../../api/client.js'
 
-// GET list -> selalu kembalikan array (paginasi lewat ?limit=&offset=).
-export async function listStok(limit = 20, offset = 0) {
+// read_data: GET list (dipakai store/load GRID). Selalu kembalikan array.
+export async function read_data({ limit = 20, offset = 0 } = {}) {
   const data = await request(`/api/stok?limit=${limit}&offset=${offset}`, { auth: true })
   return Array.isArray(data) ? data : []
 }
 
-// POST/PUT satu data (PATCH parsial: kirim hanya field yang berubah).
-export async function saveStok(payload) {
-  return request('/api/stok', { method: 'POST', body: payload, auth: true })
+// process_create: POST tambah (dipakai FRM handler_btsave mode new).
+export async function process_create(dtval) {
+  return request('/api/stok', { method: 'POST', body: dtval, auth: true })
 }
 
-export async function deleteStok(code) {
+// process_update: PUT ubah (dipakai GRID handler_rowbtn_save + FRM edit).
+export async function process_update(code, dtval) {
+  return request(`/api/stok/${code}`, { method: 'PUT', body: dtval, auth: true })
+}
+
+// process_delete: DELETE hapus (dipakai GRID + FRM).
+export async function process_delete(code) {
   return request(`/api/stok/${code}`, { method: 'DELETE', auth: true })
 }
 ```
@@ -817,30 +713,40 @@ Harus menghasilkan:
 OK-tidak-ada-placeholder
 ```
 
-## 2.4. Pastikan Permission Mapping Otomatis
+## 2.4. Pahami Cara Menu Ditemukan (DB + folder)
 
-Frontend otomatis mengubah nama folder menjadi permission:
+Akses menu **selalu dari database**, bukan dari nama folder:
 
 ```text
-frontend/src/app/stok/
-              ↓
-MENU_STOK   (modul TOKO dari nama folder)
+CPMENU.CODE = MENU_STOK  →  grant di CPPERMISSION (ROLE EDITOR ✓)
+CPMENU.MCONTROL = stok   →  folder frontend/src/app/stok/ (halaman)
+CPMENU.MODULE = TOKO     →  section sidebar
 ```
 
-Folder menu selalu datar satu level: `app/<mcontrol>/` (tanpa folder modul/perantara). Penempatan anak di bawah parent diatur lewat
-`CPMENU.PARENT_CODE` (menu ikut bawah parent-nya di sidebar), bukan lewat
-folder.
+Alurnya saat user login:
 
-Jadi tidak perlu menambah daftar menu manual di `registry.js`.
+1. `GET /api/users/me` mengembalikan `menus` (entri `CPMENU` yang
+   ter-grant ke role user, plus header PARENT otomatis).
+2. `registry.js` mencocokkan tiap entri CHILD dengan folder lokal via
+   `MCONTROL`. Cocok → halaman asli; tidak cocok → halaman 404 pemandu.
+3. Sidebar dikelompokkan per `MODULE`.
+
+Jadi tidak perlu menambah daftar menu manual di `registry.js`. Folder menu
+selalu datar satu level: `app/<mcontrol>/` (tanpa folder modul/perantara).
+Penempatan anak di bawah parent diatur lewat `CPMENU.PARENT_CODE`, bukan
+lewat folder.
 
 ✅ **Checkpoint 2.4**
 
+Setelah Bagian 4 (build + grant + login ulang), cek di DevTools:
+
 ```bash
-grep -n "import.meta.glob" frontend/src/app/registry.js
+# entri MENU_STOK ikut dari /me bila sudah di-grant
 ```
 
-Pastikan glob `./*/**/index.jsx` memindai semua modul (termasuk modul baru
-seperti `TOKO`).
+Bila menu 404: folder `frontend/src/app/stok/` belum ada atau
+`MCONTROL`-nya beda huruf. Bila menu hilang total: grant belum dicentang
+atau user belum login ulang.
 
 ## 2.5. Pahami Alur 404 Pemandu
 
@@ -1023,6 +929,11 @@ task build
 Restart backend karena permission dan route baru harus dimuat oleh binary
 terbaru.
 
+> ✅ **Checkpoint 4.2** — setelah restart, `curl
+> http://localhost:1067/healthz` balas `{"status":"ok"}` dan log backend
+> menulis `database connected` tanpa error. Bila health gagal: binary lama
+> masih jalan (hentikan dulu) atau port dipakai proses lain.
+
 ## 4.3. Beri Akses Menu ke Role
 
 Inilah langkah yang membuat menu benar-benar bisa dipakai. Grant disimpan di
@@ -1136,6 +1047,12 @@ user, dan cara hapus role:
 sqlcmd -S localhost,1433 -U <user> -P "<password>" -d <NAMA_DB> -C -i tutorial/templates/new-role.sql
 ```
 
+> ✅ **Checkpoint 5.1**
+>
+> ```sql
+> SELECT CODE, NAME FROM dbo.CPROLE WHERE CODE = 'EDITOR';  -- harus 1 baris
+> ```
+
 ## 5.2. Beri Akses Menu ke Role Itu
 
 Centang menu yang boleh dipakai role `EDITOR` di halaman Role & Permission
@@ -1149,15 +1066,24 @@ MENU_STOK
 Role tanpa satu pun centang = user akan melihat halaman kosong
 "hubungi admin".
 
+> ✅ **Checkpoint 5.2**
+>
+> ```sql
+> SELECT MENU_CODE FROM dbo.CPPERMISSION
+> WHERE ROLE_CODE = 'EDITOR' ORDER BY MENU_CODE;
+> ```
+>
+> Menu yang dicentang harus muncul di hasil query.
+
 ## 5.3. Buat User Baru
 
 via UI (disarankan):
 
 1. Login admin.
 2. Buka menu **User Account**.
-3. Klik **Tambah user**.
+3. Klik **New Input** (tombol tambah user).
 4. Isi username, email, dan password (minimal 8 karakter).
-5. Pilih role `EDITOR` pada dropdown, lalu simpan.
+5. Pilih role `EDITOR` pada dropdown, lalu **Save**.
 
 Kode user dibuat otomatis oleh backend (`USR-XXXXXXXX`) — Anda tidak perlu
 menulisnya.
@@ -1249,6 +1175,10 @@ Untuk mencabut akses:
 
 Setelah login ulang, menu harus hilang dari sidebar.
 
+> ✅ **Checkpoint 6** — `SELECT * FROM dbo.CPPERMISSION WHERE MENU_CODE =
+> 'MENU_STOK' AND ROLE_CODE = 'EDITOR'` kosong, dan sidebar user `EDITOR`
+> tidak lagi menampilkan grup/menu tersebut.
+
 ---
 
 # Bagian 7 — Menghapus Menu
@@ -1281,6 +1211,10 @@ DELETE FROM dbo.CPMENU WHERE CODE = 'MENU_STOK';
 6. Jalankan `task build-frontend`.
 7. Refresh/login ulang.
 
+> ✅ **Checkpoint 7** — `SELECT COUNT(*) FROM dbo.CPMENU WHERE CODE =
+> 'MENU_STOK'` = 0, folder `frontend/src/app/stok` sudah tidak ada, dan
+> `npm run build` tetap `✓ built` (tidak ada import menggantung).
+
 ---
 
 # Checklist Akhir
@@ -1306,8 +1240,11 @@ Modul & menu:
 - [ ] `CPMENU.MODULE` = section sidebar (FK ke `CPMODULE`); `CPMENU.MCONTROL` = nama folder.
 - [ ] MCONTROL snake_case = nama folder datar (`stok` ↔ `app/stok/`); permission bebas (mis. `MENU_STOK`).
 - [ ] Menu CHILD diletakkan di `frontend/src/app/<mcontrol>/` (datar); PARENT tanpa folder.
-- [ ] `index.jsx` memiliki `export const meta` (setelah import) dan `export default`.
-- [ ] `api.js` memakai `auth: true` untuk endpoint privat, tanpa placeholder `<menu>`.
+- [ ] `index.jsx` memiliki `export const meta` dan `export default`;
+      `controller.js` 6 fungsi; `GRID.jsx` punya `COLUMNS_ITEMS`;
+      `FRM.jsx` punya `validate_field`.
+- [ ] `api.js` memakai `read_data`/`process_*` + `auth: true` untuk endpoint
+      privat, tanpa placeholder `<menu>`.
 - [ ] Menu bisa diedit dari **Modul & Menu** (label/urutan/modul/jenis/parent) tanpa dihapus-buat.
 - [ ] Menu child punya `PARENT_CODE` yang menunjuk menu `PARENT` se-modul; menu `PARENT` tanpa parent dan tanpa mcontrol.
 - [ ] `npm run lint` dan `npm run build` berhasil tanpa error.

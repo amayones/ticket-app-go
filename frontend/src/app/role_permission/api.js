@@ -44,8 +44,3 @@ export async function process_create(dtval) {
 export async function process_delete(code) {
   return deleteRole(code)
 }
-
-export async function myMenus() {
-  const data = await request('/api/menus/mine', { auth: true })
-  return Array.isArray(data) ? data : []
-}

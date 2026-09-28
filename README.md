@@ -21,7 +21,7 @@ Browser :1067 ─────────────────► app.exe :10
 
 - Login tanpa registrasi publik
 - User hanya dibuat oleh admin
-- JWT access 15 menit
+- JWT access 15 menit (default; atur via `ACCESS_TOKEN_MINUTES` di `.env`)
 - Refresh token 7 hari dengan rotasi
 - Maksimal 5 sesi per user
 - RBAC sederhana: **satu permission untuk satu menu**
@@ -47,6 +47,10 @@ Browser :1067 ─────────────────► app.exe :10
 - Audit log, system log, dan notifikasi
 - Popup login ulang ketika sesi habis tanpa pindah halaman
 - Build frontend dan backend dalam satu binary
+- Struktur menu mirror langit_v2: tiap folder `app/<mcontrol>/` berisi
+  5 file (`index.jsx` shell, `controller.js` 6 fungsi, `GRID.jsx`,
+  `FRM.jsx`, `api.js`); tambah menu = copy folder + ganti nama + isi
+  kolom/field — tanpa menyentuh file lain
 
 > Mau memakai untuk proyek Anda sendiri? Baca sesuai kebutuhan:
 >
@@ -105,6 +109,9 @@ git clone <url-repo>.git
 cd go-core
 ```
 
+> ✅ **Checkpoint 1.1** — `go version` ≥ 1.27, `node --version` ≥ 20,
+> `sqlcmd -?` jalan. Folder `go-core/` ada.
+
 ## 1.2. Install Dependency Frontend
 
 ```bash
@@ -118,6 +125,9 @@ cd frontend
 npm ci
 cd ..
 ```
+
+> ✅ **Checkpoint 1.2** — folder `frontend/node_modules/` ada dan perintah
+> selesai tanpa error `EBADENGINE` (versi Node sesuai).
 
 ## 1.3. Membuat File `.env`
 
@@ -231,6 +241,16 @@ Akun development yang dibuat:
 | `user` | `user` | `USER` | Ganti password setelah login |
 
 Password di atas hanya untuk development. Jangan digunakan di production.
+
+> ✅ **Checkpoint 1.4** — query berikut wajib 10 baris (lolos bila migrasi
+> lengkap dan seed masuk):
+>
+> ```sql
+> SELECT COUNT(*) AS TABEL_CP FROM INFORMATION_SCHEMA.TABLES
+> WHERE TABLE_NAME LIKE 'CP%';                      -- harus 10
+> SELECT COUNT(*) AS MENU FROM dbo.CPMENU;           -- fresh install: 11
+> SELECT COUNT(*) AS AKUN FROM dbo.CPUSER;           -- harus 2 (admin, user)
+> ```
 
 ## 1.5. Verifikasi Database
 
@@ -442,13 +462,17 @@ sengaja belum di-grant — perhatikan bahwa mencentang di matriks lalu
 4. Matriks menampilkan 11 menu, bukan permission per fungsi. `MENU_KEUANGAN`
    tampil sebagai **header tanpa centang** dengan anaknya `MENU_ARUS_KAS`
    di bawahnya.
-5. Menu **Modul & Menu** menampilkan 2 modul + 10 baris `CPMENU`.
+5. Menu **Modul & Menu** menampilkan 2 modul + 11 baris `CPMENU`.
 6. Centang menu CHILD untuk role yang membutuhkan (tanpa auto-grant). Contoh:
    centang `MENU_ARUS_KAS` → header **Keuangan** ikut ter-include di sidebar
    user role itu, dan yang tampil hanya `Arus Kas`.
 7. Klik **Simpan permission**.
 8. User dengan role tersebut harus logout/login ulang agar permission terbaru dimuat.
 9. Login sebagai `user`/`user` (nol menu) → halaman kosong "hubungi admin".
+
+> ✅ **Checkpoint 1.6** — login `admin`/`admin` berhasil, sidebar
+> menampilkan grup **System** (8 menu). `user`/`user` login berhasil tapi
+> sidebar kosong + pesan "hubungi admin" (artinya permission bekerja).
 
 ## 1.7. Menjalankan Production
 
@@ -470,6 +494,11 @@ Buka:
 http://localhost:1067/
 ```
 
+> ✅ **Checkpoint 1.7** — halaman login tampil di `:1067` tanpa akses
+> internet (semua aset lokal dari binary), dan menu-menu bawaan (User
+> Account, Modul & Menu, Role & Permission, Sesi & Auth, Audit Log,
+> Security Center, System Log, Notifikasi) semuanya bisa dibuka.
+
 Mode background Windows:
 
 ```bash
@@ -490,6 +519,10 @@ Hasil yang benar:
 ```
 
 Jika memakai development, frontend berjalan di port `5173`, tetapi API tetap diproxy ke backend `1067`.
+
+> ✅ **Checkpoint 1.8** — `curl http://localhost:1067/healthz` persis
+> `{"status":"ok"}`. Bila gagal: backend belum jalan atau `APP_PORT`
+> di `.env` beda dengan URL yang dibuka.
 
 ## 1.9. Mengganti Nama Aplikasi
 
@@ -762,8 +795,16 @@ go-core/
 │   ├── src/api/client.js   # request, login, session, getMe
 │   ├── src/app/
 │   │   ├── registry.js     # scan datar app/<mcontrol>/ + buildSidebar 3 level + 404 pemandu
-│   │   ├── users/          # MCONTROL users (MENU_USERS, MODULE SYSTEM)
-│   │   ├── ...             # tiap CHILD = 1 folder; PARENT tanpa folder
+│   │   ├── shared/         # padanan COMP.* : controller.js, messageBox.jsx,
+│   │   │                   # validateInput.js, DownloadButton.jsx, StandardPage/
+│   │   │                   # Grid/Form, useStandardController.js
+│   │   ├── users/          # contoh menu CRUD penuh:
+│   │   │   ├── index.jsx     # shell (toolbar + items) = <mod>.js
+│   │   │   ├── controller.js # 6 fungsi (init/renderpage/btrefresh/btnew/...) = C<mod>.js
+│   │   │   ├── GRID.jsx      # kolom + handler_rowbtn_* = GRID<mod>.js
+│   │   │   ├── FRM.jsx       # form + validate_field = FRM<mod>.js
+│   │   │   └── api.js        # read_data/process_* = store proxy
+│   │   ├── ...             # tiap CHILD = 1 folder 5 file; PARENT tanpa folder
 │   ├── src/components/     # UI kit (termasuk MissingMenu)
 │   └── src/pages/          # LoginForm
 ├── scripts/                # migrate*.sql (SQL Server) dan build script
@@ -775,9 +816,10 @@ go-core/
 ## 3.1. Alur Request
 
 ```text
-Frontend menu
+Frontend menu (index.jsx shell → controller.btrefresh_click/btnew_click)
     ↓
-app/<mcontrol>/api.js
+app/<mcontrol>/api.js  (read_data / process_create / process_update / process_delete
+                        = padanan method proxy langit_v2)
     ↓
 apiRequest dari api/client.js
     ↓
@@ -789,6 +831,11 @@ middleware RequirePermission MENU_<MENU>
     ↓
 handler → service → repository → SQL Server
 ```
+
+> ✅ **Checkpoint alur**: buka DevTools → tab Network → klik menu →
+> pastikan request `GET /api/...?limit=20&offset=0` kembali `200` dengan
+> array JSON. Bila `401`, token habis (login ulang). Bila `403`,
+> role belum di-grant `MENU_*` (beri akses di matriks, login ulang).
 
 ---
 
@@ -852,7 +899,8 @@ Tutorial terbaru menjelaskan:
 1. Membuat modul baru di `CPMODULE` (UI **Modul & Menu**).
 2. Mendaftarkan menu di `CPMENU` via UI yang sama (tanpa auto-grant).
 3. Menambah folder `app/<mcontrol>/` (datar, MCONTROL snake_case).
-4. Mengisi `index.jsx` + `api.js` (termasuk pola tabel, skeleton, paginasi).
+4. Mengisi 5 file mirror (`index.jsx`, `controller.js`, `GRID.jsx`,
+   `FRM.jsx`, `api.js`) — cukup isi `COLUMNS_ITEMS` + `validate_field`.
 5. Memahami halaman 404 pemandu sebagai kompas lokasi folder.
 6. Menambah endpoint backend (opsional) dengan permission menu yang sama.
 7. Membuat role baru, memindahkan user ke role itu, lalu memberi akses menu.
@@ -868,10 +916,10 @@ folder → role → grant.
 | # | Tujuan | Langkah | Verifikasi |
 |---|---|---|---|
 | 1 | Role baru | **Role & Permission** → **Role baru** → kode `EDITOR` | `SELECT * FROM dbo.CPROLE WHERE CODE='EDITOR'` |
-| 2 | User baru | **User Account** → **Tambah user** → pilih role `EDITOR` | `SELECT USERNAME, ROLE_CODE FROM dbo.CPUSER` |
+| 2 | User baru | **User Account** → **New Input** → pilih role `EDITOR` | `SELECT USERNAME, ROLE_CODE FROM dbo.CPUSER` |
 | 3 | Modul baru | **Modul & Menu** → **Modul baru** → kode `TOKO` | `SELECT * FROM dbo.CPMODULE` |
 | 4 | Menu baru | **Modul & Menu** → **Menu baru** → `MENU_STOK`, modul `TOKO`, mcontrol `stok`, jenis `CHILD`/`PARENT` | `SELECT * FROM dbo.CPMENU WHERE CODE='MENU_STOK'` |
-| 5 | Isi menu | `cp -r tutorial/templates/frontend-menu frontend/src/app/stok`, lalu isi `index.jsx` + `api.js` | `npm run lint && npm run build` |
+| 5 | Isi menu | `cp -r tutorial/templates/frontend-menu frontend/src/app/stok`, ganti `<mcontrol>` di 5 file, isi `COLUMNS_ITEMS` + `validate_field` | `npm run lint && npm run build` tanpa error |
 | 6 | Beri akses | **Role & Permission** → pilih `EDITOR` → centang `MENU_STOK` → **Simpan permission** | `SELECT * FROM dbo.CPPERMISSION WHERE MENU_CODE='MENU_STOK'` |
 | 7 | Cek hasil | `task build` + restart, login user role `EDITOR` | Menu **Stok** muncul di sidebar modul `TOKO` |
 
