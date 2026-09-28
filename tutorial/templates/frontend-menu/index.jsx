@@ -1,95 +1,72 @@
-import { useCallback, useEffect, useState } from 'react'
-import { listItems } from './api.js'
-import {
-  Alert,
-  Button,
-  Card,
-  CardTitle,
-  EmptyState,
-  Icon,
-  SkeletonRows,
-  useSmoothLoading,
-  useToast,
-} from '../../../components'
+// TEMPLATE view menu baru — padanan <mod>.js langit_v2.
+// Cara clone (sama seperti clone modul di langit_v2):
+// 1. Daftarkan di CPMENU via UI Modul & Menu: MODULE (section sidebar),
+//    CODE (mis. MENU_STOK), LABEL (judul), MCONTROL snake_case (mis. stok),
+//    KIND=CHILD (+ PARENT_CODE bila anak header). PARENT tanpa folder.
+// 2. Copy folder tutorial/templates/frontend-menu/ ke app/<mcontrol>/
+//    (mis. app/stok/). Judul = LABEL CPMENU; folder = MCONTROL.
+// 3. Ganti <mcontrol> di 5 file ini (index, controller, GRID, FRM, api)
+//    + <MENU_...> + <judul> + <tabel>. Titiknya ditandai GANTI.
+// 4. Isi columns.items di GRID.jsx + validate_field di FRM.jsx.
+// 5. Grant role via Role & Permission, login ulang, npm run build.
+import { useEffect, useRef, useState } from 'react'
+import { StandardPage, DownloadButton, useStandardController } from '../../../app/shared/all.js'
+import { read_data } from './api.js'
+import { controller } from './controller.js'
+import GRID from './GRID.jsx'
+import FRM from './FRM.jsx'
 
-// TEMPLATE mainpage menu baru. Cara pakai:
-// 1. Daftarkan dulu lewat UI Modul & Menu (atau SQL ke CPMENU): isi MODULE
-//    (section sidebar, mis. REPORT), CODE (mis. MENU_STOK), LABEL (judul),
-//    MCONTROL snake_case (mis. stok), KIND=CHILD + PARENT_CODE opsional.
-//    PARENT (header buka-tutup) TANPA mcontrol/folder.
-// 2. Copy folder ini ke app/<mcontrol>/, misalnya app/stok/.
-//    Judul tampil = LABEL di CPMENU; MCONTROL = nama folder.
-//    Sidebar 3 level MODULE -> PARENT -> CHILD murni dari database.
-// 3. Sesuaikan meta di bawah (label, icon, order).
-// 4. Ganti placeholder <menu> di api.js dan isi halaman dengan UI-mu.
-// 5. npm run build + restart backend; menu otomatis muncul (bila role
-//    sudah di-grant via halaman Role).
-export const meta = { label: 'Menu Baru', icon: 'list', order: 50 }
+// GANTI: mcontrol folder ini (mis. stok)
+const MCONTROL = '<mcontrol>'
 
-export default function MenuBaru() {
-  const toast = useToast()
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+export const meta = { label: '<judul>', icon: 'list', order: 50 }
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      setItems(await listItems())
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+export default function MenuBaru({ nvdata }) {
+  const [showFRM, setShowFRM] = useState(null) // null | {} (new) | row (edit via FRM)
+  const gridRef = useRef(null)
+
+  const { rows, offset, setOffset, loading, showLoading, error, setError, load } =
+    useStandardController(({ limit, offset }) => read_data({ limit, offset }), {})
 
   useEffect(() => {
-    load()
-  }, [load])
-
-  const showLoading = useSmoothLoading(loading)
+    controller.init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
-    <Card>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <CardTitle description="Ganti dengan deskripsi menumu.">
-          Menu Baru
-        </CardTitle>
-        <Button
-          size="sm"
-          onClick={() => toast.info('Ganti dengan aksimu.')}
-        >
-          <Icon name="plus" className="h-4 w-4" />
-          Aksi
-        </Button>
-      </div>
-
-      {error && (
-        <Alert tone="error" title="Gagal memuat" closable onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
-
-      {showLoading ? (
-        <SkeletonRows rows={3} />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="Belum ada data"
-          description="Ganti dengan konten menumu di sini."
+    <div className="flex flex-col gap-4">
+      <StandardPage
+        title={nvdata?.label || '<judul>'}
+        description="GANTI: deskripsi menu ini."
+        loading={loading}
+        showLoading={showLoading}
+        error={error}
+        errorTitle="Gagal memuat data"
+        onClearError={() => setError('')}
+        onRefresh={() => controller.btrefresh_click(load)}
+        onCreate={() => controller.btnew_click(() => gridRef.current?.handler_btnew_click())}
+        createLabel="New Input"
+        extraActions={<DownloadButton rows={rows} columns={GRID.columns} filename={MCONTROL} />}
+        items={rows}
+        emptyTitle="Belum ada data"
+        emptyDescription="Klik New Input untuk menambah data pertama."
+        offset={offset}
+        onPage={setOffset}
+      >
+        <GRID
+          ref={gridRef}
+          rows={rows}
+          reload={load}
+          openFRM={(row) => setShowFRM(row || {})}
         />
-      ) : (
-        <ul className="flex flex-col gap-2.5">
-          {items.map((it) => (
-            <li
-              key={it.code || it.id}
-              className="rounded-xl border border-zinc-100 p-3 dark:border-zinc-800"
-            >
-              {it.name || JSON.stringify(it)}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
+      </StandardPage>
+
+      <FRM
+        open={showFRM !== null}
+        initial={showFRM}
+        onClose={() => setShowFRM(null)}
+        onSaved={load}
+      />
+    </div>
   )
 }

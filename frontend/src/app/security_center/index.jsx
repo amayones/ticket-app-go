@@ -1,22 +1,11 @@
-// ===== TEMPLATE SERAGAM app/* (ala <mod>.js langit_v2) =====
-// Shell + controller standar; body custom (dashboard statistik).
-import { Badge, Button, Card, CardTitle, Icon, Skeleton, StandardPage, useStandardController, useToast } from '../shared/all.js'
+// View Security Center — padanan modul dashboard/ langit_v2
+// (dashboard_utama: kartu statistik + aktivitas terkini + kebijakan).
+// Controller: ./controller.js (6 fungsi). Store: read_data ringkasan.
+import { useEffect } from 'react'
+import { Badge, Card, CardTitle, Icon, Skeleton, StandardPage, useStandardController, useToast } from '../shared/all.js'
 import { securitySummary } from './api.js'
 import { listAudit } from '../audit_log/api.js'
-
-const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: false, edit: false, remove: false, pagination: false, empty: true, error: true, confirmDialog: false, extraActions: true }
-
-const CONFIG = {
-  title: 'Security Center',
-  description: 'Kesehatan keamanan 24 jam terakhir dalam sekali lihat.',
-  errorTitle: 'Gagal memuat ringkasan',
-  emptyTitle: 'Ringkasan belum tersedia',
-  emptyDescription: 'Muat ulang untuk mengambil ringkasan keamanan.',
-  recentTitle: 'Aktivitas terkini',
-  recentDescription: '8 aktivitas terakhir dari semua user.',
-  policyTitle: 'Kebijakan keamanan aktif',
-  policyDescription: 'Kebijakan yang ditegakkan backend secara otomatis.',
-}
+import { controller } from './controller.js'
 
 export const meta = { label: 'Security Center', icon: 'shield', order: 6 }
 
@@ -38,7 +27,7 @@ function StatCard({ icon, label, value, tone }) {
   )
 }
 
-export default function Security() {
+export default function Security({ nvdata }) {
   const toast = useToast()
 
   const { rows, loading, showLoading, error, setError, load } =
@@ -47,6 +36,11 @@ export default function Security() {
       return [{ summary: s, recent: Array.isArray(a) ? a : [] }]
     }, {})
 
+  useEffect(() => {
+    controller.init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const summary = rows[0]?.summary || null
   const recent = rows[0]?.recent || []
   const items = summary ? [summary] : []
@@ -54,18 +48,17 @@ export default function Security() {
   return (
     <div className="flex flex-col gap-4">
       <StandardPage
-        title={CONFIG.title}
-        description={CONFIG.description}
-        features={FEATURES}
+        title={nvdata?.label || 'Security Center'}
+        description="Kesehatan keamanan 24 jam terakhir dalam sekali lihat."
         loading={loading}
         showLoading={showLoading}
         error={error}
-        errorTitle={CONFIG.errorTitle}
+        errorTitle="Gagal memuat ringkasan"
         onClearError={() => setError('')}
-        onRefresh={load}
+        onRefresh={() => controller.btrefresh_click(load)}
         items={items}
-        emptyTitle={CONFIG.emptyTitle}
-        emptyDescription={CONFIG.emptyDescription}
+        emptyTitle="Ringkasan belum tersedia"
+        emptyDescription="Muat ulang untuk mengambil ringkasan keamanan."
       >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard icon="users" label="Total pengguna" value={summary.total_users} tone="neutral" />
@@ -83,7 +76,7 @@ export default function Security() {
       </StandardPage>
 
       <Card>
-        <CardTitle description={CONFIG.recentDescription}>{CONFIG.recentTitle}</CardTitle>
+        <CardTitle description="8 aktivitas terakhir dari semua user.">Aktivitas terkini</CardTitle>
         {showLoading ? (
           <Skeleton className="h-24" />
         ) : recent.length === 0 ? (
@@ -110,7 +103,9 @@ export default function Security() {
       </Card>
 
       <Card>
-        <CardTitle description={CONFIG.policyDescription}>{CONFIG.policyTitle}</CardTitle>
+        <CardTitle description="Kebijakan yang ditegakkan backend secara otomatis.">
+          Kebijakan keamanan aktif
+        </CardTitle>
         <ul className="grid gap-2 text-sm sm:grid-cols-2">
           {[
             'Access token pendek + refresh berotasi (lihat ACCESS_TOKEN_MINUTES)',

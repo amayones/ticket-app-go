@@ -29,3 +29,24 @@ export async function logoutAll(code) {
 export async function updateUserRole(code, roleCode) {
   return request(`/api/users/${code}/role`, { method: 'PUT', body: { role_code: roleCode }, auth: true })
 }
+
+// ===== Padanan store proxy langit_v2 (method read_data/process_*) =====
+// read_data: dipakai store/load GRID. Selalu kembalikan array.
+export async function read_data({ limit = 20, offset = 0 } = {}) {
+  return listUsers(limit, offset)
+}
+
+// process_create: dipakai FRM handler_btsave mode new (dtval = form values).
+export async function process_create(dtval) {
+  return createUser(dtval.username?.trim(), dtval.email?.trim().toLowerCase(), dtval.password, dtval.role)
+}
+
+// process_update: dipakai GRID handler_rowbtn_save + FRM edit.
+export async function process_update(code, dtval) {
+  return updateUser(code, dtval)
+}
+
+// process_delete: dipakai GRID + FRM handler delete.
+export async function process_delete(code) {
+  return deleteUser(code)
+}

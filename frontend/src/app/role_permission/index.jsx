@@ -1,22 +1,10 @@
-// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
-// Tabel DB: CPROLE/CPMENU/CPPERMISSION via ./api.js. Matikan blok via FEATURES.
-import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
+// View Role & Permission — padanan modul tree mgroup_user langit_v2
+// (body matriks custom, bukan grid standar).
+// Controller: ./controller.js (6 fungsi). Tabel: CPROLE/CPMENU/CPPERMISSION.
+import { Alert, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, SkeletonRows, TextField, useSmoothLoading, useToast, useCallback, useEffect, useMemo, useState } from '../shared/all.js'
 import { createRole, deleteRole, getRole, listPermissions, listRoles, setRolePermissions } from './api.js'
 import { groupPermissions } from './matrix.js'
-
-const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: true, edit: false, remove: true, pagination: false, empty: true, error: true, confirmDialog: true, extraActions: true }
-
-// CONFIG pola seragam: judul/deskripsi terpusat (halaman matriks custom,
-// layout 2 kolom khas modul non-grid seperti dashboard di langit_v2).
-const CONFIG = {
-  title: 'Role & Permission',
-  description: 'Buat role, hapus role custom, dan atur akses menu per role.',
-  errorTitle: 'Gagal memuat',
-  emptyRolesTitle: 'Belum ada role',
-  emptyRolesDescription: 'Buat role pertama lewat tombol di atas.',
-  emptyMatrixTitle: 'Belum ada menu',
-  emptyMatrixDescription: 'Daftarkan menu dulu di halaman Modul & Menu, lalu atur aksesnya di sini.',
-}
+import { controller } from './controller.js'
 
 export const meta = { label: 'Role & Permission', icon: 'shield', order: 3 }
 
@@ -241,7 +229,8 @@ export default function Roles() {
   }, [])
 
   useEffect(() => {
-    load()
+    controller.init()
+    controller.btrefresh_click(load)
   }, [load])
 
   useEffect(() => {
@@ -341,7 +330,7 @@ export default function Roles() {
           selected={selected}
           showLoading={showLoading}
           error={error}
-          onCreate={() => setShowCreate(true)}
+          onCreate={() => controller.btnew_click(() => setShowCreate(true))}
           onSelect={setSelected}
           onErrorClose={() => setError('')}
         />

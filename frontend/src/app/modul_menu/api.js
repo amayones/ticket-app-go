@@ -34,3 +34,35 @@ export async function createModule(payload) {
 export async function deleteModule(code) {
   return request(`/api/admin/modules/${code}`, { method: 'DELETE', auth: true })
 }
+
+// ===== Padanan store proxy langit_v2 (method read_data/process_*) =====
+// read_data: dipakai store/load (modul + menu).
+export async function read_data() {
+  const [menus, modules] = await Promise.all([listMenus(), listModules()])
+  return {
+    menus: Array.isArray(menus) ? menus : [],
+    modules: Array.isArray(modules) ? modules : [],
+  }
+}
+
+// process_create/update/delete menu: dipakai form menu (handler_btsave/btdelete).
+export async function process_create_menu(dtval) {
+  return createMenu(dtval)
+}
+
+export async function process_update_menu(code, dtval) {
+  return updateMenu(code, dtval)
+}
+
+export async function process_delete_menu(code) {
+  return deleteMenu(code)
+}
+
+// process_create/delete modul: dipakai form modul.
+export async function process_create_module(dtval) {
+  return createModule(dtval)
+}
+
+export async function process_delete_module(code) {
+  return deleteModule(code)
+}

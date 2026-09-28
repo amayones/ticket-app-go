@@ -18,3 +18,11 @@ export async function listAllSessions(limit = 20, offset = 0) {
 export async function revokeSession(id) {
   return request(`/api/sessions/${id}`, { method: 'DELETE', auth: true })
 }
+
+// ===== Padanan store proxy langit_v2 (method read_data) =====
+// read_data: dipakai store/load viewer (tab mine = sesi sendiri,
+// tab all = semua sesi + pagination).
+export async function read_data({ tab = 'mine', limit = 20, offset = 0 } = {}) {
+  if (tab === 'all') return listAllSessions(limit, offset)
+  return listMySessions()
+}

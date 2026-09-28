@@ -26,6 +26,7 @@ const PATHS = {
   moon: 'M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z',
   plus: 'M12 5v14M5 12h14',
   refresh: 'M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15',
+  download: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3',
 }
 
 export default function Icon({ name, className = 'h-5 w-5' }) {

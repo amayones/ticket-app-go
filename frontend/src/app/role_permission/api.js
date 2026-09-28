@@ -25,6 +25,26 @@ export async function setRolePermissions(code, permissions) {
   return request(`/api/admin/roles/${code}/permissions`, { method: 'PUT', body: { permissions }, auth: true })
 }
 
+// ===== Padanan store proxy langit_v2 (method read_data/process_*) =====
+// read_data: dipakai store/load (role + permission menu).
+export async function read_data() {
+  const [r, p] = await Promise.all([listRoles(), listPermissions()])
+  return {
+    roles: Array.isArray(r) ? r : [],
+    permissions: Array.isArray(p) ? p.filter((permission) => permission.code.startsWith('MENU_')) : [],
+  }
+}
+
+// process_create: dipakai form role baru (handler_btsave).
+export async function process_create(dtval) {
+  return createRole(dtval.code, dtval.name)
+}
+
+// process_delete: dipakai hapus role (handler_btdelete).
+export async function process_delete(code) {
+  return deleteRole(code)
+}
+
 export async function myMenus() {
   const data = await request('/api/menus/mine', { auth: true })
   return Array.isArray(data) ? data : []

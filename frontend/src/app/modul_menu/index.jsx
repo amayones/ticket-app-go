@@ -1,17 +1,9 @@
-// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
-// Tabel DB: CPMODULE/CPMENU via ./api.js. Matikan blok via FEATURES.
-import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
+// View Modul & Menu — padanan form master custom langit_v2
+// (layout modul+menu, bukan grid standar).
+// Controller: ./controller.js (6 fungsi). Tabel: CPMODULE/CPMENU.
+import { Alert, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, SkeletonRows, TextField, Tooltip, useSmoothLoading, useToast, useCallback, useEffect, useMemo, useState } from '../shared/all.js'
 import { createMenu, createModule, deleteMenu, deleteModule, listMenus, listModules, updateMenu } from './api.js'
-
-const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: true, edit: true, remove: true, pagination: false, empty: true, error: true, confirmDialog: true, extraActions: true }
-
-// CONFIG pola seragam: judul/deskripsi terpusat (halaman master custom,
-// layout modul+menu khas modul non-grid seperti form master di langit_v2).
-const CONFIG = {
-  title: 'Modul & Menu',
-  description: 'Master CPMODULE + registry CPMENU. Urut kerja: buat modul dulu, lalu menu di dalamnya.',
-  errorTitle: 'Gagal memuat',
-}
+import { controller } from './controller.js'
 
 export const meta = { label: 'Modul & Menu', icon: 'list', order: 2 }
 
@@ -94,7 +86,8 @@ export default function Modul() {
   }, [])
 
   useEffect(() => {
-    load()
+    controller.init()
+    controller.btrefresh_click(load)
   }, [load])
 
   const menuGroups = useMemo(() => groupMenusByModule(menus), [menus])
@@ -229,11 +222,11 @@ export default function Modul() {
             Modul &amp; Menu
           </CardTitle>
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowModuleCreate(true)}>
+            <Button variant="secondary" size="sm" onClick={() => controller.btnew_click(() => setShowModuleCreate(true))}>
               <Icon name="plus" className="h-4 w-4" />
               Modul baru
             </Button>
-            <Button size="sm" onClick={() => setShowMenuCreate(true)}>
+            <Button size="sm" onClick={() => controller.btnew_click(() => setShowMenuCreate(true))}>
               <Icon name="plus" className="h-4 w-4" />
               Menu baru
             </Button>

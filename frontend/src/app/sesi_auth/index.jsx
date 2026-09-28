@@ -1,23 +1,22 @@
-// ===== TEMPLATE SERAGAM app/* (ala <mod>.js langit_v2) =====
-// Shell + controller standar; body custom (tabs mine/all) seperti modul
-// non-grid di langit_v2. Tabel DB: CPREFRESHTOKEN via ./api.js.
-import { Badge, Button, ConfirmDialog, Icon, StandardPage, api, formatTime, useStandardController, useState, useToast } from '../shared/all.js'
-import { listAllSessions, listMySessions, revokeSession } from './api.js'
+// View Sesi & Auth — padanan modul viewer bertab langit_v2
+// (seperti budget_exp_byaccount/byusage: satu shell, isi ganti per tab).
+// Controller: ./controller.js (6 fungsi). Store: read_data. Tabel: CPREFRESHTOKEN.
+import { useEffect, useState } from 'react'
+import { Badge, Button, ConfirmDialog, Icon, StandardPage, DownloadButton, api, formatTime, useStandardController, useToast } from '../shared/all.js'
+import { read_data, revokeSession } from './api.js'
 import { logoutAll as logoutAllUser } from '../users/api.js'
-
-const FEATURES = { header: true, refresh: true, filter: false, tabs: true, create: false, edit: false, remove: true, pagination: true, empty: true, error: true, confirmDialog: true, extraActions: true }
-
-const CONFIG = {
-  title: 'Authentication & Session Management',
-  description: 'Setiap login dari perangkat/browser tercatat sebagai 1 sesi (refresh token). Cabut sesi yang tidak dikenal.',
-  errorTitle: 'Gagal memuat sesi',
-  emptyTitle: 'Tidak ada sesi aktif',
-  emptyDescription: 'Semua sesi sudah kedaluwarsa atau dicabut. Login ulang untuk membuat sesi baru.',
-}
+import { controller } from './controller.js'
 
 export const meta = { label: 'Sesi & Auth', icon: 'key', order: 4 }
 
-export default function Sessions() {
+const GRID_COLUMNS = [
+  { header: 'ID', dataIndex: 'id' },
+  { header: 'Username', dataIndex: 'username' },
+  { header: 'Dibuat', dataIndex: 'created_at' },
+  { header: 'Kedaluwarsa', dataIndex: 'expires_at' },
+]
+
+export default function Sessions({ nvdata }) {
   const toast = useToast()
   const me = api.currentUser()
   const canViewAll = true
@@ -25,10 +24,12 @@ export default function Sessions() {
   const [revoking, setRevoking] = useState(null)
 
   const { rows: sessions, offset, setOffset, loading, showLoading, error, setError, load } =
-    useStandardController(
-      ({ limit, offset }) => (tab === 'all' && canViewAll ? listAllSessions(limit, offset) : listMySessions()),
-      { tab }
-    )
+    useStandardController(read_data, { tab })
+
+  useEffect(() => {
+    controller.init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function switchTab(t) {
     setTab(t)
@@ -41,7 +42,7 @@ export default function Sessions() {
       await revokeSession(revoking.id)
       toast.success('Sesi berhasil dicabut.')
       setRevoking(null)
-      load()
+      controller.btrefresh_click(load)
     } catch (err) {
       toast.error(err.message, { title: 'Gagal mencabut sesi' })
     }
@@ -55,7 +56,7 @@ export default function Sessions() {
     try {
       await logoutAllUser(me.code)
       toast.warning('Semua sesi Anda dicabut. Silakan login ulang.', { title: 'Sesi berakhir' })
-      load()
+      controller.btrefresh_click(load)
     } catch (err) {
       toast.error(err.message)
     }
@@ -64,15 +65,15 @@ export default function Sessions() {
   return (
     <div className="flex flex-col gap-4">
       <StandardPage
-        title={CONFIG.title}
-        description={CONFIG.description}
-        features={FEATURES}
+        title={nvdata?.label || 'Authentication & Session Management'}
+        description="Setiap login dari perangkat/browser tercatat sebagai 1 sesi (refresh token). Cabut sesi yang tidak dikenal."
         loading={loading}
         showLoading={showLoading}
         error={error}
-        errorTitle={CONFIG.errorTitle}
+        errorTitle="Gagal memuat sesi"
         onClearError={() => setError('')}
-        onRefresh={load}
+        onRefresh={() => controller.btrefresh_click(load)}
+        extraActions={<DownloadButton rows={sessions} columns={GRID_COLUMNS} filename="sesi_auth" />}
         tabsBar={
           <div className="mb-4 flex gap-1.5 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
             {['mine', ...(canViewAll ? ['all'] : [])].map((t) => (
@@ -92,8 +93,8 @@ export default function Sessions() {
           </div>
         }
         items={sessions}
-        emptyTitle={CONFIG.emptyTitle}
-        emptyDescription={CONFIG.emptyDescription}
+        emptyTitle="Tidak ada sesi aktif"
+        emptyDescription="Semua sesi sudah kedaluwarsa atau dicabut. Login ulang untuk membuat sesi baru."
         offset={offset}
         onPage={tab === 'all' ? setOffset : null}
         footer={
@@ -139,17 +140,15 @@ export default function Sessions() {
         </ul>
       </StandardPage>
 
-      {FEATURES.confirmDialog && (
-        <ConfirmDialog
-          open={!!revoking}
-          title={`Cabut sesi #${revoking?.id}?`}
-          message="Perangkat pemilik sesi ini akan langsung dikeluarkan dan harus login ulang."
-          confirmLabel="Ya, cabut"
-          danger
-          onConfirm={revoke}
-          onCancel={() => setRevoking(null)}
-        />
-      )}
+      <ConfirmDialog
+        open={!!revoking}
+        title={`Cabut sesi #${revoking?.id}?`}
+        message="Perangkat pemilik sesi ini akan langsung dikeluarkan dan harus login ulang."
+        confirmLabel="Ya, cabut"
+        danger
+        onConfirm={revoke}
+        onCancel={() => setRevoking(null)}
+      />
     </div>
   )
 }
