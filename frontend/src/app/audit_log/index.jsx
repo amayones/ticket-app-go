@@ -1,23 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
+// PAGE_SIZE global dari shared (10 semua). Nonaktifkan blok cukup set false.
+import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
 import { listAudit } from './api.js'
 
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  CardTitle,
-  EmptyState,
-  Icon,
-  Pagination,
-  SkeletonRows,
-  useSmoothLoading,
-  formatTime,
-} from '../../components'
+const FEATURES = { header: true, refresh: true, filter: true, tabs: false, create: false, edit: false, remove: false, pagination: true, empty: true, error: true, confirmDialog: false, extraActions: false }
 
 export const meta = { label: 'Audit Log', icon: 'list', order: 5 }
-
-const PAGE_SIZE = 20
 const ACTIONS = [
   '',
   'REGISTER',
@@ -97,12 +85,15 @@ export default function Audit() {
         <CardTitle description="Siapa melakukan apa, kapan, dari IP mana. Tercatat otomatis untuk login, CRUD user/role, sesi, dan notifikasi.">
           Audit Log
         </CardTitle>
+        {FEATURES.refresh && (
         <Button variant="secondary" size="sm" onClick={load} loading={loading}>
           <Icon name="refresh" className="h-4 w-4" />
           Muat ulang
         </Button>
+        )}
       </div>
 
+      {FEATURES.filter && (
       <form onSubmit={applyFilter} className="mb-4 flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
           Aksi
@@ -136,8 +127,9 @@ export default function Audit() {
           Reset
         </Button>
       </form>
+      )}
 
-      {error && (
+      {FEATURES.error && error && (
         <Alert tone="error" title="Gagal memuat audit" closable onClose={() => setError('')} className="mb-4">
           {error}
         </Alert>
@@ -182,7 +174,7 @@ export default function Audit() {
         </div>
       )}
 
-      {!showLoading && logs.length > 0 && (
+      {FEATURES.pagination && !showLoading && logs.length > 0 && (
         <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
           <Pagination
             offset={offset}

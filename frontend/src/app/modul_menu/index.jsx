@@ -1,21 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
+// Tabel DB: CPMODULE/CPMENU via ./api.js. Matikan blok via FEATURES.
+import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
 import { createMenu, createModule, deleteMenu, deleteModule, listMenus, listModules, updateMenu } from './api.js'
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  CardTitle,
-  ConfirmDialog,
-  EmptyState,
-  Icon,
-  Modal,
-  SkeletonRows,
-  TextField,
-  Tooltip,
-  useSmoothLoading,
-  useToast,
-} from '../../components'
+
+const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: true, edit: true, remove: true, pagination: false, empty: true, error: true, confirmDialog: true, extraActions: true }
 
 export const meta = { label: 'Modul & Menu', icon: 'list', order: 2 }
 

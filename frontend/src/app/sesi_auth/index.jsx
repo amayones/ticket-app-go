@@ -1,26 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
-import { api } from '../../api/client.js'
+// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
+// PAGE_SIZE global dari shared (10 semua). Nonaktifkan blok cukup set false.
+import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
 import { listAllSessions, listMySessions, revokeSession } from './api.js'
 import { logoutAll as logoutAllUser } from '../users/api.js'
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  CardTitle,
-  ConfirmDialog,
-  EmptyState,
-  Icon,
-  Pagination,
-  SkeletonRows,
-  useSmoothLoading,
-  formatTime,
-  useToast,
-} from '../../components'
+
+const FEATURES = { header: true, refresh: true, filter: false, tabs: true, create: false, edit: false, remove: true, pagination: true, empty: true, error: true, confirmDialog: true, extraActions: true }
 
 export const meta = { label: 'Sesi & Auth', icon: 'key', order: 4 }
-
-const PAGE_SIZE = 15
 
 export default function Sessions() {
   const toast = useToast()
@@ -92,12 +78,15 @@ export default function Sessions() {
           <CardTitle description="Setiap login dari perangkat/browser tercatat sebagai 1 sesi (refresh token). Cabut sesi yang tidak dikenal.">
             Authentication & Session Management
           </CardTitle>
+          {FEATURES.refresh && (
           <Button variant="secondary" size="sm" onClick={load} loading={loading}>
             <Icon name="refresh" className="h-4 w-4" />
             Muat ulang
           </Button>
+          )}
         </div>
 
+        {FEATURES.tabs && (
         <div className="mb-4 flex gap-1.5 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
            {['mine', ...(canViewAll ? ['all'] : [])].map((t) => (
             <button
@@ -114,8 +103,9 @@ export default function Sessions() {
             </button>
           ))}
         </div>
+        )}
 
-        {error && (
+        {FEATURES.error && error && (
           <Alert tone="error" title="Gagal memuat sesi" closable onClose={() => setError('')} className="mb-4">
             {error}
           </Alert>
@@ -161,7 +151,7 @@ export default function Sessions() {
           </ul>
         )}
 
-        {tab === 'all' && !showLoading && sessions.length > 0 && (
+        {FEATURES.pagination && tab === 'all' && !showLoading && sessions.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
             <Pagination
               offset={offset}
@@ -174,7 +164,7 @@ export default function Sessions() {
           </div>
         )}
 
-        {tab === 'mine' && !showLoading && sessions.length > 0 && (
+        {FEATURES.extraActions && tab === 'mine' && !showLoading && sessions.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
             <Button variant="danger" size="sm" onClick={logoutAllMine}>
               <Icon name="logout" className="h-4 w-4" />
@@ -184,6 +174,7 @@ export default function Sessions() {
         )}
       </Card>
 
+      {FEATURES.confirmDialog && (
       <ConfirmDialog
         open={!!revoking}
         title={`Cabut sesi #${revoking?.id}?`}
@@ -193,6 +184,7 @@ export default function Sessions() {
         onConfirm={revoke}
         onCancel={() => setRevoking(null)}
       />
+      )}
     </div>
   )
 }

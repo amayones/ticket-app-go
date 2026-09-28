@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { api } from '../../api/client.js'
+// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
+// PAGE_SIZE global dari shared (10 semua). Tabel DB: CPNOTIFTEMPLATE/CPNOTIFLOG via ./api.js.
+import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
 import {
   createTemplate,
   deleteTemplate,
@@ -9,27 +10,9 @@ import {
   updateTemplate,
 } from './api.js'
 
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  CardTitle,
-  ConfirmDialog,
-  EmptyState,
-  Icon,
-  Modal,
-  Pagination,
-  SkeletonRows,
-  TextField,
-  formatTime,
-  useSmoothLoading,
-  useToast,
-} from '../../components'
+const FEATURES = { header: true, refresh: true, filter: false, tabs: true, create: true, edit: true, remove: true, pagination: true, empty: true, error: true, confirmDialog: true, extraActions: true }
 
 export const meta = { label: 'Notifikasi', icon: 'bell', order: 8 }
-
-const PAGE_SIZE = 15
 const CHANNELS = ['EMAIL', 'PUSH', 'INAPP']
 
 const inputClass =
@@ -302,7 +285,9 @@ export default function Notifications() {
               </table>
             </div>
             <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+              {FEATURES.pagination && (
               <Pagination offset={offset} limit={PAGE_SIZE} count={logs.length} hasMore={logs.length === PAGE_SIZE} loading={loading} onPage={setOffset} />
+              )}
             </div>
           </>
         )}

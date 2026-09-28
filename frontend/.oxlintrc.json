@@ -11,6 +11,14 @@
       "rules": {
         "react/only-export-components": "off"
       }
+    },
+    {
+      // Template seragam: semua index.jsx memakai header import yang sama
+      // (terpakai/tidak tidak masalah), jadi matikan warning unused khusus app.
+      "files": ["src/app/**/*.{js,jsx}"],
+      "rules": {
+        "no-unused-vars": "off"
+      }
     }
   ]
 }

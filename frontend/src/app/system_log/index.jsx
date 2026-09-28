@@ -1,25 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
+// PAGE_SIZE global dari shared (10 semua). Nonaktifkan blok cukup set false.
+import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
 import { listSyslogs, pruneSyslogs } from './api.js'
 
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  CardTitle,
-  ConfirmDialog,
-  EmptyState,
-  Icon,
-  Pagination,
-  SkeletonRows,
-  useSmoothLoading,
-  formatTime,
-  useToast,
-} from '../../components'
+const FEATURES = { header: true, refresh: true, filter: true, tabs: false, create: false, edit: false, remove: true, pagination: true, empty: true, error: true, confirmDialog: true, extraActions: true }
 
 export const meta = { label: 'System Log', icon: 'terminal', order: 7 }
-
-const PAGE_SIZE = 20
 const LEVELS = ['', 'ERROR', 'WARN', 'INFO']
 
 function toneFor(level) {
@@ -73,17 +59,22 @@ export default function Syslog() {
           Error / System Log
         </CardTitle>
         <div className="flex items-center gap-2">
+          {FEATURES.refresh && (
           <Button variant="secondary" size="sm" onClick={load} loading={loading}>
             <Icon name="refresh" className="h-4 w-4" />
             Muat ulang
           </Button>
+          )}
+          {FEATURES.remove && (
           <Button variant="danger" size="sm" onClick={() => setConfirmPrune(true)}>
             <Icon name="trash" className="h-4 w-4" />
             Bersihkan lama
           </Button>
+          )}
         </div>
       </div>
 
+      {FEATURES.filter && (
       <div className="mb-4 flex gap-1.5">
         {LEVELS.map((l) => (
           <button
@@ -100,8 +91,9 @@ export default function Syslog() {
           </button>
         ))}
       </div>
+      )}
 
-      {error && (
+      {FEATURES.error && error && (
         <Alert tone="error" title="Gagal memuat log" closable onClose={() => setError('')} className="mb-4">
           {error}
         </Alert>
@@ -144,7 +136,7 @@ export default function Syslog() {
         </div>
       )}
 
-      {!showLoading && logs.length > 0 && (
+      {FEATURES.pagination && !showLoading && logs.length > 0 && (
         <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
           <Pagination
             offset={offset}
@@ -157,6 +149,7 @@ export default function Syslog() {
         </div>
       )}
 
+      {FEATURES.confirmDialog && (
       <ConfirmDialog
         open={confirmPrune}
         title="Hapus log lama?"
@@ -178,6 +171,7 @@ export default function Syslog() {
         onConfirm={prune}
         onCancel={() => setConfirmPrune(false)}
       />
+      )}
     </Card>
   )
 }

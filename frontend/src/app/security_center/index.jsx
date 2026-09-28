@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
+// Nonaktifkan blok cukup set false; return di bawah tidak perlu diubah.
+import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
 import { securitySummary } from './api.js'
 import { listAudit } from '../audit_log/api.js'
-import { Alert, Badge, Button, Card, CardTitle, Icon, Skeleton, useSmoothLoading, useToast } from '../../components'
+
+const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: false, edit: false, remove: false, pagination: false, empty: true, error: true, confirmDialog: false, extraActions: true }
 
 export const meta = { label: 'Security Center', icon: 'shield', order: 6 }
 
@@ -59,12 +62,14 @@ export default function Security() {
           <CardTitle description="Kesehatan keamanan 24 jam terakhir dalam sekali lihat.">
             Security Center
           </CardTitle>
+          {FEATURES.refresh && (
           <Button variant="secondary" size="sm" onClick={load} loading={loading}>
             <Icon name="refresh" className="h-4 w-4" />
             Muat ulang
           </Button>
+          )}
         </div>
-        {error && (
+        {FEATURES.error && error && (
           <Alert tone="error" title="Gagal memuat ringkasan" closable onClose={() => setError('')} className="mb-4">
             {error}
           </Alert>

@@ -1,31 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
-import { api } from '../../api/client.js'
+// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
+// PAGE_SIZE global dari shared (10 semua). Tabel DB: CPUSER via ./api.js.
+import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
 import { createUser, deleteUser, listUsers, logoutAll } from './api.js'
 import { listRoles } from '../role_permission/api.js'
-import {
-  Alert,
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  CardTitle,
-  ConfirmDialog,
-  EmptyState,
-  Icon,
-  Modal,
-  Pagination,
-  PasswordInput,
-  SkeletonRows,
-  TextField,
-  Tooltip,
-  useSmoothLoading,
-  useToast,
-} from '../../components'
 import EditUserModal from './components/EditUserModal.jsx'
 
-export const meta = { label: 'User Account', icon: 'users', order: 1 }
+const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: true, edit: true, remove: true, pagination: true, empty: true, error: true, confirmDialog: true, extraActions: true }
 
-const PAGE_SIZE = 10
+export const meta = { label: 'User Account', icon: 'users', order: 1 }
 
 export default function UsersList({ onAccountDeleted }) {
   const toast = useToast()
@@ -133,20 +115,22 @@ export default function UsersList({ onAccountDeleted }) {
             Daftar Pengguna
           </CardTitle>
           <div className="flex gap-2">
-            {canManage && (
+            {FEATURES.create && canManage && (
               <Button size="sm" onClick={openCreate}>
                 <Icon name="plus" className="h-4 w-4" />
                 Tambah User
               </Button>
             )}
+            {FEATURES.refresh && (
             <Button variant="secondary" size="sm" onClick={() => load(offset)} loading={loading}>
               <Icon name="refresh" className="h-4 w-4" />
               Muat ulang
             </Button>
+            )}
           </div>
         </div>
 
-        {error && (
+        {FEATURES.error && error && (
           <Alert tone="error" title="Gagal memuat data" closable onClose={() => setError('')} className="mb-4">
             {error}
           </Alert>
@@ -228,7 +212,7 @@ export default function UsersList({ onAccountDeleted }) {
           </ul>
         )}
 
-        {!showLoading && users.length > 0 && (
+        {FEATURES.pagination && !showLoading && users.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
             <Pagination
               offset={offset}
@@ -242,7 +226,7 @@ export default function UsersList({ onAccountDeleted }) {
         )}
       </Card>
 
-      {editing && (
+      {FEATURES.edit && editing && (
         <EditUserModal
           key={editing.code}
           user={editing}
@@ -251,6 +235,7 @@ export default function UsersList({ onAccountDeleted }) {
         />
       )}
 
+      {FEATURES.confirmDialog && (
       <ConfirmDialog
         open={!!confirm}
         title={confirm?.type === 'delete' ? 'Hapus akun ini?' : 'Keluarkan semua sesi?'}
@@ -265,7 +250,9 @@ export default function UsersList({ onAccountDeleted }) {
         onConfirm={runConfirm}
         onCancel={() => !acting && setConfirm(null)}
       />
+      )}
 
+      {FEATURES.create && (
       <Modal
         open={showCreate}
         onClose={creating ? undefined : () => setShowCreate(false)}
@@ -328,6 +315,7 @@ export default function UsersList({ onAccountDeleted }) {
           </label>
         </div>
       </Modal>
+      )}
     </div>
   )
 }
