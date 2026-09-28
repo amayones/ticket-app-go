@@ -243,8 +243,8 @@ function Shell() {
     if (!loggedIn || permissions.length > 0) return
     api.getMe()
       .then((data) => {
-        setPermissions(data.permissions || [])
-        setMyMenus(data.menus || [])
+        setPermissions((data && data.permissions) || [])
+        setMyMenus((data && data.menus) || [])
         setLastMe(data)
       })
       .catch(() => {
@@ -267,8 +267,8 @@ function Shell() {
   async function loadPermissions() {
     try {
       const data = await api.getMe()
-      setPermissions(data.permissions || [])
-      setMyMenus(data.menus || [])
+      setPermissions((data && data.permissions) || [])
+      setMyMenus((data && data.menus) || [])
       setLastMe(data)
     } catch {
       setPermissions([])

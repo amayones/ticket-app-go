@@ -236,7 +236,7 @@ export default function Roles() {
   useEffect(() => {
     if (!selected) return
     getRole(selected)
-      .then((d) => setChecked((d.permissions || []).filter((code) => code.startsWith('MENU_'))))
+      .then((d) => setChecked(((d && d.permissions) || []).filter((code) => code && code.startsWith('MENU_'))))
       .catch(() => setChecked([]))
   }, [selected])
 

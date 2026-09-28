@@ -44,6 +44,10 @@ export default function Security({ nvdata }) {
   const summary = rows[0]?.summary || null
   const recent = rows[0]?.recent || []
   const items = summary ? [summary] : []
+  // Anti-crash: children StandardPage normalnya hanya render saat items
+  // non-empty (summary ada), tapi stat tetap dibaca aman bila summary null
+  // (mis. respons backend tak terduga) agar tidak throw TypeError.
+  const stat = summary || { total_users: 0, total_roles: 0, active_sessions: 0, audit_last_24h: 0, errors_last_24h: 0 }
 
   return (
     <div className="flex flex-col gap-4">
@@ -61,17 +65,17 @@ export default function Security({ nvdata }) {
         emptyDescription="Muat ulang untuk mengambil ringkasan keamanan."
       >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <StatCard icon="users" label="Total pengguna" value={summary.total_users} tone="neutral" />
-          <StatCard icon="shield" label="Total role" value={summary.total_roles} tone="neutral" />
-          <StatCard icon="key" label="Sesi aktif" value={summary.active_sessions} tone="neutral" />
-          <StatCard icon="list" label="Aksi audit 24 jam" value={summary.audit_last_24h} tone="neutral" />
+          <StatCard icon="users" label="Total pengguna" value={stat.total_users} tone="neutral" />
+          <StatCard icon="shield" label="Total role" value={stat.total_roles} tone="neutral" />
+          <StatCard icon="key" label="Sesi aktif" value={stat.active_sessions} tone="neutral" />
+          <StatCard icon="list" label="Aksi audit 24 jam" value={stat.audit_last_24h} tone="neutral" />
           <StatCard
             icon="warning"
             label="Error sistem 24 jam"
-            value={summary.errors_last_24h}
-            tone={summary.errors_last_24h > 0 ? 'danger' : 'neutral'}
+            value={stat.errors_last_24h}
+            tone={stat.errors_last_24h > 0 ? 'danger' : 'neutral'}
           />
-          <StatCard icon="clock" label="Perlu perhatian" value={summary.errors_last_24h > 0 ? 'Ya' : 'Tidak'} tone={summary.errors_last_24h > 0 ? 'danger' : 'neutral'} />
+          <StatCard icon="clock" label="Perlu perhatian" value={stat.errors_last_24h > 0 ? 'Ya' : 'Tidak'} tone={stat.errors_last_24h > 0 ? 'danger' : 'neutral'} />
         </div>
       </StandardPage>
 
