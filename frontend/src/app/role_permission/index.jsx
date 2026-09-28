@@ -6,6 +6,18 @@ import { groupPermissions } from './matrix.js'
 
 const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: true, edit: false, remove: true, pagination: false, empty: true, error: true, confirmDialog: true, extraActions: true }
 
+// CONFIG pola seragam: judul/deskripsi terpusat (halaman matriks custom,
+// layout 2 kolom khas modul non-grid seperti dashboard di langit_v2).
+const CONFIG = {
+  title: 'Role & Permission',
+  description: 'Buat role, hapus role custom, dan atur akses menu per role.',
+  errorTitle: 'Gagal memuat',
+  emptyRolesTitle: 'Belum ada role',
+  emptyRolesDescription: 'Buat role pertama lewat tombol di atas.',
+  emptyMatrixTitle: 'Belum ada menu',
+  emptyMatrixDescription: 'Daftarkan menu dulu di halaman Modul & Menu, lalu atur aksesnya di sini.',
+}
+
 export const meta = { label: 'Role & Permission', icon: 'shield', order: 3 }
 
 

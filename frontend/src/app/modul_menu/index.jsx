@@ -5,6 +5,14 @@ import { createMenu, createModule, deleteMenu, deleteModule, listMenus, listModu
 
 const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: true, edit: true, remove: true, pagination: false, empty: true, error: true, confirmDialog: true, extraActions: true }
 
+// CONFIG pola seragam: judul/deskripsi terpusat (halaman master custom,
+// layout modul+menu khas modul non-grid seperti form master di langit_v2).
+const CONFIG = {
+  title: 'Modul & Menu',
+  description: 'Master CPMODULE + registry CPMENU. Urut kerja: buat modul dulu, lalu menu di dalamnya.',
+  errorTitle: 'Gagal memuat',
+}
+
 export const meta = { label: 'Modul & Menu', icon: 'list', order: 2 }
 
 // Menu bertipe PARENT saja yang boleh dipilih sebagai parent menu lain.

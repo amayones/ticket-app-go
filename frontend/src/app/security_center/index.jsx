@@ -1,10 +1,22 @@
-// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
-// Nonaktifkan blok cukup set false; return di bawah tidak perlu diubah.
-import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
+// ===== TEMPLATE SERAGAM app/* (ala <mod>.js langit_v2) =====
+// Shell + controller standar; body custom (dashboard statistik).
+import { Badge, Button, Card, CardTitle, Icon, Skeleton, StandardPage, useStandardController, useToast } from '../shared/all.js'
 import { securitySummary } from './api.js'
 import { listAudit } from '../audit_log/api.js'
 
 const FEATURES = { header: true, refresh: true, filter: false, tabs: false, create: false, edit: false, remove: false, pagination: false, empty: true, error: true, confirmDialog: false, extraActions: true }
+
+const CONFIG = {
+  title: 'Security Center',
+  description: 'Kesehatan keamanan 24 jam terakhir dalam sekali lihat.',
+  errorTitle: 'Gagal memuat ringkasan',
+  emptyTitle: 'Ringkasan belum tersedia',
+  emptyDescription: 'Muat ulang untuk mengambil ringkasan keamanan.',
+  recentTitle: 'Aktivitas terkini',
+  recentDescription: '8 aktivitas terakhir dari semua user.',
+  policyTitle: 'Kebijakan keamanan aktif',
+  policyDescription: 'Kebijakan yang ditegakkan backend secara otomatis.',
+}
 
 export const meta = { label: 'Security Center', icon: 'shield', order: 6 }
 
@@ -28,77 +40,50 @@ function StatCard({ icon, label, value, tone }) {
 
 export default function Security() {
   const toast = useToast()
-  const [summary, setSummary] = useState(null)
-  const [recent, setRecent] = useState([])
-  const [loading, setLoading] = useState(true)
-  const showLoading = useSmoothLoading(loading)
-  const [error, setError] = useState('')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const [s, a] = await Promise.all([
-        securitySummary(),
-        listAudit({ limit: 8, offset: 0 }),
-      ])
-      setSummary(s)
-      setRecent(Array.isArray(a) ? a : [])
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const { rows, loading, showLoading, error, setError, load } =
+    useStandardController(async () => {
+      const [s, a] = await Promise.all([securitySummary(), listAudit({ limit: 8, offset: 0 })])
+      return [{ summary: s, recent: Array.isArray(a) ? a : [] }]
+    }, {})
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const summary = rows[0]?.summary || null
+  const recent = rows[0]?.recent || []
+  const items = summary ? [summary] : []
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <CardTitle description="Kesehatan keamanan 24 jam terakhir dalam sekali lihat.">
-            Security Center
-          </CardTitle>
-          {FEATURES.refresh && (
-          <Button variant="secondary" size="sm" onClick={load} loading={loading}>
-            <Icon name="refresh" className="h-4 w-4" />
-            Muat ulang
-          </Button>
-          )}
+      <StandardPage
+        title={CONFIG.title}
+        description={CONFIG.description}
+        features={FEATURES}
+        loading={loading}
+        showLoading={showLoading}
+        error={error}
+        errorTitle={CONFIG.errorTitle}
+        onClearError={() => setError('')}
+        onRefresh={load}
+        items={items}
+        emptyTitle={CONFIG.emptyTitle}
+        emptyDescription={CONFIG.emptyDescription}
+      >
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard icon="users" label="Total pengguna" value={summary.total_users} tone="neutral" />
+          <StatCard icon="shield" label="Total role" value={summary.total_roles} tone="neutral" />
+          <StatCard icon="key" label="Sesi aktif" value={summary.active_sessions} tone="neutral" />
+          <StatCard icon="list" label="Aksi audit 24 jam" value={summary.audit_last_24h} tone="neutral" />
+          <StatCard
+            icon="warning"
+            label="Error sistem 24 jam"
+            value={summary.errors_last_24h}
+            tone={summary.errors_last_24h > 0 ? 'danger' : 'neutral'}
+          />
+          <StatCard icon="clock" label="Perlu perhatian" value={summary.errors_last_24h > 0 ? 'Ya' : 'Tidak'} tone={summary.errors_last_24h > 0 ? 'danger' : 'neutral'} />
         </div>
-        {FEATURES.error && error && (
-          <Alert tone="error" title="Gagal memuat ringkasan" closable onClose={() => setError('')} className="mb-4">
-            {error}
-          </Alert>
-        )}
-        {showLoading || !summary ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-[76px] rounded-2xl" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <StatCard icon="users" label="Total pengguna" value={summary.total_users} tone="neutral" />
-            <StatCard icon="shield" label="Total role" value={summary.total_roles} tone="neutral" />
-            <StatCard icon="key" label="Sesi aktif" value={summary.active_sessions} tone="neutral" />
-            <StatCard icon="list" label="Aksi audit 24 jam" value={summary.audit_last_24h} tone="neutral" />
-            <StatCard
-              icon="warning"
-              label="Error sistem 24 jam"
-              value={summary.errors_last_24h}
-              tone={summary.errors_last_24h > 0 ? 'danger' : 'neutral'}
-            />
-            <StatCard icon="clock" label="Perlu perhatian" value={summary.errors_last_24h > 0 ? 'Ya' : 'Tidak'} tone={summary.errors_last_24h > 0 ? 'danger' : 'neutral'} />
-          </div>
-        )}
-      </Card>
+      </StandardPage>
 
       <Card>
-        <CardTitle description="8 aktivitas terakhir dari semua user.">Aktivitas terkini</CardTitle>
+        <CardTitle description={CONFIG.recentDescription}>{CONFIG.recentTitle}</CardTitle>
         {showLoading ? (
           <Skeleton className="h-24" />
         ) : recent.length === 0 ? (
@@ -125,18 +110,16 @@ export default function Security() {
       </Card>
 
       <Card>
-        <CardTitle description="Kebijakan yang ditegakkan backend secara otomatis.">
-          Kebijakan keamanan aktif
-        </CardTitle>
+        <CardTitle description={CONFIG.policyDescription}>{CONFIG.policyTitle}</CardTitle>
         <ul className="grid gap-2 text-sm sm:grid-cols-2">
           {[
-            ['Access token pendek + refresh berotasi (lihat ACCESS_TOKEN_MINUTES)', true],
-            ['Refresh token disimpan sebagai hash SHA-256', true],
-            ['Maksimal 5 sesi per user (sesi tertua digusur)', true],
-            ['Rate-limit: login 5/mnt, register 10/mnt, refresh 30/mnt', true],
-            ['Password bcrypt + batas 8–72 karakter', true],
-            ['JWT HS256 + issuer/audience check', true],
-          ].map(([label]) => (
+            'Access token pendek + refresh berotasi (lihat ACCESS_TOKEN_MINUTES)',
+            'Refresh token disimpan sebagai hash SHA-256',
+            'Maksimal 5 sesi per user (sesi tertua digusur)',
+            'Rate-limit: login 5/mnt, register 10/mnt, refresh 30/mnt',
+            'Password bcrypt + batas 8–72 karakter',
+            'JWT HS256 + issuer/audience check',
+          ].map((label) => (
             <li key={label} className="flex items-start gap-2 text-zinc-600 dark:text-zinc-300">
               <span className="mt-0.5 text-emerald-500">
                 <Icon name="check" className="h-4 w-4" />

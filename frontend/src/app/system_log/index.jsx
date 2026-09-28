@@ -1,45 +1,28 @@
-// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
-// PAGE_SIZE global dari shared (10 semua). Nonaktifkan blok cukup set false.
-import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
+// ===== TEMPLATE SERAGAM app/* (ala <mod>.js langit_v2) =====
+// Shell + controller standar; yang khas tabel ini hanya COLUMNS (./columns.js).
+// Tabel DB: CPSYSLOG via ./api.js listSyslogs/pruneSyslogs.
+import { Button, ConfirmDialog, Icon, StandardGrid, StandardPage, useStandardController, useState, useToast } from '../shared/all.js'
 import { listSyslogs, pruneSyslogs } from './api.js'
+import { LEVELS, SYSLOG_COLUMNS } from './columns.jsx'
 
 const FEATURES = { header: true, refresh: true, filter: true, tabs: false, create: false, edit: false, remove: true, pagination: true, empty: true, error: true, confirmDialog: true, extraActions: true }
 
-export const meta = { label: 'System Log', icon: 'terminal', order: 7 }
-const LEVELS = ['', 'ERROR', 'WARN', 'INFO']
-
-function toneFor(level) {
-  if (level === 'ERROR') return 'danger'
-  if (level === 'WARN') return 'warning'
-  return 'info'
+const CONFIG = {
+  title: 'Error / System Log',
+  description: 'Error & kejadian sistem yang ditangkap backend (pengganti mengintip file log di server).',
+  errorTitle: 'Gagal memuat log',
+  emptyTitle: 'Log bersih',
+  emptyDescription: 'Tidak ada catatan pada level ini. Sistem berjalan tanpa error tercatat.',
 }
 
 export default function Syslog() {
   const toast = useToast()
-  const [logs, setLogs] = useState([])
-  const [offset, setOffset] = useState(0)
   const [level, setLevel] = useState('')
   const [days, setDays] = useState(30)
   const [confirmPrune, setConfirmPrune] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const showLoading = useSmoothLoading(loading)
-  const [error, setError] = useState('')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      setLogs(await listSyslogs({ level, limit: PAGE_SIZE, offset }))
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [level, offset])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const { rows: logs, offset, setOffset, loading, showLoading, error, setError, load } =
+    useStandardController(listSyslogs, { level })
 
   async function prune() {
     try {
@@ -53,125 +36,74 @@ export default function Syslog() {
   }
 
   return (
-    <Card>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <CardTitle description="Error & kejadian sistem yang ditangkap backend (pengganti mengintip file log di server).">
-          Error / System Log
-        </CardTitle>
-        <div className="flex items-center gap-2">
-          {FEATURES.refresh && (
-          <Button variant="secondary" size="sm" onClick={load} loading={loading}>
-            <Icon name="refresh" className="h-4 w-4" />
-            Muat ulang
-          </Button>
-          )}
-          {FEATURES.remove && (
+    <div className="flex flex-col gap-4">
+      <StandardPage
+        title={CONFIG.title}
+        description={CONFIG.description}
+        features={FEATURES}
+        loading={loading}
+        showLoading={showLoading}
+        error={error}
+        errorTitle={CONFIG.errorTitle}
+        onClearError={() => setError('')}
+        onRefresh={load}
+        extraActions={
           <Button variant="danger" size="sm" onClick={() => setConfirmPrune(true)}>
             <Icon name="trash" className="h-4 w-4" />
             Bersihkan lama
           </Button>
-          )}
-        </div>
-      </div>
-
-      {FEATURES.filter && (
-      <div className="mb-4 flex gap-1.5">
-        {LEVELS.map((l) => (
-          <button
-            key={l}
-            type="button"
-            onClick={() => { setLevel(l); setOffset(0) }}
-            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              level === l
-                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400'
-            }`}
-          >
-            {l === '' ? 'SEMUA' : l}
-          </button>
-        ))}
-      </div>
-      )}
-
-      {FEATURES.error && error && (
-        <Alert tone="error" title="Gagal memuat log" closable onClose={() => setError('')} className="mb-4">
-          {error}
-        </Alert>
-      )}
-
-      {showLoading ? (
-        <SkeletonRows rows={5} />
-      ) : logs.length === 0 ? (
-        <EmptyState
-          icon="terminal"
-          title="Log bersih"
-          description="Tidak ada catatan pada level ini. Sistem berjalan tanpa error tercatat."
-        />
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-zinc-100 dark:border-zinc-800">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead>
-              <tr className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800/60 dark:text-zinc-400">
-                <th className="px-3 py-2.5">Waktu</th>
-                <th className="px-3 py-2.5">Level</th>
-                <th className="px-3 py-2.5">Sumber</th>
-                <th className="px-3 py-2.5">Pesan</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((l) => (
-                <tr key={l.code} className="border-t border-zinc-100 dark:border-zinc-800">
-                  <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-zinc-500">{formatTime(l.created_at)}</td>
-                  <td className="px-3 py-2.5">
-                    <Badge tone={toneFor(l.level)}>{l.level}</Badge>
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-zinc-600 dark:text-zinc-300">{l.source}</td>
-                  <td className="max-w-[320px] truncate px-3 py-2.5 text-xs text-zinc-600 dark:text-zinc-300" title={l.message}>
-                    {l.message}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {FEATURES.pagination && !showLoading && logs.length > 0 && (
-        <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-          <Pagination
-            offset={offset}
-            limit={PAGE_SIZE}
-            count={logs.length}
-            hasMore={logs.length === PAGE_SIZE}
-            loading={loading}
-            onPage={setOffset}
-          />
-        </div>
-      )}
+        }
+        filterBar={
+          <div className="mb-4 flex gap-1.5">
+            {LEVELS.map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => { setLevel(l); setOffset(0) }}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                  level === l
+                    ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                    : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400'
+                }`}
+              >
+                {l === '' ? 'SEMUA' : l}
+              </button>
+            ))}
+          </div>
+        }
+        items={logs}
+        emptyTitle={CONFIG.emptyTitle}
+        emptyDescription={CONFIG.emptyDescription}
+        emptyIcon="terminal"
+        offset={offset}
+        onPage={setOffset}
+      >
+        <StandardGrid columns={SYSLOG_COLUMNS} rows={logs} minWidth={560} />
+      </StandardPage>
 
       {FEATURES.confirmDialog && (
-      <ConfirmDialog
-        open={confirmPrune}
-        title="Hapus log lama?"
-        message={
-          <span className="flex flex-col gap-3">
-            <span>Hapus permanen semua log lebih tua dari jumlah hari berikut:</span>
-            <input
-              type="number"
-              min={1}
-              max={365}
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value) || 30)}
-              className="w-28 rounded-lg border border-zinc-300 px-2.5 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </span>
-        }
-        confirmLabel="Ya, hapus"
-        danger
-        onConfirm={prune}
-        onCancel={() => setConfirmPrune(false)}
-      />
+        <ConfirmDialog
+          open={confirmPrune}
+          title="Hapus log lama?"
+          message={
+            <span className="flex flex-col gap-3">
+              <span>Hapus permanen semua log lebih tua dari jumlah hari berikut:</span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={days}
+                onChange={(e) => setDays(Number(e.target.value) || 30)}
+                className="w-28 rounded-lg border border-zinc-300 px-2.5 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </span>
+          }
+          confirmLabel="Ya, hapus"
+          danger
+          onConfirm={prune}
+          onCancel={() => setConfirmPrune(false)}
+        />
       )}
-    </Card>
+    </div>
   )
 }

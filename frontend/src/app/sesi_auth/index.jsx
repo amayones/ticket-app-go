@@ -1,10 +1,19 @@
-// ===== TEMPLATE SERAGAM app/*: import satu pintu + flags true/false =====
-// PAGE_SIZE global dari shared (10 semua). Nonaktifkan blok cukup set false.
-import { Alert, Avatar, Badge, Button, Card, CardTitle, ConfirmDialog, EmptyState, Icon, Modal, Pagination, Skeleton, SkeletonRows, TextField, PasswordInput, Tooltip, formatTime, useCallback, useEffect, useMemo, useState, api, useSmoothLoading, useToast, PAGE_SIZE, SKELETON_ROWS, SELECT_CLASS, INPUT_CLASS, PageShell, usePageList, usePageListObj } from '../shared/all.js'
+// ===== TEMPLATE SERAGAM app/* (ala <mod>.js langit_v2) =====
+// Shell + controller standar; body custom (tabs mine/all) seperti modul
+// non-grid di langit_v2. Tabel DB: CPREFRESHTOKEN via ./api.js.
+import { Badge, Button, ConfirmDialog, Icon, StandardPage, api, formatTime, useStandardController, useState, useToast } from '../shared/all.js'
 import { listAllSessions, listMySessions, revokeSession } from './api.js'
 import { logoutAll as logoutAllUser } from '../users/api.js'
 
 const FEATURES = { header: true, refresh: true, filter: false, tabs: true, create: false, edit: false, remove: true, pagination: true, empty: true, error: true, confirmDialog: true, extraActions: true }
+
+const CONFIG = {
+  title: 'Authentication & Session Management',
+  description: 'Setiap login dari perangkat/browser tercatat sebagai 1 sesi (refresh token). Cabut sesi yang tidak dikenal.',
+  errorTitle: 'Gagal memuat sesi',
+  emptyTitle: 'Tidak ada sesi aktif',
+  emptyDescription: 'Semua sesi sudah kedaluwarsa atau dicabut. Login ulang untuk membuat sesi baru.',
+}
 
 export const meta = { label: 'Sesi & Auth', icon: 'key', order: 4 }
 
@@ -13,32 +22,13 @@ export default function Sessions() {
   const me = api.currentUser()
   const canViewAll = true
   const [tab, setTab] = useState('mine')
-  const [sessions, setSessions] = useState([])
-  const [offset, setOffset] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const showLoading = useSmoothLoading(loading)
-  const [error, setError] = useState('')
   const [revoking, setRevoking] = useState(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      if (tab === 'all' && canViewAll) {
-        setSessions(await listAllSessions(PAGE_SIZE, offset))
-      } else {
-        setSessions(await listMySessions())
-      }
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [tab, offset, canViewAll])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const { rows: sessions, offset, setOffset, loading, showLoading, error, setError, load } =
+    useStandardController(
+      ({ limit, offset }) => (tab === 'all' && canViewAll ? listAllSessions(limit, offset) : listMySessions()),
+      { tab }
+    )
 
   function switchTab(t) {
     setTab(t)
@@ -73,117 +63,92 @@ export default function Sessions() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <CardTitle description="Setiap login dari perangkat/browser tercatat sebagai 1 sesi (refresh token). Cabut sesi yang tidak dikenal.">
-            Authentication & Session Management
-          </CardTitle>
-          {FEATURES.refresh && (
-          <Button variant="secondary" size="sm" onClick={load} loading={loading}>
-            <Icon name="refresh" className="h-4 w-4" />
-            Muat ulang
-          </Button>
-          )}
-        </div>
-
-        {FEATURES.tabs && (
-        <div className="mb-4 flex gap-1.5 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
-           {['mine', ...(canViewAll ? ['all'] : [])].map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => switchTab(t)}
-              className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
-                tab === t
-                  ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-50'
-                  : 'text-zinc-500 dark:text-zinc-400'
-              }`}
-            >
-              {t === 'mine' ? 'Sesi saya' : 'Semua sesi'}
-            </button>
-          ))}
-        </div>
-        )}
-
-        {FEATURES.error && error && (
-          <Alert tone="error" title="Gagal memuat sesi" closable onClose={() => setError('')} className="mb-4">
-            {error}
-          </Alert>
-        )}
-
-        {showLoading ? (
-          <SkeletonRows rows={3} />
-        ) : sessions.length === 0 ? (
-          <EmptyState
-            title="Tidak ada sesi aktif"
-            description="Semua sesi sudah kedaluwarsa atau dicabut. Login ulang untuk membuat sesi baru."
-          />
-        ) : (
-          <ul className="flex flex-col gap-2.5">
-            {sessions.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 dark:border-zinc-800 dark:bg-zinc-900/40"
+      <StandardPage
+        title={CONFIG.title}
+        description={CONFIG.description}
+        features={FEATURES}
+        loading={loading}
+        showLoading={showLoading}
+        error={error}
+        errorTitle={CONFIG.errorTitle}
+        onClearError={() => setError('')}
+        onRefresh={load}
+        tabsBar={
+          <div className="mb-4 flex gap-1.5 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
+            {['mine', ...(canViewAll ? ['all'] : [])].map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => switchTab(t)}
+                className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                  tab === t
+                    ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-50'
+                    : 'text-zinc-500 dark:text-zinc-400'
+                }`}
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                  <Icon name="key" className="h-5 w-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                    <span className="font-mono">Sesi #{s.id}</span>
-                    <Badge tone="success">Aktif</Badge>
-                    {tab === 'all' && <span className="truncate text-xs font-normal opacity-70">@{s.username}</span>}
-                  </p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Dibuat {formatTime(s.created_at)} · kedaluwarsa {formatTime(s.expires_at)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  title="Cabut sesi ini"
-                  onClick={() => setRevoking(s)}
-                  className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-300"
-                >
-                  <Icon name="trash" className="h-4 w-4" />
-                </button>
-              </li>
+                {t === 'mine' ? 'Sesi saya' : 'Semua sesi'}
+              </button>
             ))}
-          </ul>
-        )}
-
-        {FEATURES.pagination && tab === 'all' && !showLoading && sessions.length > 0 && (
-          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-            <Pagination
-              offset={offset}
-              limit={PAGE_SIZE}
-              count={sessions.length}
-              hasMore={sessions.length === PAGE_SIZE}
-              loading={loading}
-              onPage={setOffset}
-            />
           </div>
-        )}
-
-        {FEATURES.extraActions && tab === 'mine' && !showLoading && sessions.length > 0 && (
-          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-            <Button variant="danger" size="sm" onClick={logoutAllMine}>
-              <Icon name="logout" className="h-4 w-4" />
-              Cabut semua sesi saya
-            </Button>
-          </div>
-        )}
-      </Card>
+        }
+        items={sessions}
+        emptyTitle={CONFIG.emptyTitle}
+        emptyDescription={CONFIG.emptyDescription}
+        offset={offset}
+        onPage={tab === 'all' ? setOffset : null}
+        footer={
+          tab === 'mine' && !showLoading && sessions.length > 0 ? (
+            <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+              <Button variant="danger" size="sm" onClick={logoutAllMine}>
+                <Icon name="logout" className="h-4 w-4" />
+                Cabut semua sesi saya
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        <ul className="flex flex-col gap-2.5">
+          {sessions.map((s) => (
+            <li
+              key={s.id}
+              className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 dark:border-zinc-800 dark:bg-zinc-900/40"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                <Icon name="key" className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                  <span className="font-mono">Sesi #{s.id}</span>
+                  <Badge tone="success">Aktif</Badge>
+                  {tab === 'all' && <span className="truncate text-xs font-normal opacity-70">@{s.username}</span>}
+                </p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Dibuat {formatTime(s.created_at)} · kedaluwarsa {formatTime(s.expires_at)}
+                </p>
+              </div>
+              <button
+                type="button"
+                title="Cabut sesi ini"
+                onClick={() => setRevoking(s)}
+                className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-300"
+              >
+                <Icon name="trash" className="h-4 w-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </StandardPage>
 
       {FEATURES.confirmDialog && (
-      <ConfirmDialog
-        open={!!revoking}
-        title={`Cabut sesi #${revoking?.id}?`}
-        message="Perangkat pemilik sesi ini akan langsung dikeluarkan dan harus login ulang."
-        confirmLabel="Ya, cabut"
-        danger
-        onConfirm={revoke}
-        onCancel={() => setRevoking(null)}
-      />
+        <ConfirmDialog
+          open={!!revoking}
+          title={`Cabut sesi #${revoking?.id}?`}
+          message="Perangkat pemilik sesi ini akan langsung dikeluarkan dan harus login ulang."
+          confirmLabel="Ya, cabut"
+          danger
+          onConfirm={revoke}
+          onCancel={() => setRevoking(null)}
+        />
       )}
     </div>
   )
