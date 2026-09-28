@@ -52,9 +52,6 @@ CREATE TABLE IF NOT EXISTS CPMODULE (
 INSERT INTO CPMODULE (CODE, LABEL, SORT_ORDER)
 SELECT 'SYSTEM', 'System', 1
 WHERE NOT EXISTS (SELECT 1 FROM CPMODULE WHERE CODE = 'SYSTEM');
-INSERT INTO CPMODULE (CODE, LABEL, SORT_ORDER)
-SELECT 'REPORT', 'Report', 2
-WHERE NOT EXISTS (SELECT 1 FROM CPMODULE WHERE CODE = 'REPORT');
 
 -- CPMENU: registry menu. MODULE = kode modul (FK ke CPMODULE.CODE),
 -- menentukan section sidebar level-1 (MODULE tampil sebagai section header).
@@ -80,9 +77,8 @@ CREATE TABLE IF NOT EXISTS CPMENU (
   CHECK ((MENU_KIND = 'PARENT' AND MCONTROL IS NULL) OR (MENU_KIND = 'CHILD' AND MCONTROL IS NOT NULL))
 );
 
--- Seed menu bawaan (urut sesuai sidebar) + contoh parent-child di REPORT.
+-- Seed menu bawaan (urut sesuai sidebar).
 -- MCONTROL snake_case = nama folder frontend/src/app/<mcontrol>/.
--- PARENT (MENU_KEUANGAN) tanpa mcontrol — header buka-tutup saja.
 INSERT INTO CPMENU (CODE, MODULE, LABEL, MCONTROL, MENU_KIND, SORT_ORDER, PARENT_CODE) VALUES
   ('MENU_USERS',         'SYSTEM', 'User Account',       'users',           'CHILD',  1, NULL),
   ('MENU_MODUL',         'SYSTEM', 'Modul & Menu',       'modul_menu',      'CHILD',  2, NULL),
@@ -91,11 +87,11 @@ INSERT INTO CPMENU (CODE, MODULE, LABEL, MCONTROL, MENU_KIND, SORT_ORDER, PARENT
   ('MENU_AUDIT',         'SYSTEM', 'Audit Log',          'audit_log',       'CHILD',  5, NULL),
   ('MENU_SECURITY',      'SYSTEM', 'Security Center',    'security_center', 'CHILD',  6, NULL),
   ('MENU_SYSLOG',        'SYSTEM', 'System Log',         'system_log',      'CHILD',  7, NULL),
-  ('MENU_NOTIFICATIONS', 'SYSTEM', 'Notifikasi',         'notifikasi',      'CHILD',  8, NULL),
-  ('MENU_LAPORAN',       'REPORT', 'Laporan',            'laporan',         'CHILD',  1, NULL),
-  ('MENU_KEUANGAN',      'REPORT', 'Keuangan',           NULL,              'PARENT', 2, NULL),
-  ('MENU_ARUS_KAS',      'REPORT', 'Arus Kas',           'arus_kas',        'CHILD',  3, 'MENU_KEUANGAN')
+  ('MENU_NOTIFICATIONS', 'SYSTEM', 'Notifikasi',         'notifikasi',      'CHILD',  8, NULL)
 ON CONFLICT (CODE) DO NOTHING;
+-- Bersihkan sisa menu REPORT yang sudah dihapus (database lama).
+DELETE FROM CPMENU WHERE CODE IN ('MENU_ARUS_KAS', 'MENU_LAPORAN', 'MENU_KEUANGAN');
+DELETE FROM CPMODULE WHERE CODE = 'REPORT';
 
 -- CPPERMISSION: satu-satunya tabel relasi grant (ROLE_CODE -> MENU_CODE).
 -- Definisi menu tinggal di CPMENU; tidak ada tabel definisi terpisah.
@@ -106,18 +102,19 @@ CREATE TABLE IF NOT EXISTS CPPERMISSION (
   PRIMARY KEY (ROLE_CODE, MENU_CODE)
 );
 
--- ADMIN mendapat semua menu CHILD kecuali contoh tes tampilan (tanpa akses).
+-- ADMIN mendapat semua menu CHILD.
 -- Menu PARENT tidak pernah di-grant: header buka-tutup tanpa halaman sendiri,
 -- aksesnya menyusul otomatis dari menu CHILD di bawahnya.
 -- USER nol mapping (manual via UI).
 INSERT INTO CPPERMISSION (ROLE_CODE, MENU_CODE)
 SELECT 'ADMIN', CODE FROM CPMENU
 WHERE MENU_KIND = 'CHILD'
-  AND CODE NOT IN ('MENU_LAPORAN', 'MENU_ARUS_KAS')
 ON CONFLICT DO NOTHING;
 -- Bersihkan grant PARENT sisa database lama (matriks kini hanya mencentang CHILD).
 DELETE FROM CPPERMISSION
 WHERE MENU_CODE IN (SELECT CODE FROM CPMENU WHERE MENU_KIND = 'PARENT');
+-- Bersihkan sisa grant REPORT yang sudah dihapus (database lama).
+DELETE FROM CPPERMISSION WHERE MENU_CODE IN ('MENU_LAPORAN', 'MENU_ARUS_KAS', 'MENU_KEUANGAN');
 
 -- Matriks role x modul x menu dibaca via JOIN (CPROLE x CPMENU LEFT JOIN
 -- CPPERMISSION); tulis grant tetap ke CPPERMISSION (tidak ada sinkron ganda).

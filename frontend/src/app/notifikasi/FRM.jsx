@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { Alert, Button, Modal, StandardForm, validateInput, useMessageBox, useToast } from '../shared/all.js'
 import { process_create, process_update, process_delete } from './api.js'
 
+const CHANNELS = ['EMAIL', 'PUSH', 'INAPP']
+
 const FORM_FIELDS = [
   { name: 'name', label: 'Nama template', type: 'text', placeholder: 'mis. Promo Akhir Tahun' },
   { name: 'channel', label: 'Channel', type: 'select', options: CHANNELS.map((c) => ({ value: c, label: c })) },

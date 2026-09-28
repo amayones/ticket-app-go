@@ -79,7 +79,7 @@ Ikuti bagian ini secara berurutan.
 | 2 | [1.2](#12-install-dependency-frontend) Install dependency frontend | `task install` | `frontend/node_modules/` ada |
 | 3 | [1.3](#13-membuat-file-env) Membuat `.env` | `copy .env.example .env` | `DB_DATABASE` + `JWT_SECRET` terisi |
 | 4 | [1.4](#14-membuat-database-sql-server) Buat DB + migrasi + akun awal | `task migrate`, `sqlcmd -i scripts/seed-admin.sql` | 10 tabel `CP%` |
-| 5 | [1.5](#15-verifikasi-database) Verifikasi data | query `CPMENU`/`CPPERMISSION` | 2 modul, 11 menu, 8 grant |
+| 5 | [1.5](#15-verifikasi-database) Verifikasi data | query `CPMENU`/`CPPERMISSION` | 1 modul, 8 menu, 8 grant |
 | 6 | [1.6](#16-menjalankan-development) Jalankan development | `task start` | login di `localhost:5173` |
 | 7 | [1.7](#17-menjalankan-production) Build + jalankan production | `task build`, `./app.exe` | aplikasi di `localhost:1067` |
 | 8 | [1.8](#18-health-check) Health check | `curl .../healthz` | `{"status":"ok"}` |
@@ -111,6 +111,41 @@ cd go-core
 
 > ✅ **Checkpoint 1.1** — `go version` ≥ 1.27, `node --version` ≥ 20,
 > `sqlcmd -?` jalan. Folder `go-core/` ada.
+
+### Task CLI tidak ditemukan (`task: command not found`)
+
+`task` **bukan** perintah bawaan Git Bash — itu [Task CLI](https://taskfile.dev)
+yang membaca `Taskfile.yml`. Kalau `task --version` gagal di Git Bash, pilih
+salah satu:
+
+**A. Install Task CLI (disarankan, sekali saja):**
+
+```bash
+winget install Task.Task          # Windows 10/11 (paling mudah)
+# choco install go-task           # alternatif via Chocolatey
+# scoop install task              # alternatif via Scoop
+# npm i -g @go-task/cli           # alternatif via npm
+task --version                    # tutup + buka ulang Git Bash bila masih gagal
+```
+
+**B. Tanpa install — pakai skrip langsung** (`Taskfile.yml` hanya alias
+tipis ke `scripts/*.sh`, jadi hasilnya sama persis):
+
+| Perintah `task` | Padanan tanpa Task CLI |
+|---|---|
+| `task install` | `cd frontend && npm ci && cd ..` |
+| `task build-frontend` | `bash ./scripts/build-frontend.sh` |
+| `task build` | `bash ./scripts/build-frontend.sh` lalu `bash ./scripts/build-backend.sh` |
+| `task start` / `task dev` | `bash ./scripts/start.sh` |
+| `task run` | `bash ./scripts/run.sh` |
+| `task stop` | `bash ./scripts/stop.sh` |
+| `task test` | `go vet ./...` lalu `go test -race ./...` |
+| `task lint-frontend` | `cd frontend && npm run lint` |
+| `task clean` | `bash ./scripts/clean.sh` |
+| `task migrate` | tiga perintah `sqlcmd ... -i scripts/migrate.sql`, `migrate2_rbac.sql`, `migrate3_mcontrol.sql` (lihat 1.4) |
+
+Dokumen ini menulis bentuk `task ...` agar ringkas; setiap ada tulisan
+"Tanpa Task CLI" di bawahnya adalah perintah kolom kanan tabel di atas.
 
 ## 1.2. Install Dependency Frontend
 
@@ -217,6 +252,12 @@ Migrasi aman diulang (boleh dijalankan berkali-kali). `migrate2_rbac.sql`
 `migrate3_mcontrol.sql` menambah kolom `CPMENU.MCONTROL` (nama folder frontend
 per menu CHILD) berikut unique index dan CHECK `MENU_KIND`/`MCONTROL`.
 
+> Database lama yang masih punya modul `REPORT` (`MENU_LAPORAN`,
+> `MENU_ARUS_KAS`, `MENU_KEUANGAN`): jalankan `task migrate` sekali —
+> migrasi otomatis menghapus grant, menu, lalu modulnya (idempoten).
+> Setelah itu rebuild frontend (`task build-frontend`) karena folder
+> `app/laporan/` dan `app/arus_kas/` sudah dihapus dari repo.
+
 Catatan `QUOTED_IDENTIFIER`: karena `MCONTROL` memakai *filtered unique index*
 (`UQ_CPMENU_MCONTROL`), SQL Server menolak INSERT/UPDATE ke `CPMENU` bila
 `QUOTED_IDENTIFIER` OFF — dan default `sqlcmd` memang OFF. Skrip di `scripts/`
@@ -248,7 +289,7 @@ Password di atas hanya untuk development. Jangan digunakan di production.
 > ```sql
 > SELECT COUNT(*) AS TABEL_CP FROM INFORMATION_SCHEMA.TABLES
 > WHERE TABLE_NAME LIKE 'CP%';                      -- harus 10
-> SELECT COUNT(*) AS MENU FROM dbo.CPMENU;           -- fresh install: 11
+> SELECT COUNT(*) AS MENU FROM dbo.CPMENU;           -- fresh install: 8
 > SELECT COUNT(*) AS AKUN FROM dbo.CPUSER;           -- harus 2 (admin, user)
 > ```
 
@@ -288,11 +329,10 @@ FROM dbo.CPMODULE
 ORDER BY SORT_ORDER;
 ```
 
-Hasil yang benar (2 modul bawaan; tambah modul baru via UI **Modul & Menu**):
+Hasil yang benar (1 modul bawaan; tambah modul baru via UI **Modul & Menu**):
 
 ```text
 SYSTEM  System  1
-REPORT  Report  2
 ```
 
 ### Verifikasi role
@@ -318,7 +358,7 @@ FROM dbo.CPMENU
 ORDER BY MODULE, SORT_ORDER;
 ```
 
-Hasil yang benar (11 baris: 8 menu `SYSTEM` + 3 contoh `REPORT`):
+Hasil yang benar (8 baris, semuanya `SYSTEM`):
 
 ```text
 CODE                MODULE  LABEL            KIND    URUTAN  PARENT_CODE
@@ -330,13 +370,7 @@ MENU_AUDIT          SYSTEM  Audit Log        CHILD   5       NULL
 MENU_SECURITY       SYSTEM  Security Center  CHILD   6       NULL
 MENU_SYSLOG         SYSTEM  System Log       CHILD   7       NULL
 MENU_NOTIFICATIONS  SYSTEM  Notifikasi       CHILD   8       NULL
-MENU_LAPORAN        REPORT  Laporan          CHILD   1       NULL
-MENU_KEUANGAN       REPORT  Keuangan         PARENT  2       NULL
-MENU_ARUS_KAS       REPORT  Arus Kas         CHILD   3       MENU_KEUANGAN
 ```
-
-Tiga menu `REPORT` adalah contoh tes tampilan (menu biasa, menu parent, dan
-menu child di bawah parent) yang sengaja tanpa akses role mana pun.
 
 Tiga kolom penting di `CPMENU`:
 
@@ -358,7 +392,7 @@ FROM dbo.CPPERMISSION
 ORDER BY ROLE_CODE, MENU_CODE;
 ```
 
-Hasil yang benar (8 baris `ADMIN`; contoh `REPORT` tanpa akses):
+Hasil yang benar (8 baris `ADMIN`):
 
 ```text
 ADMIN  MENU_AUDIT
@@ -452,20 +486,17 @@ Login:
 admin / admin
 ```
 
-Setelah login (admin bawaan memegang 8 menu `SYSTEM`; menu contoh `REPORT`
-sengaja belum di-grant — perhatikan bahwa mencentang di matriks lalu
-**Simpan permission** akan memberi akses ke role itu):
+Setelah login (admin bawaan memegang 8 menu `SYSTEM` — perhatikan bahwa
+mencentang di matriks lalu **Simpan permission** akan memberi akses ke role itu):
 
 1. Menu pertama otomatis terbuka, sidebar dikelompokkan per modul (SYSTEM).
 2. Buka **Role & Permission**.
 3. Role `ADMIN` dan `USER` harus terlihat.
-4. Matriks menampilkan 11 menu, bukan permission per fungsi. `MENU_KEUANGAN`
-   tampil sebagai **header tanpa centang** dengan anaknya `MENU_ARUS_KAS`
-   di bawahnya.
-5. Menu **Modul & Menu** menampilkan 2 modul + 11 baris `CPMENU`.
-6. Centang menu CHILD untuk role yang membutuhkan (tanpa auto-grant). Contoh:
-   centang `MENU_ARUS_KAS` → header **Keuangan** ikut ter-include di sidebar
-   user role itu, dan yang tampil hanya `Arus Kas`.
+4. Matriks menampilkan 8 menu, bukan permission per fungsi. Menu `PARENT`
+   (bila Anda membuatnya nanti) tampil sebagai **header tanpa centang**;
+   hanya menu `CHILD` yang punya checkbox.
+5. Menu **Modul & Menu** menampilkan 1 modul + 8 baris `CPMENU`.
+6. Centang menu CHILD untuk role yang membutuhkan (tanpa auto-grant).
 7. Klik **Simpan permission**.
 8. User dengan role tersebut harus logout/login ulang agar permission terbaru dimuat.
 9. Login sebagai `user`/`user` (nol menu) → halaman kosong "hubungi admin".
@@ -594,7 +625,7 @@ Langkah nomor + tabel masalah umum ada di tutorial bagian
 | `Dockerfile`, `Taskfile.yml` | Nama binary bila ingin `toko.exe` |
 | Tabel `CPNOTIFTEMPLATE` | Teks email (bisa diedit dari menu **Notifikasi**) |
 
-Nama modul bawaan (`SYSTEM`, `REPORT`) dan kode tabel `CP*` tidak perlu
+Nama modul bawaan (`SYSTEM`) dan kode tabel `CP*` tidak perlu
 diubah — keduanya hanya internal. Module baru cukup ditambah lewat UI
 **Modul & Menu**, bukan mengganti folder yang ada.
 
@@ -666,7 +697,7 @@ task migrate-sqlite
 mkdir -p ./data && sqlite3 ./data/tokodb.db < scripts/schema.sqlite.sql
 ```
 
-Ketiganya menghasilkan state awal yang sama: 10 tabel, 2 modul, 11 menu,
+Ketiganya menghasilkan state awal yang sama: 10 tabel, 1 modul, 8 menu,
 `ADMIN` 8 grant, 2 akun (`admin`/`admin`, `user`/`user`), 3 template
 notifikasi. Skema ikut `IF NOT EXISTS` / `WHERE NOT EXISTS` sehingga aman
 dijalankan ulang. Untuk PostgreSQL, buat database dulu dengan
@@ -708,15 +739,14 @@ Sidebar 100% dari database (MODULE section -> PARENT header -> CHILD item).
 Folder frontend DATAR: satu folder = satu menu CHILD, tanpa folder modul:
 
 ```text
-frontend/src/app/users/          -> MCONTROL users          (MENU_USERS)
+frontend/src/app/users/           -> MCONTROL users           (MENU_USERS)
 frontend/src/app/role_permission/ -> MCONTROL role_permission (MENU_ROLES)
-frontend/src/app/laporan/        -> MCONTROL laporan        (MENU_LAPORAN)
-frontend/src/app/arus_kas/       -> MCONTROL arus_kas       (MENU_ARUS_KAS, anak MENU_KEUANGAN)
+frontend/src/app/stok/            -> MCONTROL stok            (MENU_STOK, contoh menu baru)
 ```
 
 `CPMENU.MODULE` hanya menentukan section sidebar (FK ke `CPMENU` ->
 `CPMODULE.CODE`; label section = `CPMODULE.LABEL`). Menu PARENT
-(MENU_KEUANGAN) TANPA folder/mcontrol — hanya header buka-tutup.
+TANPA folder/mcontrol — hanya header buka-tutup.
 
 Frontend memindai folder datar via `app/registry.js` (glob `./*/index.jsx`)
 lalu menggabungkannya dengan entri DB (`buildSidebar`). Akses tetap
@@ -726,9 +756,8 @@ bila minimal satu keturunannya ter-grant (tanpa grant sendiri).
 ```text
 MENU_USERS         (SYSTEM, MCONTROL users)            -> app/users/
 MENU_ROLES         (SYSTEM, MCONTROL role_permission)  -> app/role_permission/
-MENU_LAPORAN       (REPORT, MCONTROL laporan)          -> app/laporan/
-MENU_KEUANGAN      (REPORT, PARENT, tanpa mcontrol)    -> header saja
-MENU_ARUS_KAS      (REPORT, MCONTROL arus_kas)         -> app/arus_kas/ (anak MENU_KEUANGAN)
+MENU_STOK          (TOKO, MCONTROL stok)               -> app/stok/ (contoh menu baru)
+MENU_KEUANGAN      (TOKO, PARENT, tanpa mcontrol)      -> header saja (contoh, bila dibuat)
 ```
 
 Tidak ada lagi folder `app/account` atau menu dashboard. Semua
@@ -743,7 +772,7 @@ kosong.
    urutan, modul, dan parent. Kode permission tidak bisa diubah — buat menu baru
    bila perlu.
 2. Admin membuat atau memilih role.
-3. Matriks menampilkan menu per module (`SYSTEM`, `REPORT`, ...). Menu
+3. Matriks menampilkan menu per module (`SYSTEM`, `TOKO`, ...). Menu
    `PARENT` tampil sebagai **header tanpa centang**; hanya menu `CHILD` di
    bawahnya yang punya checkbox.
 4. Admin centang menu CHILD yang boleh diakses role tersebut.
@@ -766,11 +795,11 @@ yang ter-grant.
 Contoh:
 
 ```text
-Role EDITOR + MENU_LAPORAN        -> menu Laporan tampil
-Role EDITOR + MENU_ARUS_KAS       -> header Keuangan + menu Arus Kas tampil
+Role EDITOR + MENU_STOK           -> menu Stok tampil
+Role EDITOR + MENU_ARUS_KAS       -> header Keuangan + menu Arus Kas tampil (contoh parent-child)
 Role EDITOR + MENU_KEUANGAN saja  -> ditolak 400 (header tidak bisa di-grant;
                                      centang menu anaknya)
-Role EDITOR tanpa akses           -> menu Laporan tidak tampil
+Role EDITOR tanpa akses           -> menu Stok tidak tampil
 Role ADMIN                        -> semua menu CHILD yang dicentang
 ```
 

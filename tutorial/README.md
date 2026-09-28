@@ -47,10 +47,9 @@ frontend/src/app/<mcontrol>/  -> satu menu CHILD (MCONTROL snake_case)
 Contoh bawaan:
 
 ```text
-app/users/          -> MODULE SYSTEM, MENU_USERS (MCONTROL users)
-app/laporan/        -> MODULE REPORT, MENU_LAPORAN (MCONTROL laporan, CHILD tanpa parent)
-app/arus_kas/       -> MODULE REPORT, MENU_ARUS_KAS (MCONTROL arus_kas, CHILD dari MENU_KEUANGAN)
-(menu PARENT MENU_KEUANGAN tanpa folder — hanya header buka-tutup)
+app/users/          -> MODULE SYSTEM, MENU_USERS (MCONTROL users, CHILD tanpa parent)
+app/notifikasi/     -> MODULE SYSTEM, MENU_NOTIFICATIONS (MCONTROL notifikasi)
+(menu PARENT tanpa folder — hanya header buka-tutup; dibuat bila butuh pengelompokan)
 ```
 
 `MODULE` = kolom `CPMENU`.MODULE (section sidebar, FK ke `CPMODULE.CODE`).
@@ -96,7 +95,7 @@ Tiga aturan yang paling sering membuat orang tersesat:
 
 | Istilah | Arti |
 |---|---|
-| Modul | Kelompok menu di sidebar (section level-1), mis. `SYSTEM`, `REPORT`. Disimpan di `CPMODULE`. |
+| Modul | Kelompok menu di sidebar (section level-1), mis. `SYSTEM`, `TOKO`. Disimpan di `CPMODULE`. |
 | Menu | Satu halaman di sidebar, mis. User Account atau Stok. Disimpan di `CPMENU` (CHILD, punya MCONTROL/folder). |
 | MCONTROL | Nama folder menu (`app/<mcontrol>/`, snake_case). CHILD wajib isi, PARENT wajib NULL. |
 | Menu parent | Header buka-tutup bertipe `PARENT`: tanpa folder/halaman, tanpa centang di matriks, dan tampil otomatis bila minimal satu keturunannya ter-grant. |
@@ -126,7 +125,7 @@ sampai Bagian 7.
 | 0.3 | Membuat `.env` | nama database + `JWT_SECRET` terisi |
 | 0.4 | Buat database, migrasi, akun awal | query tabel `CP%` mengembalikan 10 |
 | 0.5 | Jalankan aplikasi | halaman login terbuka di browser |
-| 0.6 | Verifikasi hasil clone | sidebar 2 modul, matriks 11 menu |
+| 0.6 | Verifikasi hasil clone | sidebar 1 modul, matriks 8 menu |
 | 0.7 | Nama database bebas | nama DB di `.env` = nama DB di SQL Server |
 | 0.8 | Mengganti nama aplikasi | judul tab & kartu login memakai nama Anda |
 | 0.9 | Mengganti favicon & logo | logo Anda muncul di sidebar + kartu login |
@@ -151,6 +150,23 @@ node --version
 npm --version
 sqlcmd -?
 ```
+
+`task: command not found` di Git Bash artinya Task CLI belum ter-install
+(`task` bukan perintah bawaan Git Bash — ia membaca `Taskfile.yml`).
+Install sekali saja lalu buka ulang Git Bash:
+
+```bash
+winget install Task.Task          # Windows 10/11 (paling mudah)
+# choco install go-task           # alternatif via Chocolatey
+# scoop install task              # alternatif via Scoop
+# npm i -g @go-task/cli           # alternatif via npm
+task --version
+```
+
+Tanpa install pun bisa: setiap `task <nama>` sama persis dengan
+`bash ./scripts/<nama>.sh` (mis. `task start` = `bash ./scripts/start.sh`,
+`task build` = `bash ./scripts/build-frontend.sh` + `bash ./scripts/build-backend.sh`).
+Detail tabel padanan ada di [README 1.1](../README.md#11-prepare-komputer).
 
 ## 0.2. Pasang dependency frontend
 
@@ -271,14 +287,10 @@ Mode tersembunyi di Windows: `./app.exe --hide` (berhenti dengan `./stop.exe`).
 
 Login `admin`/`admin`, lalu pastikan semua poin ini benar:
 
-- [ ] Sidebar punya 2 section modul: `SYSTEM` (8 menu) dan `REPORT`
-      (2 menu contoh `Laporan` + `Arus Kas` di bawah header `Keuangan`).
-- [ ] Menu **Modul & Menu** menampilkan 2 modul + 11 baris menu.
-- [ ] **Role & Permission** menampilkan matriks 11 menu; `MENU_KEUANGAN`
-      tampil sebagai header **tanpa centang**, `MENU_ARUS_KAS` di bawahnya
-      punya checkbox.
+- [ ] Sidebar punya 1 section modul: `SYSTEM` (8 menu).
+- [ ] Menu **Modul & Menu** menampilkan 1 modul + 8 baris menu.
+- [ ] **Role & Permission** menampilkan matriks 8 menu.
 - [ ] Role `ADMIN` tercentang 8 menu `SYSTEM`; role `USER` nol centang.
-- [ ] Menu `Laporan` dan `Arus Kas` belum tampil di sidebar (belum di-grant).
 - [ ] Logout, lalu login `user`/`user` → halaman kosong "hubungi admin".
 
 Acuan query lengkap ada di
@@ -403,7 +415,7 @@ PostgreSQL: `DB_CONNECTION=postgres` lalu `task migrate-postgres`
 SQLite: `DB_CONNECTION=sqlite` + `DB_DATABASE=./data/tokodb.db` lalu
 `task migrate-sqlite` (skema `scripts/schema.sqlite.sql`).
 
-Ketiganya menghasilkan state awal yang sama: 10 tabel, 2 modul, 11 menu,
+Ketiganya menghasilkan state awal yang sama: 10 tabel, 1 modul, 8 menu,
 `ADMIN` 8 grant, 2 akun (`admin`/`admin` dan `user`/`user`), 3 template
 notifikasi.
 
@@ -433,22 +445,22 @@ Urutannya wajib: **modul dulu, baru menu** — `CPMENU.MODULE` menunjuk ke
 
 ## 1.1. Buat modul baru
 
-Lewati bagian ini bila modul yang Anda butuh sudah ada (`SYSTEM` dan
-`REPORT` bawaan).
+Lewati bagian ini bila modul yang Anda butuh sudah ada (`SYSTEM`
+bawaan).
 
 via UI (disarankan):
 
 1. Login `admin`, buka menu **Modul & Menu**.
 2. Klik **Modul baru**.
 3. Isi: kode modul `TOKO` (harus huruf besar, maks 40 karakter), label
-   `Toko`, urutan `3`.
+   `Toko`, urutan `2`.
 4. Simpan.
 
 via SQL:
 
 ```sql
 INSERT INTO dbo.CPMODULE (CODE, LABEL, SORT_ORDER)
-SELECT N'TOKO', N'Toko', 3
+SELECT N'TOKO', N'Toko', 2
 WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMODULE WHERE CODE = N'TOKO');
 ```
 
@@ -461,7 +473,7 @@ Modul gagal dihapus selama masih ada menu di dalamnya (UI memberi pesan
 SELECT CODE, LABEL, SORT_ORDER FROM dbo.CPMODULE ORDER BY SORT_ORDER;
 ```
 
-`TOKO` harus muncul di antara `SYSTEM` dan `REPORT`.
+`TOKO` harus muncul setelah `SYSTEM` (urutan `2`).
 
 ## 1.2. Buat menu di modul itu
 
@@ -951,9 +963,8 @@ Inilah langkah yang membuat menu benar-benar bisa dipakai. Grant disimpan di
    ter-include otomatis.
 6. Klik **Simpan permission**.
 
-Matriks menampilkan **semua** menu `CHILD` di `CPMENU`, termasuk menu contoh
-yang belum pernah di-grant. Jadi administrator bebas memberi akses ke menu mana
-pun — begitulah cara memberi akses ke menu contoh `REPORT` bila diinginkan.
+Matriks menampilkan **semua** menu `CHILD` di `CPMENU`. Jadi administrator
+bebas memberi akses ke menu mana pun.
 Header `PARENT` hanya tampil sebagai judul section dan tidak bisa di-grant.
 
 ✅ **Checkpoint 4.3**
@@ -1225,7 +1236,7 @@ Setup (khusus clone baru):
 - [ ] `task migrate` + `scripts/seed-admin.sql` sudah dijalankan (10 tabel `CP%`).
 - [ ] Login `admin` / `admin` berhasil (ganti passwordnya setelah itu).
 - [ ] Login `user` / `user` menunjukkan halaman kosong "hubungi admin".
-- [ ] Sidebar menampilkan 2 section modul dan 11 menu di matriks Role & Permission.
+- [ ] Sidebar menampilkan 1 section modul dan 8 menu di matriks Role & Permission.
 - [ ] `APP_NAME` di `.env` disesuaikan bila nama aplikasi diganti (judul tab,
       sidebar, kartu login).
 - [ ] `APP_LOGO` di `.env` + file di `frontend/public/` sudah diganti bila
@@ -1276,20 +1287,16 @@ ORDER BY TABLE_NAME;
 -- CPAUDITLOG, CPMENU, CPMODULE, CPNOTIFLOG, CPNOTIFTEMPLATE,
 -- CPPERMISSION, CPREFRESHTOKEN, CPROLE, CPSYSLOG, CPUSER
 
--- 2 modul bawaan (SYSTEM operasional + REPORT contoh tes tampilan):
+-- 1 modul bawaan (SYSTEM operasional):
 SELECT CODE, LABEL, SORT_ORDER FROM dbo.CPMODULE ORDER BY SORT_ORDER;
 -- SYSTEM | System | 1
--- REPORT | Report | 2
 
--- 11 menu (8 SYSTEM + 3 contoh REPORT); permission = menu (1:1):
-SELECT COUNT(*) FROM dbo.CPMENU;  -- 11
--- Contoh parent-child: MENU_KEUANGAN = PARENT, MENU_ARUS_KAS = CHILD
--- dengan PARENT_CODE = MENU_KEUANGAN.
+-- 8 menu (semuanya SYSTEM); permission = menu (1:1):
+SELECT COUNT(*) FROM dbo.CPMENU;  -- 8
 SELECT CODE, MODULE, MENU_KIND, PARENT_CODE FROM dbo.CPMENU
-WHERE MODULE = 'REPORT' ORDER BY SORT_ORDER;
+ORDER BY MODULE, SORT_ORDER;
 
 -- Grant: ADMIN 8, USER 0 (akses USER selalu manual via matriks).
--- Tiga menu REPORT sengaja tanpa akses role mana pun.
 SELECT ROLE_CODE, COUNT(*) AS JML FROM dbo.CPPERMISSION GROUP BY ROLE_CODE;
 -- ADMIN | 8
 
@@ -1304,6 +1311,10 @@ SELECT COUNT(*) FROM dbo.CPNOTIFTEMPLATE;  -- 3
 
 Bila ada angka yang berbeda, ulangi `task migrate` (aman diulang) lalu
 bandingkan lagi sebelum lanjut ke menu bisnis.
+
+> Database lama yang masih menampilkan modul `REPORT`: `task migrate`
+> menghapus `MENU_LAPORAN`/`MENU_ARUS_KAS`/`MENU_KEUANGAN` + modul `REPORT`
+> secara otomatis, lalu jalankan `task build-frontend` + restart backend.
 
 Untuk engine lain, `scripts/schema.postgres.sql` dan
 `scripts/schema.sqlite.sql` menghasilkan state yang sama persis (termasuk 2

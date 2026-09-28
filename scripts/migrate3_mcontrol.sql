@@ -25,8 +25,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns
   ALTER TABLE dbo.CPMENU ADD MCONTROL NVARCHAR(40) NULL;
 GO
 
--- Backfill menu bawaan: snake_case dari LABEL (User Account -> user_account).
--- PARENT (MENU_KEUANGAN) tetap NULL — tanpa folder.
+-- Backfill menu bawaan: snake_case dari LABEL (User Account -> users).
 UPDATE dbo.CPMENU SET MCONTROL = N'users'            WHERE CODE = N'MENU_USERS'         AND MCONTROL IS NULL;
 UPDATE dbo.CPMENU SET MCONTROL = N'modul_menu'       WHERE CODE = N'MENU_MODUL'         AND MCONTROL IS NULL;
 UPDATE dbo.CPMENU SET MCONTROL = N'role_permission'  WHERE CODE = N'MENU_ROLES'         AND MCONTROL IS NULL;
@@ -35,10 +34,8 @@ UPDATE dbo.CPMENU SET MCONTROL = N'audit_log'        WHERE CODE = N'MENU_AUDIT' 
 UPDATE dbo.CPMENU SET MCONTROL = N'security_center'  WHERE CODE = N'MENU_SECURITY'      AND MCONTROL IS NULL;
 UPDATE dbo.CPMENU SET MCONTROL = N'system_log'       WHERE CODE = N'MENU_SYSLOG'        AND MCONTROL IS NULL;
 UPDATE dbo.CPMENU SET MCONTROL = N'notifikasi'       WHERE CODE = N'MENU_NOTIFICATIONS' AND MCONTROL IS NULL;
-UPDATE dbo.CPMENU SET MCONTROL = N'laporan'          WHERE CODE = N'MENU_LAPORAN'        AND MCONTROL IS NULL;
-UPDATE dbo.CPMENU SET MCONTROL = N'arus_kas'         WHERE CODE = N'MENU_ARUS_KAS'       AND MCONTROL IS NULL;
 -- Menu CHILD buatan sendiri yang belum punya MCONTROL: turunkan dari CODE
--- (MENU_STOK -> stok, MENU_ARUS_KAS -> arus_kas).
+-- (MENU_STOK -> stok).
 UPDATE dbo.CPMENU
 SET MCONTROL = LOWER(REPLACE(SUBSTRING(CODE, 6, 35), N'_', N'_'))
 WHERE MENU_KIND = N'CHILD' AND MCONTROL IS NULL AND CODE LIKE N'MENU[_]%';

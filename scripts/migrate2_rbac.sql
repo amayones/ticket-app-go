@@ -66,13 +66,10 @@ CREATE TABLE dbo.CPMODULE (
 );
 GO
 
--- Seed modul bawaan (SYSTEM untuk operasional; REPORT untuk contoh tes tampilan).
+-- Seed modul bawaan (SYSTEM untuk operasional).
 INSERT INTO dbo.CPMODULE (CODE, LABEL, SORT_ORDER)
 SELECT N'SYSTEM', N'System', 1
 WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMODULE WHERE CODE = N'SYSTEM');
-INSERT INTO dbo.CPMODULE (CODE, LABEL, SORT_ORDER)
-SELECT N'REPORT', N'Report', 2
-WHERE NOT EXISTS (SELECT 1 FROM dbo.CPMODULE WHERE CODE = N'REPORT');
 GO
 
 -- 2b. CPMENU (registry menu) ---------------------------------------------------
@@ -136,11 +133,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CPMENU_MODULE')
   ALTER TABLE dbo.CPMENU ADD CONSTRAINT FK_CPMENU_MODULE
     FOREIGN KEY (MODULE) REFERENCES dbo.CPMODULE (CODE);
 
--- Seed registry menu bawaan (urut sesuai sidebar) + contoh tes tampilan.
--- MENU_MODUL = halaman manajemen modul & menu. Dua menu REPORT adalah contoh
--- (menu biasa vs menu anak di bawah header PARENT) yang sengaja TANPA akses
--- role mana pun. MCONTROL = nama folder frontend app/<mcontrol>/ (kolomnya
--- ditambahkan migrate3_mcontrol.sql; lihat percabangan di bawah).
+-- Seed registry menu bawaan (urut sesuai sidebar).
+-- MENU_MODUL = halaman manajemen modul & menu. MCONTROL = nama folder
+-- frontend app/<mcontrol>/ (kolomnya ditambahkan migrate3_mcontrol.sql;
+-- lihat percabangan di bawah).
 IF OBJECT_ID(N'tempdb..#menus') IS NOT NULL DROP TABLE #menus;
 CREATE TABLE #menus (CODE NVARCHAR(40), MODULE NVARCHAR(40), LABEL NVARCHAR(100), MCONTROL NVARCHAR(40) NULL, MENU_KIND NVARCHAR(10), SORT_ORDER INT, PARENT_CODE NVARCHAR(40) NULL);
 INSERT INTO #menus VALUES
@@ -151,10 +147,7 @@ INSERT INTO #menus VALUES
   (N'MENU_AUDIT',         N'SYSTEM', N'Audit Log',         N'audit_log',       N'CHILD',  5, NULL),
   (N'MENU_SECURITY',      N'SYSTEM', N'Security Center',   N'security_center', N'CHILD',  6, NULL),
   (N'MENU_SYSLOG',        N'SYSTEM', N'System Log',        N'system_log',      N'CHILD',  7, NULL),
-  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',        N'notifikasi',      N'CHILD',  8, NULL),
-  (N'MENU_LAPORAN',       N'REPORT', N'Laporan',           N'laporan',         N'CHILD',  1, NULL),
-  (N'MENU_KEUANGAN',      N'REPORT', N'Keuangan',          NULL,               N'PARENT', 2, NULL),
-  (N'MENU_ARUS_KAS',      N'REPORT', N'Arus Kas',          N'arus_kas',        N'CHILD',  3, N'MENU_KEUANGAN');
+  (N'MENU_NOTIFICATIONS', N'SYSTEM', N'Notifikasi',        N'notifikasi',      N'CHILD',  8, NULL);
 
 -- Dua varian INSERT: tanpa MCONTROL (kolom belum ada) atau dengan MCONTROL
 -- (kolom sudah ada, CK_CPMENU_MCONTROL menuntut CHILD punya folder). Diambil
@@ -178,16 +171,6 @@ JOIN #menus s ON s.CODE = m.CODE
 WHERE m.MODULE = N'SYSTEM'
   AND (m.SORT_ORDER <> s.SORT_ORDER OR m.LABEL <> s.LABEL);
 DROP TABLE #menus;
-GO
-
--- Contoh parent-child (Keuangan = PARENT, Arus Kas = CHILD di bawahnya).
--- Seed di atas sudah memuat keduanya; blok ini menyelaraskan instalasi lama
--- yang baris Arus Kas-nya sudah ada tapi belum menunjuk parent. MCONTROL baris
--- CHILD dilengkapi migrate3_mcontrol.sql bila masih NULL.
-UPDATE dbo.CPMENU
-SET MENU_KIND = N'CHILD', PARENT_CODE = N'MENU_KEUANGAN', SORT_ORDER = 3
-WHERE CODE = N'MENU_ARUS_KAS'
-  AND (PARENT_CODE IS NULL OR PARENT_CODE <> N'MENU_KEUANGAN' OR MENU_KIND <> N'CHILD');
 GO
 
 -- 2d. CPPERMISSION (grant role -> menu) --------------------------------------------
@@ -282,17 +265,22 @@ WHERE MENU_CODE IN (
   N'AUDIT_READ', N'SECURITY_READ', N'SYSLOG_READ', N'SYSLOG_MANAGE',
   N'NOTIF_READ', N'NOTIF_MANAGE', N'NOTIF_SEND'
 );
--- ADMIN mendapat semua menu CHILD secara default (dari CPMENU), KECUALI menu
--- contoh tes tampilan (REPORT) yang sengaja tanpa akses role mana pun.
+-- ADMIN mendapat semua menu CHILD secara default (dari CPMENU).
 -- Menu PARENT tidak di-grant: header buka-tutup tanpa halaman sendiri, aksesnya
 -- menyusul otomatis dari menu CHILD di bawahnya (lihat MyMenusByRole).
 INSERT INTO dbo.CPPERMISSION (ROLE_CODE, MENU_CODE)
 SELECT N'ADMIN', CODE FROM dbo.CPMENU
 WHERE MENU_KIND = N'CHILD'
-  AND CODE NOT IN (N'MENU_LAPORAN', N'MENU_ARUS_KAS')
 AND NOT EXISTS (
   SELECT 1 FROM dbo.CPPERMISSION x WHERE x.ROLE_CODE = N'ADMIN' AND x.MENU_CODE = CPMENU.CODE
 );
+-- Bersihkan sisa modul REPORT yang sudah dihapus (instalasi lama yang pernah
+-- menjalankan seed REPORT): urut hapus grant -> child -> parent -> modul.
+DELETE FROM dbo.CPPERMISSION WHERE MENU_CODE IN (N'MENU_LAPORAN', N'MENU_ARUS_KAS', N'MENU_KEUANGAN');
+DELETE FROM dbo.CPMENU WHERE CODE = N'MENU_ARUS_KAS';
+DELETE FROM dbo.CPMENU WHERE CODE = N'MENU_LAPORAN';
+DELETE FROM dbo.CPMENU WHERE CODE = N'MENU_KEUANGAN';
+DELETE FROM dbo.CPMODULE WHERE CODE = N'REPORT';
 -- Bersihkan grant PARENT sisa instalasi lama: matriks Role & Permission kini
 -- hanya mencentang menu CHILD (header PARENT tampil otomatis, tanpa grant).
 DELETE g

@@ -345,7 +345,7 @@ export default function Modul() {
             label="Kode permission"
             value={mCode}
             onChange={(e) => setMCode(e.target.value.toUpperCase())}
-            placeholder="mis. MENU_LAPORAN"
+            placeholder="mis. MENU_STOK"
             hint="Wajib prefix MENU_, huruf besar/angka/underscore, maks 40 karakter."
           />
           <label className="block">
@@ -371,14 +371,14 @@ export default function Modul() {
             label="Label tampil"
             value={mLabel}
             onChange={(e) => setMLabel(e.target.value)}
-            placeholder="mis. Laporan"
+            placeholder="mis. Stok"
           />
           {mKind === CHILD_KIND && (
             <TextField
               label="MCONTROL (nama folder)"
               value={mMcontrol}
               onChange={(e) => setMMcontrol(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-              placeholder="mis. laporan"
+              placeholder="mis. stok"
               hint="snake_case (a-z, 0-9, _) = folder frontend/src/app/<mcontrol>/. PARENT tanpa mcontrol."
             />
           )}
@@ -479,7 +479,7 @@ export default function Modul() {
             label="Label tampil"
             value={eLabel}
             onChange={(e) => setELabel(e.target.value)}
-            placeholder="mis. Laporan"
+            placeholder="mis. Stok"
             hint="Nama yang tampil di sidebar dan matriks Role."
           />
           {eKind === CHILD_KIND && (
@@ -487,7 +487,7 @@ export default function Modul() {
               label="MCONTROL (nama folder)"
               value={eMcontrol}
               onChange={(e) => setEMcontrol(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-              placeholder="mis. laporan"
+              placeholder="mis. stok"
               hint="snake_case = folder frontend/src/app/<mcontrol>/. PARENT tanpa mcontrol."
             />
           )}
@@ -571,14 +571,14 @@ export default function Modul() {
             label="Kode modul"
             value={modCode}
             onChange={(e) => setModCode(e.target.value.toUpperCase())}
-            placeholder="mis. REPORT"
-            hint="UPPERCASE persis = nama folder menus/<MODUL>/, maks 40 karakter."
+            placeholder="mis. TOKO"
+            hint="UPPERCASE (maks 40 karakter) = section sidebar."
           />
           <TextField
             label="Label tampil"
             value={modLabel}
             onChange={(e) => setModLabel(e.target.value)}
-            placeholder="mis. Report"
+            placeholder="mis. Toko"
           />
           <TextField
             label="Urutan section"
