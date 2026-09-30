@@ -1,0 +1,31 @@
+-- Rollback for scripts/migrate5_dashboard.sql (dashboard T_ tables + menus).
+-- Drops T_ tables in dependency order, then removes DASHBOARD menus/module.
+-- Grants are deleted first so menu rows can be removed cleanly.
+-- Idempotent (safe to re-run). Run:
+--   sqlcmd -S <host>,<port> -U <user> -P <pass> -d <DB_NAME> -C -b -i scripts/migrate5_dashboard_rollback.sql
+SET XACT_ABORT ON;
+BEGIN TRAN;
+
+DELETE FROM dbo.CPPERMISSION
+WHERE MENU_CODE IN (N'MENU_ORGANIZER', N'MENU_SELLER');
+
+DROP TABLE IF EXISTS dbo.T_REVIEW;
+DROP TABLE IF EXISTS dbo.T_COMPLAINT;
+DROP TABLE IF EXISTS dbo.T_MERCH_ORDER;
+DROP TABLE IF EXISTS dbo.T_PRODUCT;
+DROP TABLE IF EXISTS dbo.T_SELLER_BALANCE;
+DROP TABLE IF EXISTS dbo.T_PAYOUT;
+DROP TABLE IF EXISTS dbo.T_AD_DAILY;
+DROP TABLE IF EXISTS dbo.T_REFUND;
+DROP TABLE IF EXISTS dbo.T_TICKET;
+DROP TABLE IF EXISTS dbo.T_ORDER;
+DROP TABLE IF EXISTS dbo.T_PROMO;
+DROP TABLE IF EXISTS dbo.T_TICKET_TYPE;
+DROP TABLE IF EXISTS dbo.T_EVENT;
+DROP TABLE IF EXISTS dbo.T_ORGANIZER_BALANCE;
+DROP TABLE IF EXISTS dbo.T_CITY;
+
+DELETE FROM dbo.CPMENU WHERE CODE IN (N'MENU_ORGANIZER', N'MENU_SELLER');
+DELETE FROM dbo.CPMODULE WHERE CODE = N'DASHBOARD';
+
+COMMIT TRAN;

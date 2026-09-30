@@ -2,11 +2,23 @@ package models
 
 import "time"
 
-// Kode role yang dikenal (baris seed di scripts/migrate.sql).
+// Known role codes (seed rows in scripts/migrate.sql + migrate4_ticket_roles.sql).
+//   ADMIN     = system operator (SYSTEM menu group only).
+//   AUDIENCE  = end user / ticket buyer.
+//   ORGANIZER = event organizer.
+//   SELLER    = merchandise seller.
+//   OFFICER   = check-in officer.
+//   USER      = legacy (old installs); zero menus.
+// New roles intentionally have zero menu grants: they get an empty page
+// until an admin assigns menus via the Role & Permission matrix.
 const (
-	RoleAdmin       = "ADMIN"
-	RoleUser        = "USER"
-	DefaultRoleCode = RoleUser
+	RoleAdmin     = "ADMIN"
+	RoleUser      = "USER"
+	RoleAudience  = "AUDIENCE"
+	RoleOrganizer = "ORGANIZER"
+	RoleSeller    = "SELLER"
+	RoleOfficer   = "OFFICER"
+	DefaultRoleCode = RoleAudience
 )
 
 // Role adalah baris tabel CPROLE.

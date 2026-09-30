@@ -218,6 +218,21 @@ function Shell() {
   const activeNode = allNodes.find((m) => m.key === view) || allNodes[0] || null
   const Active = activeNode && !activeNode.missing ? activeNode.Component : null
 
+  // Tautan berbagi: bila dibuka dengan hash menu yang dikenal (mis. dari
+  // tombol Bagikan discovery), langsung tampilkan menu itu.
+  useEffect(() => {
+    if (view !== '') return
+    let key = ''
+    try {
+      const m = (window.location.hash || '').match(/^#\/([A-Za-z0-9_]+)/)
+      if (m) key = m[1]
+    } catch {
+      key = ''
+    }
+    if (key && allNodes.some((n) => n.key === key)) setView(key)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allNodes])
+
   function toggleOpen(setter, storeKey, key) {
     setter((prev) => {
       // Default terbuka; hanya kunci yang tertutup yang disimpan.

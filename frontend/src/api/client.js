@@ -49,20 +49,21 @@ function failSession() {
   notifySessionExpired()
 }
 
-async function request(path, { method = 'GET', body, auth = false, retry = true } = {}) {
+async function request(path, { method = 'GET', body, auth = false, retry = true, signal } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   if (auth && store.access) headers.Authorization = `Bearer ${store.access}`
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   })
   if (res.status === 401 && auth) {
     // Coba rotasi refresh-token sekali; kalau gagal / tidak ada refresh,
     // sesi dianggap habis -> bersihkan + beri tahu UI detik itu juga.
     if (retry && store.refresh) {
-      const ok = await tryRefresh()
-      if (ok) return request(path, { method, body, auth, retry: false })
+      const ok = await tryRefresh(signal)
+      if (ok) return request(path, { method, body, auth, retry: false, signal })
     }
     failSession()
   }
@@ -74,23 +75,32 @@ async function request(path, { method = 'GET', body, auth = false, retry = true 
   }
   if (!res.ok) {
     const msg = (data && data.error) || `Request failed (${res.status})`
-    throw new Error(msg)
+    const err = new Error(msg)
+    // Payload backend utuh (mis. missing[] saat 409) ikut dibawa agar
+    // pemanggil bisa menampilkannya tanpa request tambahan.
+    err.data = data
+    err.status = res.status
+    throw err
   }
   return data
 }
 
-async function tryRefresh() {
+async function tryRefresh(signal) {
   try {
     const res = await fetch(`${BASE}/api/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: store.refresh }),
+      signal,
     })
     if (!res.ok) return false
     const data = await res.json()
     store.set(data.access_token, data.refresh_token)
     return true
-  } catch {
+  } catch (err) {
+    // Abort bukan kegagalan refresh: lempar lagi agar pemanggil tahu
+    // request dibatalkan (jangan sampai memicu failSession).
+    if (signal && signal.aborted) throw err
     return false
   }
 }

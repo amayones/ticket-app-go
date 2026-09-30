@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -17,13 +18,19 @@ import (
 
 	"golang-backend/config"
 	faudit "golang-backend/features/audit"
+	fdiscovery "golang-backend/features/discovery"
+	fevent "golang-backend/features/event"
 	fnotif "golang-backend/features/notifications"
+	forganizer "golang-backend/features/organizer"
 	froles "golang-backend/features/roles"
 	fsecurity "golang-backend/features/security"
+	fseller "golang-backend/features/seller"
 	fsessions "golang-backend/features/sessions"
+	fticketing "golang-backend/features/ticketing"
 	fsyslog "golang-backend/features/syslog"
 	fusers "golang-backend/features/users"
 	"golang-backend/internal/pidfile"
+	"golang-backend/models"
 	"golang-backend/repositories"
 	"golang-backend/routes"
 )
@@ -82,6 +89,16 @@ func main() {
 	roleSvc := froles.NewService(roleRepo, userRepo)
 	sessionSvc := fsessions.NewService(sessionRepo)
 	auditSvc := faudit.NewService(auditRepo)
+	organizerRepo := forganizer.NewRepository(db, dialect)
+	sellerRepo := fseller.NewRepository(db, dialect)
+	discoveryRepo := fdiscovery.NewRepository(db, dialect)
+	eventRepo := fevent.NewRepository(db, dialect)
+	ticketingRepo := fticketing.NewRepository(db, dialect)
+	organizerSvc := forganizer.NewService(organizerRepo)
+	sellerSvc := fseller.NewService(sellerRepo)
+	discoverySvc := fdiscovery.NewService(discoveryRepo)
+	eventSvc := fevent.NewService(eventRepo)
+	ticketingSvc := fticketing.NewService(ticketingRepo, cfg.QRSecret, cfg.AppEnv, models.DefaultHoldMinutes, cfg.RefundCutoffHours)
 	syslogSvc := fsyslog.NewService(syslogRepo)
 	notifSvc := fnotif.NewService(notifRepo)
 	securitySvc := fsecurity.NewService(userSvc, roleSvc, sessionSvc, auditSvc, syslogSvc, notifSvc)
@@ -94,10 +111,16 @@ func main() {
 		Security:      fsecurity.NewHandler(securitySvc),
 		Syslog:        fsyslog.NewHandler(syslogSvc, auditSvc),
 		Notifications: fnotif.NewHandler(notifSvc, auditSvc),
+		Organizer:     forganizer.NewHandler(organizerSvc, auditSvc, syslogSvc),
+		Seller:        fseller.NewHandler(sellerSvc, auditSvc, syslogSvc),
+		Discovery:     fdiscovery.NewHandler(discoverySvc),
+		Event:         fevent.NewHandler(eventSvc, auditSvc, syslogSvc),
+		Ticketing:     fticketing.NewHandler(ticketingSvc, auditSvc, syslogSvc, cfg.QRSecret, cfg.JWTSecret),
 	}
 
 	routeCfg := routes.DefaultRouteConfig(cfg.JWTSecret)
 	r := routes.SetupRoutesWithConfig(deps, routeCfg)
+	attachUploads(r)
 	if err := attachEmbeddedSPA(r); err != nil {
 		slog.Warn("frontend/dist missing; API only", "err", err)
 	}
@@ -143,6 +166,25 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("server exited gracefully")
+}
+
+// attachUploads serves runtime-uploaded files (./uploads, outside the
+// embedded frontend). Rejects path traversal before the file server.
+func attachUploads(r *chi.Mux) {
+	if err := os.MkdirAll(filepath.Join("uploads", "posters"), 0755); err != nil {
+		slog.Warn("could not create uploads dir", "err", err)
+		return
+	}
+	fileServer := http.FileServer(http.Dir("uploads"))
+	r.Handle("/uploads/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if strings.Contains(req.URL.Path, "..") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"Invalid path"}`))
+			return
+		}
+		http.StripPrefix("/uploads/", fileServer).ServeHTTP(w, req)
+	}))
 }
 
 func attachEmbeddedSPA(r *chi.Mux) error {

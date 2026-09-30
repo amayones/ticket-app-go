@@ -97,13 +97,18 @@ func ServiceError(w http.ResponseWriter, err error) int {
 		errors.Is(err, services.ErrInvalidTemplate),
 		errors.Is(err, services.ErrInvalidChannel),
 		errors.Is(err, services.ErrInvalidMenu),
-		errors.Is(err, services.ErrInvalidModule):
+		errors.Is(err, services.ErrInvalidModule),
+		errors.Is(err, services.ErrInvalidFilter),
+		errors.Is(err, services.ErrInvalidCheckout),
+		errors.Is(err, services.ErrNotEligible),
+		errors.Is(err, services.ErrEventState):
 		WriteError(w, http.StatusBadRequest, err.Error())
 		return http.StatusBadRequest
 	case errors.Is(err, services.ErrUsernameTaken),
 		errors.Is(err, services.ErrEmailTaken),
 		errors.Is(err, services.ErrRoleExists),
 		errors.Is(err, services.ErrRoleInUse),
+		errors.Is(err, services.ErrEventNotReady),
 		errors.Is(err, services.ErrPermissionExists),
 		errors.Is(err, services.ErrMenuInUse),
 		errors.Is(err, services.ErrMenuHasChildren),
@@ -116,14 +121,19 @@ func ServiceError(w http.ResponseWriter, err error) int {
 		WriteError(w, http.StatusUnauthorized, err.Error())
 		return http.StatusUnauthorized
 	case errors.Is(err, services.ErrForbidden),
-		errors.Is(err, services.ErrRoleProtected):
+		errors.Is(err, services.ErrRoleProtected),
+		errors.Is(err, services.ErrScanDenied):
 		WriteError(w, http.StatusForbidden, err.Error())
 		return http.StatusForbidden
 	case errors.Is(err, services.ErrUserNotFound),
 		errors.Is(err, services.ErrRoleNotFound),
+		errors.Is(err, services.ErrOrderNotFound),
+		errors.Is(err, services.ErrTicketNotFound),
 		errors.Is(err, services.ErrTemplateNotFound),
 		errors.Is(err, services.ErrSessionNotFound),
 		errors.Is(err, services.ErrMenuNotFound),
+		errors.Is(err, services.ErrEventNotFound),
+		errors.Is(err, services.ErrNewsNotFound),
 		errors.Is(err, services.ErrModuleNotFound):
 		WriteError(w, http.StatusNotFound, err.Error())
 		return http.StatusNotFound

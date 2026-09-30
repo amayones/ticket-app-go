@@ -85,6 +85,16 @@ tasks:
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate.sql
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate2_rbac.sql
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate3_mcontrol.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate4_ticket_roles.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate5_dashboard.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate6_discovery.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate7_discovery_menus.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate8_discovery_unmenu.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate9_event.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate10_event_menus.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate11_fold_create_event.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate12_ticketing.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate13_ticketing_menus.sql
 
   migrate-postgres:
     desc: Apply scripts/schema.postgres.sql to PostgreSQL (requires psql)
@@ -97,6 +107,30 @@ tasks:
     dotenv: ['.env']
     cmds:
       - bash -c 'mkdir -p "$(dirname {{.DB_DATABASE}})" && sqlite3 {{.DB_DATABASE}} < scripts/schema.sqlite.sql'
+
+  seed-dashboard:
+    desc: Seed dashboard demo data (T_* tables only, requires migrate4+migrate5)
+    dotenv: ['.env']
+    cmds:
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/seed-dashboard.sql
+
+  seed-discovery:
+    desc: Seed discovery demo data (T_* tables only, requires migrate6)
+    dotenv: ['.env']
+    cmds:
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/seed-discovery.sql
+
+  seed-event:
+    desc: Seed event demo data (T_* tables only, requires migrate9)
+    dotenv: ['.env']
+    cmds:
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/seed-event.sql
+
+  seed-ticketing:
+    desc: Seed ticketing demo data (T_* tables only, requires migrate12)
+    dotenv: ['.env']
+    cmds:
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/seed-ticketing.sql
 
   test:
     desc: Go vet + race tests

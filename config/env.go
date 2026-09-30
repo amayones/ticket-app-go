@@ -36,6 +36,14 @@ type Config struct {
 
 	JWTSecret string
 
+	// QRSecret signs ticket QR tokens (TICKETING module). Optional:
+	// empty falls back to JWTSecret so existing .env files keep working.
+	QRSecret string
+
+	// RefundCutoffHours: refund requests close this many hours before the
+	// event starts (default 24). FINANCE owns the payout.
+	RefundCutoffHours int
+
 	// Token lifetimes (umur sesi). ACCESS_TOKEN_MINUTES dalam menit
 	// (default 15), REFRESH_TOKEN_DAYS dalam hari (default 7).
 	// Nilai <= 0 / bukan angka otomatis fallback ke default.
@@ -65,10 +73,12 @@ func Load() (Config, error) {
 		DBUsername:      strings.TrimSpace(os.Getenv("DB_USERNAME")),
 		DBPassword:      os.Getenv("DB_PASSWORD"), // keep as-is; may contain spaces
 		JWTSecret:       strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		QRSecret:        strings.TrimSpace(os.Getenv("QR_SECRET")),
 		AccessTokenTTL:  time.Duration(getEnvIntDefault("ACCESS_TOKEN_MINUTES", 15)) * time.Minute,
 		RefreshTokenTTL: time.Duration(getEnvIntDefault("REFRESH_TOKEN_DAYS", 7)) * 24 * time.Hour,
 		DBMaxOpenConns:  getEnvIntDefault("DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns:  getEnvIntDefault("DB_MAX_IDLE_CONNS", 10),
+		RefundCutoffHours: getEnvIntDefault("REFUND_CUTOFF_HOURS", 24),
 	}
 
 	var missing []string
@@ -99,6 +109,11 @@ func Load() (Config, error) {
 	}
 	if len(cfg.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+	if cfg.QRSecret == "" {
+		cfg.QRSecret = cfg.JWTSecret
+	} else if len(cfg.QRSecret) < 32 {
+		return Config{}, fmt.Errorf("QR_SECRET must be at least 32 characters")
 	}
 	return cfg, nil
 }

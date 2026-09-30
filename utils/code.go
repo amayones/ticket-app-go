@@ -12,6 +12,15 @@ const (
 	SyslogCodePrefix    = "SYS-"
 	NotifLogPrefix      = "NTF-"
 	NotifTemplatePrefix = "NTM-"
+	EventCodePrefix     = "EVT-"
+	TicketTypePrefix    = "TT-"
+	OrderCodePrefix     = "ORD-"
+	OrderItemPrefix     = "OI-"
+	TicketCodePrefix    = "TIX-"
+	TicketQRPrefix      = "QR-"
+	RefundCodePrefix    = "RFD-"
+	ResvCodePrefix      = "RSV-"
+	ScanCodePrefix      = "SCN-"
 	codeRandLen         = 8
 )
 

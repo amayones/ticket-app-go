@@ -9,11 +9,16 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	faudit "golang-backend/features/audit"
+	fdiscovery "golang-backend/features/discovery"
+	fevent "golang-backend/features/event"
 	fnotif "golang-backend/features/notifications"
+	forganizer "golang-backend/features/organizer"
 	froles "golang-backend/features/roles"
 	fsecurity "golang-backend/features/security"
+	fseller "golang-backend/features/seller"
 	fsessions "golang-backend/features/sessions"
 	fsyslog "golang-backend/features/syslog"
+	fticketing "golang-backend/features/ticketing"
 	fusers "golang-backend/features/users"
 	appmw "golang-backend/middleware"
 	"golang-backend/models"
@@ -51,6 +56,11 @@ type Deps struct {
 	Security      *fsecurity.Handler
 	Syslog        *fsyslog.Handler
 	Notifications *fnotif.Handler
+	Organizer     *forganizer.Handler
+	Seller        *fseller.Handler
+	Discovery     *fdiscovery.Handler
+	Event         *fevent.Handler
+	Ticketing     *fticketing.Handler
 }
 
 func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
@@ -141,6 +151,96 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 		// supaya user biasa bisa lihat & cabut sesinya sendiri.
 		r.With(auth).Get("/sessions/mine", d.Sessions.ListMySessions)
 		r.With(auth).Delete("/sessions/{id}", d.Sessions.RevokeSession)
+		// Menu TICKETING: buyer-scoped (tiket/refund milik sendiri) dan
+		// officer-scoped (scan hanya event yang ditugaskan). Tanpa permission
+		// matriks (aturan kepemilikan/penugasan, bukan hak menu).
+		r.Route("/ticketing", func(r chi.Router) {
+			r.With(auth).Post("/checkout", d.Ticketing.Checkout)
+			r.With(auth).Post("/orders/{code}/pay", d.Ticketing.PayOrder)
+			r.With(auth).Post("/orders/{code}/cancel", d.Ticketing.CancelOrder)
+			r.With(auth).Get("/tickets", d.Ticketing.MyTickets)
+			r.With(auth).Get("/tickets/{code}", d.Ticketing.TicketDetail)
+			// QR tanpa middleware auth: <img> tak bisa pasang header, handler
+			// menerima Authorization atau ?access_token= (cek di handler).
+			r.Get("/tickets/{code}/qr", d.Ticketing.TicketQR)
+			r.With(auth).Post("/refunds", d.Ticketing.RequestRefund)
+			r.With(auth).Get("/refunds", d.Ticketing.BuyerRefunds)
+			r.With(auth).Post("/scan", d.Ticketing.ScanTicket)
+			r.With(auth).Get("/scan/events", d.Ticketing.ScanEvents)
+			r.With(auth).Get("/scan/summary", d.Ticketing.ScanSummary)
+			r.With(auth).Get("/scan/history", d.Ticketing.ScanHistory)
+			r.With(auth).Get("/scan/export", d.Ticketing.ScanExport)
+		})
+		// Menu EVENT: owner-scoped (organizer hanya garap event miliknya).
+		// Tanpa permission matriks (aturan kepemilikan, bukan hak menu).
+		r.Route("/events", func(r chi.Router) {
+			r.With(auth).Get("/mine", d.Event.MineList)
+			r.With(auth).Post("/", d.Event.CreateEvent)
+			r.With(auth).Post("/upload-poster", d.Event.UploadPoster)
+			r.With(auth).Get("/{code}", d.Event.EventDetail)
+			r.With(auth).Put("/{code}", d.Event.UpdateEvent)
+			r.With(auth).Delete("/{code}", d.Event.DeleteEvent)
+			r.With(auth).Post("/{code}/duplicate", d.Event.DuplicateEvent)
+			r.With(auth).Post("/{code}/publish", d.Event.PublishEvent)
+			r.With(auth).Post("/{code}/unpublish", d.Event.UnpublishEvent)
+			r.With(auth).Post("/{code}/cancel", d.Event.CancelEvent)
+			r.With(auth).Get("/{code}/ticket-types", d.Event.TypeList)
+			r.With(auth).Post("/{code}/ticket-types", d.Event.CreateType)
+			r.With(auth).Put("/{code}/ticket-types/order", d.Event.ReorderTypes)
+			r.With(auth).Put("/{code}/ticket-types/{tcode}", d.Event.UpdateType)
+			r.With(auth).Delete("/{code}/ticket-types/{tcode}", d.Event.DeleteType)
+			r.With(auth).Post("/{code}/ticket-types/{tcode}/activate", func(w http.ResponseWriter, req *http.Request) {
+				d.Event.SetTypeActive(w, req, true)
+			})
+			r.With(auth).Post("/{code}/ticket-types/{tcode}/deactivate", func(w http.ResponseWriter, req *http.Request) {
+				d.Event.SetTypeActive(w, req, false)
+			})
+			r.With(auth).Get("/{code}/attendees", d.Event.Attendees)
+			r.With(auth).Get("/{code}/attendees/export", d.Event.AttendeeExport)
+		})
+		// Menu DISCOVERY: publik tanpa auth (home, berita, event, promo).
+		// Hanya baris layak-publik yang keluar (publishable filter di service).
+		r.Route("/discovery", func(r chi.Router) {
+			r.Get("/home", d.Discovery.Home)
+			r.Get("/categories", d.Discovery.Categories)
+			r.Get("/cities", d.Discovery.Cities)
+			r.Get("/news/categories", d.Discovery.NewsCategories)
+			r.Get("/news", d.Discovery.News)
+			r.Get("/news/{slug}", d.Discovery.NewsDetail)
+			r.Get("/events", d.Discovery.Events)
+			r.Get("/events/{code}", d.Discovery.EventDetail)
+			r.Get("/promotions", d.Discovery.Promotions)
+			r.Post("/ads/{code}/impression", d.Discovery.AdImpression)
+			r.Post("/ads/{code}/click", d.Discovery.AdClick)
+		})
+		// Menu dashboard (modul DASHBOARD): permission matriks standar
+		// (MENU_ORGANIZER / MENU_SELLER), sama seperti menu lain. Admin
+		// memberi akses lewat Role & Permission; tanpa grant = 403.
+		org := need(models.MenuOrganizer)
+		seller := need(models.MenuSeller)
+		r.Route("/dashboard", func(r chi.Router) {
+			r.Route("/organizer", func(r chi.Router) {
+				r.With(auth, org).Get("/summary", d.Organizer.Summary)
+				r.With(auth, org).Get("/orders", d.Organizer.Orders)
+				r.With(auth, org).Get("/refunds", d.Organizer.Refunds)
+				r.With(auth, org).Post("/refunds/{code}/approve", func(w http.ResponseWriter, req *http.Request) {
+					d.Organizer.DecideRefund(w, req, true)
+				})
+				r.With(auth, org).Post("/refunds/{code}/reject", func(w http.ResponseWriter, req *http.Request) {
+					d.Organizer.DecideRefund(w, req, false)
+				})
+				r.With(auth, org).Get("/checkin-live", d.Organizer.CheckinLive)
+				r.With(auth, org).Get("/export", d.Organizer.Export)
+			})
+			r.Route("/seller", func(r chi.Router) {
+				r.With(auth, seller).Get("/summary", d.Seller.Summary)
+				r.With(auth, seller).Get("/orders", d.Seller.Orders)
+				r.With(auth, seller).Get("/orders/actionable", d.Seller.Actionable)
+				r.With(auth, seller).Get("/products/low-stock", d.Seller.LowStock)
+				r.With(auth, seller).Get("/complaints", d.Seller.Complaints)
+				r.With(auth, seller).Get("/export", d.Seller.Export)
+			})
+		})
 	})
 	return r
 }

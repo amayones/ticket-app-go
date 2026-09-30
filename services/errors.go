@@ -45,4 +45,22 @@ var (
 	ErrModuleExists   = errors.New("module already exists")
 	ErrModuleInUse    = errors.New("module still has menus")
 	ErrInvalidModule  = errors.New("invalid module")
+
+	// Dashboard domain (features/organizer, features/seller).
+	ErrInvalidFilter = errors.New("invalid dashboard filter")
+
+	// Discovery domain (features/discovery, public read).
+	ErrEventNotFound = errors.New("event not found")
+	ErrNewsNotFound  = errors.New("news not found")
+
+	// Event domain (features/event, owner-scoped writes).
+	ErrEventState    = errors.New("invalid event status transition")
+	ErrEventNotReady = errors.New("event is not ready to publish")
+
+	// Ticketing domain (features/ticketing, buyer/officer flows).
+	ErrOrderNotFound   = errors.New("order not found")
+	ErrTicketNotFound  = errors.New("ticket not found")
+	ErrInvalidCheckout = errors.New("invalid checkout")
+	ErrNotEligible     = errors.New("not eligible for refund")
+	ErrScanDenied      = errors.New("scan not allowed")
 )
