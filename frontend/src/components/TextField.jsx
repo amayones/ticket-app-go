@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Icon from './icons.jsx'
 
 const INPUT_CLASS =
-  'w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 transition focus:outline-none focus:ring-2 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500'
+  'w-full h-[42px] rounded-xl border bg-white px-4 text-[13px] leading-none text-zinc-900 placeholder:text-zinc-400 transition focus:outline-none focus:ring-2 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500'
 const NORMAL_RING = 'border-zinc-300 focus:border-violet-500 focus:ring-violet-500/30 dark:border-zinc-700'
 const ERROR_RING = 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/30 dark:border-rose-600'
 

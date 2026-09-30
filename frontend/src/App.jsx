@@ -318,16 +318,10 @@ function Shell() {
     })
   }
 
-  // Halaman login fokus: tanpa navbar, kartu di tengah layar.
   if (!loggedIn) {
     return (
-      <div className="anim-boot flex min-h-screen w-full items-center justify-center bg-zinc-100 px-4 py-10 dark:bg-zinc-950">
-        <div className="w-full max-w-sm">
-          <LoginForm onDone={handleAuth} />
-          <p className="mt-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
-            {APP_NAME} — hubungi admin bila belum punya akun
-          </p>
-        </div>
+      <div className="anim-boot">
+        <LoginForm onDone={handleAuth} />
       </div>
     )
   }

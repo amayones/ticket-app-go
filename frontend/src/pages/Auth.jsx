@@ -1,10 +1,8 @@
 import { useState } from 'react'
 import { api } from '../api/client.js'
-import { Alert, AppLogo, Button, Card, CardTitle, PasswordInput, TextField } from '../components'
+import { Alert, AppLogo, Button, PasswordInput, TextField } from '../components'
 import { APP_NAME } from '../brand.js'
 
-// Form login. Mode penuh (default) = kartu ber-branding untuk halaman login.
-// Mode bare = hanya field + tombol (untuk di dalam modal), tanpa Card/branding.
 export function LoginForm({ onDone, bare = false }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -26,10 +24,10 @@ export function LoginForm({ onDone, bare = false }) {
   }
 
   const form = (
-    <form onSubmit={submit} className={`flex flex-col ${bare ? 'gap-3' : 'gap-4'}`}>
+    <form onSubmit={submit} className="flex flex-col gap-4">
       {error &&
         (bare ? (
-          <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+          <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
             {error}
           </p>
         ) : (
@@ -53,8 +51,8 @@ export function LoginForm({ onDone, bare = false }) {
         placeholder="••••••••"
         required
       />
-      <Button type="submit" loading={loading} fullWidth>
-        {loading ? 'Memeriksa…' : 'Login'}
+      <Button type="submit" loading={loading} fullWidth className="!rounded-full !bg-[#6b5cff] !py-2.5 hover:!bg-[#5a4af0] shadow-lg shadow-violet-200 dark:shadow-none">
+        {loading ? 'Memeriksa…' : 'Masuk'}
       </Button>
     </form>
   )
@@ -62,14 +60,28 @@ export function LoginForm({ onDone, bare = false }) {
   if (bare) return form
 
   return (
-    <Card className="w-full">
-      <div className="mb-5 flex flex-col items-center gap-2 text-center">
-        <AppLogo className="h-12 w-12" />
-        <CardTitle description="Masuk untuk mengelola aplikasi. Akun dibuatkan oleh admin.">
-          {APP_NAME}
-        </CardTitle>
+    <div className="flex min-h-screen w-full items-center justify-center bg-[#f4f1ff] px-4 py-6 dark:bg-zinc-950">
+      <div className="grid w-full max-w-[980px] overflow-hidden rounded-[32px] bg-white shadow-[0_24px_64px_-24px_rgba(80,60,180,0.35)] ring-1 ring-zinc-100 md:grid-cols-[1.05fr_0.95fr] dark:bg-zinc-900 dark:ring-zinc-800">
+        <div className="flex flex-col px-7 py-8 sm:px-10 sm:py-10">
+          <div className="mb-8 flex items-center gap-2.5">
+            <AppLogo className="h-9 w-9 rounded-xl" />
+            <span className="text-sm font-bold tracking-tight text-zinc-900 dark:text-white">{APP_NAME}</span>
+          </div>
+          <div className="mb-6">
+            <h1 className="text-[30px] font-extrabold leading-none tracking-tight text-zinc-900 dark:text-white">Masuk</h1>
+            <p className="mt-2.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+              Masuk untuk mengelola aplikasi. Akun dibuatkan oleh admin.
+            </p>
+          </div>
+          {form}
+          <p className="mt-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
+            Belum punya akun? <span className="font-medium text-zinc-600 dark:text-zinc-300">Hubungi admin</span>
+          </p>
+        </div>
+        <div className="relative hidden overflow-hidden bg-[#6b5cff] md:block">
+          <img src="/login-card.png" alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+        </div>
       </div>
-      {form}
-    </Card>
+    </div>
   )
 }
