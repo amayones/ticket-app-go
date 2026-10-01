@@ -64,7 +64,7 @@ export default function HomePage({ onLogin, onDashboard, onLogout, loggedIn, has
           <div className="relative grid gap-6 p-6 sm:p-8 lg:grid-cols-[1.1fr_0.9fr] lg:p-12">
             <div className="flex flex-col justify-center">
               <p className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold tracking-widest text-violet-200 ring-1 ring-white/10 backdrop-blur">✦ FEATURED EVENT</p>
-              <h1 className="max-w-[520px] text-[28px] font-extrabold leading-[1.05] tracking-tight text-white sm:text-[36px]">Feel the Biggest Music Vibes of the Year!</h1>
+              <h1 style={{ color: '#fff' }} className="max-w-[520px] text-[28px] font-extrabold leading-[1.05] tracking-tight text-white sm:text-[36px]">Feel the Biggest Music Vibes of the Year!</h1>
               <p className="mt-3 max-w-[480px] text-xs leading-relaxed text-violet-100/80 sm:text-sm">Get your Jakarta Soundscape Festival ticket now before it runs out. Special performances from international and local artists.</p>
               <div className="mt-6 flex flex-wrap gap-2.5">
                 <button onClick={onLogin} type="button" className="rounded-full bg-[#6b5cff] px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-violet-900/30 hover:bg-[#5a4af0]">Buy Ticket Now</button>
