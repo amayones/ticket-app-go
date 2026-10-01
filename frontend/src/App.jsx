@@ -4,10 +4,8 @@ import { AppLogo, Badge, Button, Icon, MissingMenu, Modal, ThemeToggle, ToastPro
 import { APP_NAME } from './brand.js'
 import { buildSidebar } from './app/registry.js'
 import { LoginForm } from './pages/Auth.jsx'
+import HomePage from './pages/HomePage.jsx'
 
-// Shell aplikasi: sidebar/topbar dibangun OTOMATIS dari registry menu
-// (src/app/registry.js) + entri CPMENU milik user (GET /api/users/me).
-// Tambah menu = INSERT CPMENU (via UI Role) + tambah folder, tanpa sentuh file ini.
 function sidebarPref() {
   try {
     return localStorage.getItem('go-core-sidebar') === 'collapsed'
@@ -28,25 +26,15 @@ function saveExpanded(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {
-    // abaikan (mode privat)
   }
 }
 
-// Satu node menu di sidebar. Dua jenis:
-// - CHILD (punya Component/missing): item biasa, klik = buka halaman.
-// - PARENT header (node.header, tanpa Component): klik label = buka-tutup
-//   anak, tidak membuka halaman. Hierarki MODULE -> PARENT -> CHILD murni
-//   dari CPMENU (buildSidebar), bukan dari folder.
 function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggleParent, depth = 0 }) {
   const children = childrenOf.get(node.key) || []
-  // Header PARENT: baris tunggal toggle (tanpa halaman).
   if (node.header) {
     const open = openParents[node.key] !== false
     return (
       <div className="flex flex-col gap-1">
-        {/* Header PARENT: slab warna (violet tipis) + border agar langsung
-            berbeda dari item menu biasa yang tetap transparan sampai hover
-            atau sedang aktif. Ukuran teks 13px (module 14px, child 12px). */}
         <button
           type="button"
           onClick={() => onToggleParent(node.key)}
@@ -58,24 +46,12 @@ function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggle
           <span className="grid min-w-0 flex-1 whitespace-nowrap text-left text-[13px] font-semibold">
             <span className="min-w-0 overflow-hidden">{node.label}</span>
           </span>
-          <Icon
-            name="chevronRight"
-            className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
-          />
+          <Icon name="chevronRight" className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
         </button>
         {open && children.length > 0 && (
           <div className="ml-4 flex flex-col gap-1 border-l-2 border-violet-200 pl-1 dark:border-violet-900/70">
             {children.map((child) => (
-              <MenuNode
-                key={child.key}
-                node={child}
-                childrenOf={childrenOf}
-                activeKey={activeKey}
-                onSelect={onSelect}
-                openParents={openParents}
-                onToggleParent={onToggleParent}
-                depth={depth + 1}
-              />
+              <MenuNode key={child.key} node={child} childrenOf={childrenOf} activeKey={activeKey} onSelect={onSelect} openParents={openParents} onToggleParent={onToggleParent} depth={depth + 1} />
             ))}
           </div>
         )}
@@ -90,15 +66,7 @@ function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggle
         <button
           type="button"
           onClick={() => onSelect(node.key)}
-          className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2 pr-1 transition-colors ${
-            depth > 0 ? 'pl-5' : 'pl-3'
-          } ${
-            activeKey === node.key
-              ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
-              : node.missing
-                ? 'text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40'
-                : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-          }`}
+          className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2 pr-1 transition-colors ${depth > 0 ? 'pl-5' : 'pl-3'} ${activeKey === node.key ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900' : node.missing ? 'text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40' : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'}`}
         >
           <Icon name={node.missing ? 'warning' : node.icon || 'list'} className="h-4 w-4 shrink-0" />
           <span className="grid min-w-0 whitespace-nowrap text-xs font-medium">
@@ -109,33 +77,15 @@ function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggle
           </span>
         </button>
         {expandable && (
-          <button
-            type="button"
-            onClick={() => onToggleParent(node.key)}
-            aria-expanded={open}
-            aria-label={`${open ? 'Tutup' : 'Buka'} anak menu ${node.label}`}
-            className="shrink-0 rounded-lg p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
-          >
-            <Icon
-              name="chevronRight"
-              className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
-            />
+          <button type="button" onClick={() => onToggleParent(node.key)} aria-expanded={open} aria-label={`${open ? 'Tutup' : 'Buka'} anak menu ${node.label}`} className="shrink-0 rounded-lg p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800">
+            <Icon name="chevronRight" className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
           </button>
         )}
       </div>
       {expandable && open && children.length > 0 && (
         <div className="ml-4 flex flex-col gap-1 border-l border-zinc-200 pl-1 dark:border-zinc-700">
           {children.map((child) => (
-            <MenuNode
-              key={child.key}
-              node={child}
-              childrenOf={childrenOf}
-              activeKey={activeKey}
-              onSelect={onSelect}
-              openParents={openParents}
-              onToggleParent={onToggleParent}
-              depth={depth + 1}
-            />
+            <MenuNode key={child.key} node={child} childrenOf={childrenOf} activeKey={activeKey} onSelect={onSelect} openParents={openParents} onToggleParent={onToggleParent} depth={depth + 1} />
           ))}
         </div>
       )}
@@ -143,37 +93,17 @@ function MenuNode({ node, childrenOf, activeKey, onSelect, openParents, onToggle
   )
 }
 
-// Section satu modul di sidebar (header + tombol +/−). Label section =
-// CPMODULE.LABEL via buildSidebar (moduleLabel), fallback ke kode.
 function ModuleGroup({ moduleLabel, module, roots, childrenOf, open, onToggle, activeKey, onSelect, openParents, onToggleParent }) {
   return (
     <div className="mt-0.5 flex flex-col gap-1">
-      {/* Header MODULE: slab abu-abu + aksen kiri violet sebagai pembatas
-          section; level paling atas, beda dari header PARENT (violet tipis)
-          dan dari item menu (tanpa warna latar). */}
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-lg border-l-2 border-violet-500/70 bg-zinc-100 py-2 pl-2.5 pr-2 text-sm font-bold uppercase tracking-wide text-zinc-600 transition-colors hover:bg-zinc-200 dark:border-violet-400/60 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-      >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-current text-[11px] leading-none">
-          {open ? '−' : '+'}
-        </span>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-2 rounded-lg border-l-2 border-violet-500/70 bg-zinc-100 py-2 pl-2.5 pr-2 text-sm font-bold uppercase tracking-wide text-zinc-600 transition-colors hover:bg-zinc-200 dark:border-violet-400/60 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-current text-[11px] leading-none">{open ? '−' : '+'}</span>
         <span className="truncate">{moduleLabel || `MODULE ${module}`}</span>
       </button>
       {open && (
         <div className="flex flex-col gap-1">
           {roots.map((n) => (
-            <MenuNode
-              key={n.key}
-              node={n}
-              childrenOf={childrenOf}
-              activeKey={activeKey}
-              onSelect={onSelect}
-              openParents={openParents}
-              onToggleParent={onToggleParent}
-            />
+            <MenuNode key={n.key} node={n} childrenOf={childrenOf} activeKey={activeKey} onSelect={onSelect} openParents={openParents} onToggleParent={onToggleParent} />
           ))}
         </div>
       )}
@@ -183,43 +113,28 @@ function ModuleGroup({ moduleLabel, module, roots, childrenOf, open, onToggle, a
 
 function Shell() {
   const toast = useToast()
+  const [mode, setMode] = useState('homepage')
   const [view, setView] = useState('')
   const [loggedIn, setLoggedIn] = useState(api.isLoggedIn())
   const [collapsed, setCollapsed] = useState(sidebarPref)
-  // Popup login ulang saat sesi habis: tampil di atas halaman terakhir,
-  // tanpa pindah ke halaman login. sessionTick memaksa Active remount
-  // agar data dimuat ulang dengan token baru setelah login sukses.
   const [sessionExpired, setSessionExpired] = useState(false)
   const [sessionTick, setSessionTick] = useState(0)
-  // Cache identitas terakhir agar sidebar/halaman tidak lompat saat token
-  // sudah dibersihkan (api.currentUser() -> null) tapi popup belum ditutup.
   const [lastMe, setLastMe] = useState(() => api.currentUser())
-  // Permission codes milik user (diambil via GET /api/users/me saat login).
-  // Digunakan untuk filter menu di sidebar.
   const [permissions, setPermissions] = useState([])
-  // Entri CPMENU milik user (dari /me.menus) untuk sidebar + placeholder 404.
   const [myMenus, setMyMenus] = useState([])
-  // Section modul + parent yang dibuka (persist localStorage).
+  const [profileLoaded, setProfileLoaded] = useState(false)
+  const [pendingLogin, setPendingLogin] = useState(false)
   const [openModules, setOpenModules] = useState(() => loadExpanded('go-core-modules'))
   const [openParents, setOpenParents] = useState(() => loadExpanded('go-core-parents'))
   const me = api.currentUser() || (sessionExpired ? lastMe : null)
   const isAdmin = me?.role === 'ADMIN'
-  // Sidebar DB-driven: myMenus (CHILD ter-grant + ancestor PARENT) digabung
-  // folder lokal via buildSidebar -> 3 level MODULE -> PARENT -> CHILD.
-  // Tambah modul/menu di DB + grant role = langsung muncul; tambah folder
-  // app/<mcontrol>/ = halaman asli menggantikan 404 pemandu.
   const groups = useMemo(() => buildSidebar(myMenus), [myMenus])
-  // Halaman yang bisa dibuka = node CHILD saja (header PARENT tak punya halaman).
-  const openableNodes = useMemo(
-    () => groups.flatMap((g) => [...g.roots, ...[...g.childrenOf.values()].flat()].filter((n) => !n.header)),
-    [groups]
-  )
+  const openableNodes = useMemo(() => groups.flatMap((g) => [...g.roots, ...[...g.childrenOf.values()].flat()].filter((n) => !n.header)), [groups])
   const allNodes = openableNodes
+  const hasAccess = allNodes.length > 0
   const activeNode = allNodes.find((m) => m.key === view) || allNodes[0] || null
   const Active = activeNode && !activeNode.missing ? activeNode.Component : null
 
-  // Tautan berbagi: bila dibuka dengan hash menu yang dikenal (mis. dari
-  // tombol Bagikan discovery), langsung tampilkan menu itu.
   useEffect(() => {
     if (view !== '') return
     let key = ''
@@ -230,12 +145,10 @@ function Shell() {
       key = ''
     }
     if (key && allNodes.some((n) => n.key === key)) setView(key)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allNodes])
+  }, [allNodes, view])
 
   function toggleOpen(setter, storeKey, key) {
     setter((prev) => {
-      // Default terbuka; hanya kunci yang tertutup yang disimpan.
       const next = { ...prev }
       if (next[key] === false) delete next[key]
       else next[key] = false
@@ -253,343 +166,170 @@ function Shell() {
     setCanUp(el.scrollTop > 6)
     setCanDown(el.scrollTop + el.clientHeight < el.scrollHeight - 6)
   }, [])
-  useEffect(() => {
-    updateScroll()
-  }, [groups, collapsed, openModules, openParents, updateScroll])
+  useEffect(() => { updateScroll() }, [groups, collapsed, openModules, openParents, updateScroll])
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const ro = new ResizeObserver(updateScroll)
     ro.observe(el)
     el.addEventListener('scroll', updateScroll, { passive: true })
-    return () => {
-      ro.disconnect()
-      el.removeEventListener('scroll', updateScroll)
-    }
+    return () => { ro.disconnect(); el.removeEventListener('scroll', updateScroll) }
   }, [updateScroll])
   function scrollByAmount(dir) {
     const el = scrollRef.current
     if (!el) return
     el.scrollBy({ top: dir * 160, behavior: 'smooth' })
   }
-
   const isOpen = (map, key) => map[key] !== false
 
   useEffect(() => {
     if (!loggedIn) return
     return onSessionExpired(() => {
       setSessionExpired(true)
-      toast.warning('Sesi Anda telah berakhir. Silakan login kembali.', { title: 'Sesi habis' })
+      toast.warning('Your session has expired. Please sign in again.', { title: 'Session expired' })
     })
   }, [loggedIn, toast])
 
   useEffect(() => {
-    if (!loggedIn || permissions.length > 0) return
-    api.getMe()
-      .then((data) => {
-        setPermissions((data && data.permissions) || [])
-        setMyMenus((data && data.menus) || [])
-        setLastMe(data)
-      })
-      .catch(() => {
-        setPermissions([])
-        setMyMenus([])
-      })
-  }, [loggedIn, permissions.length])
+    if (!loggedIn) { setProfileLoaded(false); return }
+    if (profileLoaded) return
+    api.getMe().then((data) => { setPermissions((data && data.permissions) || []); setMyMenus((data && data.menus) || []); setLastMe(data); setProfileLoaded(true) }).catch(() => { setPermissions([]); setMyMenus([]); setProfileLoaded(true) })
+  }, [loggedIn, profileLoaded])
 
   async function logout() {
     await api.logout()
-    setSessionExpired(false)
-    setLastMe(null)
-    setPermissions([])
-    setMyMenus([])
-    setLoggedIn(false)
-    setView('login')
-    toast.info('Anda telah keluar. Sampai jumpa!')
+    setSessionExpired(false); setLastMe(null); setPermissions([]); setMyMenus([]); setLoggedIn(false); setView(''); setMode('homepage'); setProfileLoaded(false); setPendingLogin(false)
+    toast.info('You have signed out. See you again!')
   }
 
   async function loadPermissions() {
-    try {
-      const data = await api.getMe()
-      setPermissions((data && data.permissions) || [])
-      setMyMenus((data && data.menus) || [])
-      setLastMe(data)
-    } catch {
-      setPermissions([])
-      setMyMenus([])
-      setLastMe(api.currentUser())
-    }
+    try { const data = await api.getMe(); setPermissions((data && data.permissions) || []); setMyMenus((data && data.menus) || []); setLastMe(data); setProfileLoaded(true) } catch { setPermissions([]); setMyMenus([]); setLastMe(api.currentUser()); setProfileLoaded(true) }
   }
 
   function handleAuth() {
-    setLoggedIn(true)
-    setView('')
-    setMyMenus([])
-    loadPermissions()
-    toast.success('Selamat datang kembali!')
+    setLoggedIn(true); setView(''); setMyMenus([]); setPermissions([]); setProfileLoaded(false); setPendingLogin(true)
   }
 
-  // Login ulang dari popup sesi-habis: tetap di halaman terakhir (view
-  // tidak diubah), cukup tutup popup + muat ulang konten dengan token baru.
   function handleRelogin() {
-    setSessionExpired(false)
-    setLoggedIn(true)
-    setSessionTick((t) => t + 1)
-    loadPermissions()
-    toast.success('Sesi dipulihkan. Selamat melanjutkan!')
+    setSessionExpired(false); setLoggedIn(true); setSessionTick((t) => t + 1); loadPermissions()
+    toast.success('Session restored. Welcome back!')
   }
 
+  useEffect(() => {
+    if (!pendingLogin || !profileLoaded) return
+    setPendingLogin(false)
+    if (hasAccess) { setMode('app'); toast.success('Welcome back!') }
+    else { setMode('homepage'); toast.info('You have no dashboard access.', { title: 'Homepage only' }) }
+  }, [pendingLogin, profileLoaded, hasAccess])
 
+  useEffect(() => {
+    if (loggedIn && profileLoaded && !hasAccess && mode === 'app') setMode('homepage')
+  }, [loggedIn, profileLoaded, hasAccess, mode])
 
   function handleAccountDeleted() {
-    setSessionExpired(false)
-    setLastMe(null)
-    setPermissions([])
-    setMyMenus([])
-    setLoggedIn(false)
-    setView('login')
-    toast.warning('Akun Anda telah dihapus.', { title: 'Akun dihapus' })
+    setSessionExpired(false); setLastMe(null); setPermissions([]); setMyMenus([]); setLoggedIn(false); setView(''); setMode('homepage'); setProfileLoaded(false); setPendingLogin(false)
+    toast.warning('Your account has been deleted.', { title: 'Account deleted' })
   }
 
   function toggleSidebar() {
-    setCollapsed((c) => {
-      try {
-        localStorage.setItem('go-core-sidebar', c ? 'open' : 'collapsed')
-      } catch {
-        // abaikan (mode privat)
-      }
-      return !c
-    })
+    setCollapsed((c) => { try { localStorage.setItem('go-core-sidebar', c ? 'open' : 'collapsed') } catch {} return !c })
+  }
+
+  if (mode === 'homepage') {
+    return (
+      <div className="anim-boot">
+        <HomePage onLogin={() => setMode('login')} onDashboard={() => setMode('app')} onLogout={logout} loggedIn={loggedIn} hasAccess={hasAccess} profileLoaded={profileLoaded} />
+      </div>
+    )
   }
 
   if (!loggedIn) {
     return (
       <div className="anim-boot">
-        <LoginForm onDone={handleAuth} />
+        <LoginForm onDone={handleAuth} onBack={() => setMode('homepage')} />
+        <Modal open={sessionExpired} title="Session expired — sign in again" size="sm" showClose={false} closeOnBackdrop={false} bodyClassName="h-[320px] overflow-hidden px-5 py-4 text-sm text-zinc-600 dark:text-zinc-300">
+          <div className="flex h-full flex-col gap-3">
+            <p className="text-sm text-zinc-600 dark:text-zinc-300">Your session has expired. Please sign in again to continue on this page.</p>
+            <LoginForm bare onDone={handleRelogin} />
+          </div>
+        </Modal>
       </div>
     )
   }
 
   return (
     <div className="anim-boot flex min-h-screen w-full bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      {/* Sidebar (desktop) — bisa dilipat via tombol chevron */}
-      <aside
-        className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white p-3 duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] transition-[width] md:flex dark:border-zinc-800 dark:bg-zinc-900 ${
-          collapsed ? 'w-[84px]' : 'w-60'
-        }`}
-      >
-        {/* Logo sejajar ikon menu; tombol lipat menonjol di kanan logo
-            (tengah-tengah tinggi baris logo). */}
+      <aside className={`sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-white p-3 duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] transition-[width] md:flex dark:border-zinc-800 dark:bg-zinc-900 ${collapsed ? 'w-[84px]' : 'w-60'}`}>
         <div className="pb-4">
           <div className={`relative flex items-center ${collapsed ? 'justify-center px-0' : 'gap-2 px-1'}`}>
             <AppLogo className="h-8 w-8" />
-            <span
-              className={`grid whitespace-nowrap text-sm font-bold tracking-tight transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
-                collapsed ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'
-              }`}
-            >
+            <span className={`grid whitespace-nowrap text-sm font-bold tracking-tight transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'}`}>
               <span className="min-w-0 overflow-hidden">{APP_NAME}</span>
             </span>
-            <Tooltip
-              label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-              position="right"
-              className="absolute -right-5 top-1/2 -translate-y-1/2"
-            >
-              <button
-                type="button"
-                onClick={toggleSidebar}
-                aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
-                className="shrink-0 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-md transition-all duration-200 hover:bg-zinc-50 hover:text-zinc-800 hover:shadow-lg active:scale-90 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
-              >
-                <Icon
-                  name="chevronLeft"
-                  className={`h-4 w-4 transition-transform duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? 'rotate-180' : ''}`}
-                />
+            <Tooltip label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} position="right" className="absolute -right-5 top-1/2 -translate-y-1/2">
+              <button type="button" onClick={toggleSidebar} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} className="shrink-0 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-md transition-all duration-200 hover:bg-zinc-50 hover:text-zinc-800 hover:shadow-lg active:scale-90 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100">
+                <Icon name="chevronLeft" className={`h-4 w-4 transition-transform duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? 'rotate-180' : ''}`} />
               </button>
             </Tooltip>
           </div>
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <div
-            className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-white via-white/70 to-transparent transition-opacity dark:from-zinc-900 dark:via-zinc-900/70 ${canUp ? 'opacity-100' : 'opacity-0'}`}
-            aria-hidden="true"
-          />
-          {canUp && !collapsed && (
-            <button
-              type="button"
-              onClick={() => scrollByAmount(-1)}
-              aria-label="Scroll ke atas"
-              className="absolute left-1/2 top-1 z-20 -translate-x-1/2 rounded-full bg-white p-1 text-zinc-500 shadow-sm ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:text-zinc-700 active:scale-95 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
-            >
-              <Icon name="arrowUp" className="h-3.5 w-3.5" />
-            </button>
-          )}
+          <div className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-white via-white/70 to-transparent transition-opacity dark:from-zinc-900 dark:via-zinc-900/70 ${canUp ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true" />
+          {canUp && !collapsed && <button type="button" onClick={() => scrollByAmount(-1)} aria-label="Scroll up" className="absolute left-1/2 top-1 z-20 -translate-x-1/2 rounded-full bg-white p-1 text-zinc-500 shadow-sm ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:text-zinc-700 active:scale-95 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"><Icon name="arrowUp" className="h-3.5 w-3.5" /></button>}
           <nav ref={scrollRef} onScroll={updateScroll} className="sidebar-scroll flex flex-1 flex-col gap-1 overflow-y-auto scroll-smooth">
-            {collapsed ? (
-              allNodes.map((n) => {
-                const btn = (
-                  <button
-                    key={n.key}
-                    type="button"
-                    onClick={() => setView(n.key)}
-                    className={`flex w-full items-center justify-center gap-0 rounded-xl px-3 py-2.5 transition-colors ${
-                      activeNode?.key === n.key
-                        ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
-                        : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-                    }`}
-                  >
-                    <Icon name={n.missing ? 'warning' : n.icon || 'list'} className="h-5 w-5 shrink-0" />
-                  </button>
-                )
-                return (
-                  <Tooltip key={n.key} label={n.missing ? `${n.label} (belum dibuat)` : n.label} position="right">
-                    {btn}
-                  </Tooltip>
-                )
-              })
-            ) : (
-              groups.map((g) => (
-                <ModuleGroup
-                  key={g.module}
-                  module={g.module}
-                  moduleLabel={g.moduleLabel}
-                  roots={g.roots}
-                  childrenOf={g.childrenOf}
-                  open={isOpen(openModules, g.module)}
-                  onToggle={() => toggleOpen(setOpenModules, 'go-core-modules', g.module)}
-                  activeKey={activeNode?.key}
-                  onSelect={setView}
-                  openParents={openParents}
-                  onToggleParent={(key) => toggleOpen(setOpenParents, 'go-core-parents', key)}
-                />
-              ))
-            )}
+            {collapsed ? allNodes.map((n) => {
+              const btn = <button key={n.key} type="button" onClick={() => setView(n.key)} className={`flex w-full items-center justify-center gap-0 rounded-xl px-3 py-2.5 transition-colors ${activeNode?.key === n.key ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900' : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'}`}><Icon name={n.missing ? 'warning' : n.icon || 'list'} className="h-5 w-5 shrink-0" /></button>
+              return <Tooltip key={n.key} label={n.missing ? `${n.label} (not created)` : n.label} position="right">{btn}</Tooltip>
+            }) : groups.map((g) => <ModuleGroup key={g.module} module={g.module} moduleLabel={g.moduleLabel} roots={g.roots} childrenOf={g.childrenOf} open={isOpen(openModules, g.module)} onToggle={() => toggleOpen(setOpenModules, 'go-core-modules', g.module)} activeKey={activeNode?.key} onSelect={setView} openParents={openParents} onToggleParent={(key) => toggleOpen(setOpenParents, 'go-core-parents', key)} />)}
           </nav>
-          <div
-            className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-white via-white/70 to-transparent transition-opacity dark:from-zinc-900 dark:via-zinc-900/70 ${canDown ? 'opacity-100' : 'opacity-0'}`}
-            aria-hidden="true"
-          />
-          {canDown && !collapsed && (
-            <button
-              type="button"
-              onClick={() => scrollByAmount(1)}
-              aria-label="Scroll ke bawah"
-              className="absolute bottom-1 left-1/2 z-20 -translate-x-1/2 rounded-full bg-white p-1 text-zinc-500 shadow-sm ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:text-zinc-700 active:scale-95 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
-            >
-              <Icon name="arrowDown" className="h-3.5 w-3.5" />
-            </button>
-          )}
+          <div className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-white via-white/70 to-transparent transition-opacity dark:from-zinc-900 dark:via-zinc-900/70 ${canDown ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true" />
+          {canDown && !collapsed && <button type="button" onClick={() => scrollByAmount(1)} aria-label="Scroll down" className="absolute bottom-1 left-1/2 z-20 -translate-x-1/2 rounded-full bg-white p-1 text-zinc-500 shadow-sm ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:text-zinc-700 active:scale-95 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"><Icon name="arrowDown" className="h-3.5 w-3.5" /></button>}
         </div>
         <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
-          <div
-            className={`grid transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
-              collapsed ? 'grid-rows-[0fr] opacity-0' : 'mb-2 grid-rows-[1fr] opacity-100'
-            }`}
-          >
+          <div className={`grid transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? 'grid-rows-[0fr] opacity-0' : 'mb-2 grid-rows-[1fr] opacity-100'}`}>
             <div className="min-h-0 overflow-hidden">
               <div className="flex items-center gap-2 px-2">
-                <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
-                  <span className="block truncate font-semibold text-zinc-700 dark:text-zinc-200">@{me?.username}</span>
-                  <span className="font-mono">{me?.code}</span>
-                </span>
+                <span className="min-w-0 flex-1 truncate text-xs text-zinc-500"><span className="block truncate font-semibold text-zinc-700 dark:text-zinc-200">@{me?.username}</span><span className="font-mono">{me?.code}</span></span>
                 <Badge tone={isAdmin ? 'danger' : 'brand'}>{me?.role}</Badge>
               </div>
             </div>
           </div>
           <div className={`flex items-center gap-1.5 ${collapsed ? 'flex-col' : ''}`}>
-            {collapsed ? (
-              <Tooltip label="Logout" position="right">
-                <button
-                  type="button"
-                  onClick={logout}
-                  aria-label="Logout"
-                  className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                >
-                  <Icon name="logout" className="h-5 w-5" />
-                </button>
-              </Tooltip>
-            ) : (
-              <Button variant="secondary" size="sm" fullWidth onClick={logout}>
-                <Icon name="logout" className="h-4 w-4" />
-                Logout
-              </Button>
-            )}
-            <Tooltip label="Ganti tema" position="right">
-              <ThemeToggle />
-            </Tooltip>
+            {collapsed ? <Tooltip label="Sign out" position="right"><button type="button" onClick={logout} aria-label="Sign out" className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"><Icon name="logout" className="h-5 w-5" /></button></Tooltip> : <Button variant="secondary" size="sm" fullWidth onClick={logout}><Icon name="logout" className="h-4 w-4" />Sign Out</Button>}
+            <Tooltip label="Toggle theme" position="right"><ThemeToggle /></Tooltip>
           </div>
         </div>
       </aside>
 
-      {/* Mobile topbar */}
       <div className="flex min-w-0 flex-1 flex-col">
+        <div className="hidden items-center justify-end border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-900 md:flex">
+          <Button variant="secondary" size="sm" onClick={() => setMode('homepage')}>← Back to Homepage</Button>
+        </div>
         <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/90 backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-950/90">
           <div className="flex items-center gap-2 px-3 py-2.5">
             <AppLogo className="h-7 w-7" />
+            <button type="button" onClick={() => setMode('homepage')} className="ml-auto shrink-0 rounded-full border border-zinc-200 px-3 py-1 text-xs font-semibold text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">← Homepage</button>
             <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
               {allNodes.map((n) => (
-                <button
-                  key={n.key}
-                  type="button"
-                  onClick={() => setView(n.key)}
-                  className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
-                    activeNode?.key === n.key
-                      ? 'bg-violet-600 text-white'
-                      : n.missing
-                        ? 'text-amber-600 dark:text-amber-300'
-                        : 'text-zinc-600 dark:text-zinc-300'
-                  }`}
-                >
-                  {n.label}
-                  {n.missing && ' 404'}
-                </button>
+                <button key={n.key} type="button" onClick={() => setView(n.key)} className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${activeNode?.key === n.key ? 'bg-violet-600 text-white' : n.missing ? 'text-amber-600 dark:text-amber-300' : 'text-zinc-600 dark:text-zinc-300'}`}>{n.label}{n.missing && ' 404'}</button>
               ))}
             </nav>
             <ThemeToggle className="shrink-0" />
-            <button
-              type="button"
-              onClick={logout}
-              aria-label="Logout"
-              className="shrink-0 rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            >
-              <Icon name="logout" className="h-5 w-5" />
-            </button>
+            <button type="button" onClick={logout} aria-label="Sign out" className="shrink-0 rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"><Icon name="logout" className="h-5 w-5" /></button>
           </div>
         </header>
 
         <main className="mx-auto w-full max-w-5xl flex-1 px-3 py-4 sm:px-4 sm:py-6">
-          {/* key memicu animasi masuk yang halus tiap ganti menu;
-              sessionTick memaksa muat ulang setelah login dari popup sesi-habis */}
           <div key={`${activeNode?.key || 'empty'}-${sessionTick}`} className="anim-page-in">
-            {activeNode?.missing ? (
-              <MissingMenu entry={activeNode} />
-            ) : Active ? (
-              <Active onNavigate={setView} onAccountDeleted={handleAccountDeleted} nvdata={activeNode} />
-            ) : (
-              <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center dark:border-zinc-800 dark:bg-zinc-900">
-                <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Tidak ada menu tersedia</p>
-                <p className="mt-1 text-xs text-zinc-500">Akun Anda belum diberi akses menu — hubungi admin.</p>
-              </div>
-            )}
+            {activeNode?.missing ? <MissingMenu entry={activeNode} /> : Active ? <Active onNavigate={setView} onAccountDeleted={handleAccountDeleted} nvdata={activeNode} /> : <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center dark:border-zinc-800 dark:bg-zinc-900"><p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">No menu available</p><p className="mt-1 text-xs text-zinc-500">Your account has no menu access — contact admin.</p></div>}
           </div>
         </main>
-        <footer className="border-t border-zinc-200 py-3 text-center text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
-          {APP_NAME} — Go + React dalam satu binary
-        </footer>
+        <footer className="border-t border-zinc-200 py-3 text-center text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">{APP_NAME} — Go + React in one binary</footer>
       </div>
 
-      <Modal
-        open={sessionExpired}
-        title="Sesi habis — login lagi"
-        size="sm"
-        showClose={false}
-        closeOnBackdrop={false}
-        bodyClassName="h-[320px] overflow-hidden px-5 py-4 text-sm text-zinc-600 dark:text-zinc-300"
-      >
+      <Modal open={sessionExpired} title="Session expired — sign in again" size="sm" showClose={false} closeOnBackdrop={false} bodyClassName="h-[320px] overflow-hidden px-5 py-4 text-sm text-zinc-600 dark:text-zinc-300">
         <div className="flex h-full flex-col gap-3">
-          <p className="text-sm text-zinc-600 dark:text-zinc-300">
-            Sesi Anda telah berakhir. Login kembali untuk melanjutkan di halaman ini.
-          </p>
+          <p className="text-sm text-zinc-600 dark:text-zinc-300">Your session has expired. Please sign in again to continue on this page.</p>
           <LoginForm bare onDone={handleRelogin} />
         </div>
       </Modal>
@@ -598,9 +338,5 @@ function Shell() {
 }
 
 export default function App() {
-  return (
-    <ToastProvider>
-      <Shell />
-    </ToastProvider>
-  )
+  return <ToastProvider><Shell /></ToastProvider>
 }
