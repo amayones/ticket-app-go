@@ -20,6 +20,7 @@ import (
 	faudit "golang-backend/features/audit"
 	fdiscovery "golang-backend/features/discovery"
 	fevent "golang-backend/features/event"
+	fmarketing "golang-backend/features/marketing"
 	fnotif "golang-backend/features/notifications"
 	forganizer "golang-backend/features/organizer"
 	froles "golang-backend/features/roles"
@@ -94,11 +95,13 @@ func main() {
 	discoveryRepo := fdiscovery.NewRepository(db, dialect)
 	eventRepo := fevent.NewRepository(db, dialect)
 	ticketingRepo := fticketing.NewRepository(db, dialect)
+	marketingRepo := fmarketing.NewRepository(db, dialect)
 	organizerSvc := forganizer.NewService(organizerRepo)
 	sellerSvc := fseller.NewService(sellerRepo)
 	discoverySvc := fdiscovery.NewService(discoveryRepo)
 	eventSvc := fevent.NewService(eventRepo)
 	ticketingSvc := fticketing.NewService(ticketingRepo, cfg.QRSecret, cfg.AppEnv, models.DefaultHoldMinutes, cfg.RefundCutoffHours)
+	marketingSvc := fmarketing.NewService(marketingRepo, cfg.AppEnv)
 	syslogSvc := fsyslog.NewService(syslogRepo)
 	notifSvc := fnotif.NewService(notifRepo)
 	securitySvc := fsecurity.NewService(userSvc, roleSvc, sessionSvc, auditSvc, syslogSvc, notifSvc)
@@ -116,6 +119,7 @@ func main() {
 		Discovery:     fdiscovery.NewHandler(discoverySvc),
 		Event:         fevent.NewHandler(eventSvc, auditSvc, syslogSvc),
 		Ticketing:     fticketing.NewHandler(ticketingSvc, auditSvc, syslogSvc, cfg.QRSecret, cfg.JWTSecret),
+		Marketing:     fmarketing.NewHandler(marketingSvc, auditSvc, syslogSvc),
 	}
 
 	routeCfg := routes.DefaultRouteConfig(cfg.JWTSecret)
@@ -172,6 +176,10 @@ func main() {
 // embedded frontend). Rejects path traversal before the file server.
 func attachUploads(r *chi.Mux) {
 	if err := os.MkdirAll(filepath.Join("uploads", "posters"), 0755); err != nil {
+		slog.Warn("could not create uploads dir", "err", err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Join("uploads", "banners"), 0755); err != nil {
 		slog.Warn("could not create uploads dir", "err", err)
 		return
 	}

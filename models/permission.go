@@ -45,6 +45,9 @@ const (
 	MenuRefunds     = "MENU_REFUNDS"
 	MenuScanTicket  = "MENU_SCAN_TICKET"
 	MenuScanHistory = "MENU_SCAN_HISTORY"
+	MenuPromoCodes     = "MENU_PROMO_CODES"
+	MenuAdCampaigns    = "MENU_AD_CAMPAIGNS"
+	MenuNewsManagement = "MENU_NEWS_MANAGEMENT"
 )
 
 // Permission adalah permission tampil satu menu (kode MENU_* dari CPMENU);

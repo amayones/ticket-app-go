@@ -95,6 +95,7 @@ tasks:
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate11_fold_create_event.sql
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate12_ticketing.sql
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate13_ticketing_menus.sql
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/migrate14_marketing.sql
 
   migrate-postgres:
     desc: Apply scripts/schema.postgres.sql to PostgreSQL (requires psql)
@@ -131,6 +132,12 @@ tasks:
     dotenv: ['.env']
     cmds:
       - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/seed-ticketing.sql
+
+  seed-marketing:
+    desc: Seed marketing demo data (T_* tables only, requires migrate14)
+    dotenv: ['.env']
+    cmds:
+      - sqlcmd -S {{.DB_HOST}},{{.DB_PORT}} -U {{.DB_USERNAME}} -P {{.DB_PASSWORD}} -d {{.DB_DATABASE}} -C -b -i scripts/seed-marketing.sql
 
   test:
     desc: Go vet + race tests

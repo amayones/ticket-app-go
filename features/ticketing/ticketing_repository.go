@@ -24,6 +24,7 @@ type RepositoryInterface interface {
 	TypeInfo(ctx context.Context, typeCode string) (*TypeInfo, error)
 	// PromoInfo loads a promo row by code (any status; service filters).
 	PromoInfo(ctx context.Context, promoCode string) (*PromoInfo, error)
+	RecordPromoUsage(ctx context.Context, promoCode, orderCode, userCode string, discount float64) error
 	// ReservedQty sums live holds of a ticket type.
 	ReservedQty(ctx context.Context, typeCode, now string) (int, error)
 	// SoldQty sums PAID tickets of a type.

@@ -41,6 +41,17 @@ const (
 	AuditRefundRequest    = "REFUND_REQUEST"
 	AuditRefundApprove    = "REFUND_APPROVE"
 	AuditRefundReject     = "REFUND_REJECT"
+	AuditPromoCreate      = "PROMO_CREATE"
+	AuditPromoUpdate      = "PROMO_UPDATE"
+	AuditPromoDelete      = "PROMO_DELETE"
+	AuditAdCreate         = "AD_CREATE"
+	AuditAdUpdate         = "AD_UPDATE"
+	AuditAdStatus         = "AD_STATUS"
+	AuditNewsCreate       = "NEWS_CREATE"
+	AuditNewsUpdate       = "NEWS_UPDATE"
+	AuditNewsPublish      = "NEWS_PUBLISH"
+	AuditNewsArchive      = "NEWS_ARCHIVE"
+	AuditNewsDelete       = "NEWS_DELETE"
 	AuditExport           = "EXPORT"
 )
 

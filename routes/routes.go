@@ -11,6 +11,7 @@ import (
 	faudit "golang-backend/features/audit"
 	fdiscovery "golang-backend/features/discovery"
 	fevent "golang-backend/features/event"
+	fmarketing "golang-backend/features/marketing"
 	fnotif "golang-backend/features/notifications"
 	forganizer "golang-backend/features/organizer"
 	froles "golang-backend/features/roles"
@@ -61,6 +62,7 @@ type Deps struct {
 	Discovery     *fdiscovery.Handler
 	Event         *fevent.Handler
 	Ticketing     *fticketing.Handler
+	Marketing     *fmarketing.Handler
 }
 
 func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
@@ -170,6 +172,35 @@ func SetupRoutesWithConfig(d Deps, cfg RouteConfig) *chi.Mux {
 			r.With(auth).Get("/scan/summary", d.Ticketing.ScanSummary)
 			r.With(auth).Get("/scan/history", d.Ticketing.ScanHistory)
 			r.With(auth).Get("/scan/export", d.Ticketing.ScanExport)
+		})
+		// Menu MARKETING: owner-scoped (organizer hanya garap promo/ad/news miliknya).
+		// Tanpa permission matriks (aturan kepemilikan, bukan hak menu).
+		r.Route("/marketing", func(r chi.Router) {
+			r.With(auth).Get("/promos", d.Marketing.ListPromos)
+			r.With(auth).Get("/promos/{code}", d.Marketing.PromoDetail)
+			r.With(auth).Post("/promos", d.Marketing.CreatePromo)
+			r.With(auth).Put("/promos/{code}", d.Marketing.UpdatePromo)
+			r.With(auth).Delete("/promos/{code}", d.Marketing.DeletePromo)
+			r.With(auth).Post("/promos/{code}/toggle", d.Marketing.TogglePromo)
+			r.With(auth).Get("/promos-generate", d.Marketing.GeneratePromoCode)
+			r.With(auth).Get("/ad-positions", d.Marketing.Positions)
+			r.With(auth).Get("/ads", d.Marketing.ListAds)
+			r.With(auth).Get("/ads/{code}", d.Marketing.AdDetail)
+			r.With(auth).Post("/ads", d.Marketing.CreateAd)
+			r.With(auth).Put("/ads/{code}", d.Marketing.UpdateAd)
+			r.With(auth).Post("/ads/{code}/status", d.Marketing.AdStatus)
+			r.With(auth).Post("/ads/{code}/simulate-pay", d.Marketing.SimulatePay)
+			r.With(auth).Get("/ads/{code}/stats", d.Marketing.AdStats)
+			r.With(auth).Post("/ads/upload-banner", d.Marketing.UploadBanner)
+			r.With(auth).Get("/news", d.Marketing.ListNews)
+			r.With(auth).Get("/news/{code}", d.Marketing.NewsDetail)
+			r.With(auth).Post("/news", d.Marketing.CreateNews)
+			r.With(auth).Put("/news/{code}", d.Marketing.UpdateNews)
+			r.With(auth).Delete("/news/{code}", d.Marketing.DeleteNews)
+			r.With(auth).Post("/news/{code}/status", d.Marketing.NewsStatus)
+			r.With(auth).Get("/news-categories", d.Marketing.NewsCategories)
+			r.With(auth).Get("/event-categories", d.Marketing.EventCategories)
+			r.With(auth).Get("/owned-events", d.Marketing.OwnedEvents)
 		})
 		// Menu EVENT: owner-scoped (organizer hanya garap event miliknya).
 		// Tanpa permission matriks (aturan kepemilikan, bukan hak menu).

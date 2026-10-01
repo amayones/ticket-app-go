@@ -9,6 +9,7 @@ import (
 
 	"golang-backend/models"
 	"golang-backend/repositories"
+	"golang-backend/utils"
 )
 
 func nullStr(s string) any {
@@ -107,7 +108,41 @@ func (r *Repository) PayTx(ctx context.Context, orderCode string, tickets []NewT
 	if _, err := tx.ExecContext(ctx, r.dialect.Bind(query), orderCode); err != nil {
 		return err
 	}
+	var promo sql.NullString
+	var disc float64
+	_ = tx.QueryRowContext(ctx, r.dialect.Bind(`SELECT PROMO_CODE, DISCOUNT_AMOUNT FROM `+r.orderTable()+` WHERE CODE = ?`), orderCode).Scan(&promo, &disc)
+	if promo.Valid && promo.String != "" && disc > 0 {
+		var pcode string
+		var buyerCode string
+		_ = tx.QueryRowContext(ctx, r.dialect.Bind(`SELECT BUYER_CODE FROM `+r.orderTable()+` WHERE CODE = ?`), orderCode).Scan(&buyerCode)
+		_ = tx.QueryRowContext(ctx, r.dialect.Bind(`SELECT CODE FROM `+r.promoTable()+` WHERE PROMO_CODE = ?`), promo.String).Scan(&pcode)
+		if pcode != "" && buyerCode != "" {
+			ucode, _ := r.genCode("PU-")
+			_, _ = tx.ExecContext(ctx, r.dialect.Bind(`INSERT INTO `+r.dialect.Table("T_PROMO_USAGE")+` (CODE, PROMO_CODE, ORDER_CODE, USER_CODE, DISCOUNT_AMOUNT) VALUES (?, ?, ?, ?, ?)`), ucode, pcode, orderCode, buyerCode, disc)
+			_, _ = tx.ExecContext(ctx, r.dialect.Bind(`UPDATE `+r.promoTable()+` SET USED_COUNT = USED_COUNT + 1, UPDATED_AT = `+r.dialect.Now()+` WHERE CODE = ?`), pcode)
+		}
+	}
 	return tx.Commit()
+}
+
+func (r *Repository) genCode(prefix string) (string, error) {
+	return utils.GenerateCode(prefix)
+}
+
+func (r *Repository) RecordPromoUsage(ctx context.Context, promoCode, orderCode, userCode string, discount float64) error {
+	ctx2, cancel := repositories.WithTimeout(ctx)
+	defer cancel()
+	var pcode string
+	_ = r.db.QueryRowContext(ctx2, r.dialect.Bind(`SELECT CODE FROM `+r.promoTable()+` WHERE PROMO_CODE = ?`), promoCode).Scan(&pcode)
+	if pcode == "" {
+		return nil
+	}
+	ucode, err := r.genCode("PU-")
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx2, r.dialect.Bind(`INSERT INTO `+r.dialect.Table("T_PROMO_USAGE")+` (CODE, PROMO_CODE, ORDER_CODE, USER_CODE, DISCOUNT_AMOUNT) VALUES (?, ?, ?, ?, ?)`), ucode, pcode, orderCode, userCode, discount)
+	return err
 }
 
 func (r *Repository) CancelPending(ctx context.Context, buyer, code string) error {
