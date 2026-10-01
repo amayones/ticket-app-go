@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, onSessionExpired } from './api/client.js'
 import { AppLogo, Badge, Button, Icon, MissingMenu, Modal, ThemeToggle, ToastProvider, Tooltip, useToast } from './components'
 import { APP_NAME } from './brand.js'
@@ -244,6 +244,35 @@ function Shell() {
     })
   }
 
+  const scrollRef = useRef(null)
+  const [canUp, setCanUp] = useState(false)
+  const [canDown, setCanDown] = useState(false)
+  const updateScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setCanUp(el.scrollTop > 6)
+    setCanDown(el.scrollTop + el.clientHeight < el.scrollHeight - 6)
+  }, [])
+  useEffect(() => {
+    updateScroll()
+  }, [groups, collapsed, openModules, openParents, updateScroll])
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(updateScroll)
+    ro.observe(el)
+    el.addEventListener('scroll', updateScroll, { passive: true })
+    return () => {
+      ro.disconnect()
+      el.removeEventListener('scroll', updateScroll)
+    }
+  }, [updateScroll])
+  function scrollByAmount(dir) {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollBy({ top: dir * 160, behavior: 'smooth' })
+  }
+
   const isOpen = (map, key) => map[key] !== false
 
   useEffect(() => {
@@ -380,48 +409,77 @@ function Shell() {
             </Tooltip>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
-          {collapsed ? (
-            // Mode lipat: daftar ikon flat (grup modul tidak muat di ruang sempit).
-            allNodes.map((n) => {
-              const btn = (
-                <button
-                  key={n.key}
-                  type="button"
-                  onClick={() => setView(n.key)}
-                  className={`flex w-full items-center justify-center gap-0 rounded-xl px-3 py-2.5 transition-colors ${
-                    activeNode?.key === n.key
-                      ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
-                      : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-                  }`}
-                >
-                  <Icon name={n.missing ? 'warning' : n.icon || 'list'} className="h-5 w-5 shrink-0" />
-                </button>
-              )
-              return (
-                <Tooltip key={n.key} label={n.missing ? `${n.label} (belum dibuat)` : n.label} position="right">
-                  {btn}
-                </Tooltip>
-              )
-            })
-          ) : (
-            groups.map((g) => (
-              <ModuleGroup
-                key={g.module}
-                module={g.module}
-                moduleLabel={g.moduleLabel}
-                roots={g.roots}
-                childrenOf={g.childrenOf}
-                open={isOpen(openModules, g.module)}
-                onToggle={() => toggleOpen(setOpenModules, 'go-core-modules', g.module)}
-                activeKey={activeNode?.key}
-                onSelect={setView}
-                openParents={openParents}
-                onToggleParent={(key) => toggleOpen(setOpenParents, 'go-core-parents', key)}
-              />
-            ))
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-white via-white/70 to-transparent transition-opacity dark:from-zinc-900 dark:via-zinc-900/70 ${canUp ? 'opacity-100' : 'opacity-0'}`}
+            aria-hidden="true"
+          />
+          {canUp && !collapsed && (
+            <button
+              type="button"
+              onClick={() => scrollByAmount(-1)}
+              aria-label="Scroll ke atas"
+              className="absolute left-1/2 top-1 z-20 -translate-x-1/2 rounded-full bg-white p-1 text-zinc-500 shadow-sm ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:text-zinc-700 active:scale-95 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
+            >
+              <Icon name="arrowUp" className="h-3.5 w-3.5" />
+            </button>
           )}
-        </nav>
+          <nav ref={scrollRef} onScroll={updateScroll} className="sidebar-scroll flex flex-1 flex-col gap-1 overflow-y-auto scroll-smooth">
+            {collapsed ? (
+              allNodes.map((n) => {
+                const btn = (
+                  <button
+                    key={n.key}
+                    type="button"
+                    onClick={() => setView(n.key)}
+                    className={`flex w-full items-center justify-center gap-0 rounded-xl px-3 py-2.5 transition-colors ${
+                      activeNode?.key === n.key
+                        ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+                        : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    <Icon name={n.missing ? 'warning' : n.icon || 'list'} className="h-5 w-5 shrink-0" />
+                  </button>
+                )
+                return (
+                  <Tooltip key={n.key} label={n.missing ? `${n.label} (belum dibuat)` : n.label} position="right">
+                    {btn}
+                  </Tooltip>
+                )
+              })
+            ) : (
+              groups.map((g) => (
+                <ModuleGroup
+                  key={g.module}
+                  module={g.module}
+                  moduleLabel={g.moduleLabel}
+                  roots={g.roots}
+                  childrenOf={g.childrenOf}
+                  open={isOpen(openModules, g.module)}
+                  onToggle={() => toggleOpen(setOpenModules, 'go-core-modules', g.module)}
+                  activeKey={activeNode?.key}
+                  onSelect={setView}
+                  openParents={openParents}
+                  onToggleParent={(key) => toggleOpen(setOpenParents, 'go-core-parents', key)}
+                />
+              ))
+            )}
+          </nav>
+          <div
+            className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-white via-white/70 to-transparent transition-opacity dark:from-zinc-900 dark:via-zinc-900/70 ${canDown ? 'opacity-100' : 'opacity-0'}`}
+            aria-hidden="true"
+          />
+          {canDown && !collapsed && (
+            <button
+              type="button"
+              onClick={() => scrollByAmount(1)}
+              aria-label="Scroll ke bawah"
+              className="absolute bottom-1 left-1/2 z-20 -translate-x-1/2 rounded-full bg-white p-1 text-zinc-500 shadow-sm ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:text-zinc-700 active:scale-95 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
+            >
+              <Icon name="arrowDown" className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
         <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
           <div
             className={`grid transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] ${
